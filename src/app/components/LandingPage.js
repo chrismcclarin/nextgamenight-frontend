@@ -10,7 +10,7 @@ export default function LandingPage() {
     <div className="min-h-screen flex flex-col">
 
       {/* Hero */}
-      <div className="bg-surface-hero py-24 px-4 dark:[--ring:var(--amber-400)]">
+      <div className="bg-surface-hero py-24 px-4">
         <div className="max-w-4xl mx-auto text-center">
           <div className="flex justify-center mb-8">
             <DieLogo size={80} />
@@ -115,7 +115,8 @@ export default function LandingPage() {
                 (amber from the hero root: 10.13, band 1.00), chosen OVER the primitive default card
                 halo shipped here (dark band 1.22 against the nav ground) and over B4a as drawn, amber
                 in both themes, which reads 1.67 on the white light hero. One per-theme key, not a dark
-                twin on the Button. Removing it is a decision, not a cleanup. */}
+                twin on the Button. Removing it is a decision, not a cleanup.
+                AMENDED Phase 89.6-13: owner pick O-1 = B; the dark defaults are the picked pair, so the hero needs no scope and no halo. */}
             <Button
               asChild
               variant="primary"
@@ -161,7 +162,8 @@ export default function LandingPage() {
                 dark white/20 composite needs utilities an unlayered .btn-secondary rule would beat.
                 AMENDED Phase 88.9-57 (owner N05, 52-X18): the inset is gone; this element wears Get
                 Started's offset ring (ring-offset-2 on the surface-hero band), so this clash cannot
-                arise; still an anchor, not a Button, for the 88.9-33 reason. */}
+                arise; still an anchor, not a Button, for the 88.9-33 reason.
+                AMENDED Phase 89.6-13: owner pick O-1 = B; the dark defaults are the picked pair, so the hero needs no scope and no halo. */}
             {/* DECISION Phase 88.3 (Req 7 / UI-SPEC §11 OI-7): this ONE element re-points
                 `--ring` to amber-400 for itself, chosen OVER letting Req 7's global light
                 ring (`purple-700`) apply here.
@@ -182,7 +184,7 @@ export default function LandingPage() {
                 overriding `--ring` is the only form that works.
 
                 ALSO REJECTED: moving the override up to the hero container, the way
-                src/app/Header.js ("sticky top-0 z-50 [--ring:var(--amber-400)]") scopes the whole header subtree. The hero's other CTA is
+                src/app/Header.js ("sticky top-0 z-50 [--focus-ring-outer:var(--amber-400)]") scopes the whole header subtree. The hero's other CTA is
                 `btn btn-primary`, whose ring sits on its own offset — it does not need the
                 amber and would inherit it silently. This element is the one with the
                 composited ground, so this element is where the override belongs.
@@ -206,7 +208,8 @@ export default function LandingPage() {
                 shared control edge, which would leave this twin a lighter line than every secondary
                 Button beside it. Light, on the white hero: fill 1.3802 (was 1.1330), edge warm-400
                 1.6734 on the fill and 2.3096 on the hero. Dark arm (white/20 fill, white/30 border)
-                unchanged. */}
+                unchanged.
+                AMENDED Phase 89.6-13: owner pick O-1 = B; the dark defaults are the picked pair, so the hero needs no scope and no halo. */}
             <a
               href="/api/auth/login?connection=google-oauth2"
               className="bg-btn-secondary hover:bg-btn-secondary-hover text-btn-secondary-text border border-line-btn-secondary dark:bg-white/20 dark:hover:bg-white/30 dark:border-white/30 dark:text-white active:opacity-75 px-4 py-2 rounded-btn text-sm font-semibold transition-all w-full sm:w-80 min-h-11 text-center inline-flex items-center justify-center gap-2 focus:outline-hidden focus-visible:focus-ring"

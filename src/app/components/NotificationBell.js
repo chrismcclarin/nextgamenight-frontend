@@ -755,15 +755,18 @@ function NotificationBell({ user, variant = 'icon', label }) {
           header's amber-400: the panel is the light card nested inside the dark header chrome, and
           amber-400 on its halo measured 1.67:1 in both themes. The halo is the card colour from the
           Button primitive. It sets --ring, never --color-focus-ring, which is inert here
-          (src/app/Header.js ("Rejected — overriding")). Removing it is a decision, not a cleanup. */}
+          (src/app/Header.js ("Rejected — overriding")). Removing it is a decision, not a cleanup.
+          AMENDED Phase 89.6-13 (owner pick O-1 = B, 2026-11-22): the reset now names the page pair.
+          The 1.67:1 contrast reason is covered by the two-tone ring on any ground; the reset stays for
+          the look: the panel is a light card and its rings match every light card. */}
       {isOpen && (
         <section
           id={panelId}
           aria-labelledby={headingId}
           className={
             variant === 'row'
-              ? "bg-surface-card border-t border-line-header [--ring:var(--color-focus-ring)]"
-              : "fixed right-2 left-2 sm:left-auto sm:absolute sm:right-0 mt-2 sm:w-80 bg-surface-card rounded-lg shadow-theme-lg border border-line z-50 [--ring:var(--color-focus-ring)]"
+              ? "bg-surface-card border-t border-line-header [--focus-ring-outer:var(--focus-ring-page-outer)] [--focus-ring-inner:var(--focus-ring-page-inner)]"
+              : "fixed right-2 left-2 sm:left-auto sm:absolute sm:right-0 mt-2 sm:w-80 bg-surface-card rounded-lg shadow-theme-lg border border-line z-50 [--focus-ring-outer:var(--focus-ring-page-outer)] [--focus-ring-inner:var(--focus-ring-page-inner)]"
           }
         >
           {/* Header */}

@@ -2380,8 +2380,13 @@
      and focus-ring-inner for the same reason; the header scopes them the same way it scopes ring
      today. */
   --color-focus-ring: var(--purple-700);
-  --focus-ring-outer: var(--purple-900);
-  --focus-ring-inner: #ffffff;
+  /* DECISION Phase 89.6-13 (codemod): the page pair holds each ring value once; the header scopes
+     over it and the notification panel resets to it, OVER copying the four values into the panel's
+     classes. Changing this is a decision, not a cleanup. */
+  --focus-ring-page-outer: var(--purple-900);
+  --focus-ring-page-inner: #ffffff;
+  --focus-ring-outer: var(--focus-ring-page-outer);
+  --focus-ring-inner: var(--focus-ring-page-inner);
   --color-checkbox-accent: var(--purple-600);
 
   /* Transitions */
@@ -2736,8 +2741,11 @@
 
   /* Focus ring */
   --color-focus-ring: var(--amber-400);
-  --focus-ring-outer: var(--amber-400);
-  --focus-ring-inner: var(--purple-950);
+  /* DECISION Phase 89.6-13 (codemod): the dark page pair, held once, as in the light block. */
+  --focus-ring-page-outer: var(--amber-400);
+  --focus-ring-page-inner: var(--purple-950);
+  --focus-ring-outer: var(--focus-ring-page-outer);
+  --focus-ring-inner: var(--focus-ring-page-inner);
   --color-checkbox-accent: var(--purple-400);
 }
 
@@ -3440,6 +3448,7 @@ body {
    ground — the white card (EventDayModal.js's panel and gameDetail/page.js's `.card`)
    — where purple-700 measures **7.7948**. Req 7 clears on the card ground, not on the fill. The
    Create-Event button this copies has exactly the same geometry and the same numbers.
+   AMENDED Phase 89.6-13: superseded by owner pick O-1 = B; the inner band clears the fill (5.66 on a filled button).
 
    FILL-VS-TINT IS NOT A 1.4.11 FAILURE, and this sentence exists so a bare number does not invite
    a "fix". amber-700 measures **2.6042 (Wine) - 2.7576 (Forest)** against the eight t = 0.70 group
