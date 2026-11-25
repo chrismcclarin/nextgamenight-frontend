@@ -286,19 +286,26 @@ const deleteConfirmExtras: NonNullable<SurfaceRow['extras']> = async (page: Page
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
-// D09: Send Feedback, opened from the header menu's Send feedback row (the row with visible text;
-// the floating button is icon-only), the path of e2e/feedback-submit.spec.ts ("async function openFromMenu").
-// Opened on the group page, not on Home: in the sweep's CI run the toggle on Home was drawn but not
-// in the accessibility tree (flip run 45580029361; the tutorial auto-opens on Home only), and the
-// dialog is the surface whatever page is under it.
+// D09: Send Feedback, opened from the header menu's Send feedback row (the row with visible text),
+// the path of e2e/feedback-submit.spec.ts ("async function openFromMenu"), or from the floating
+// button where the header has no menu: the font32 pass reaches its fresh page at 768 BEFORE its
+// cell sets the text size, and at 768 with normal text the header shows its links and the floating
+// button instead (flip run 45580029361 and run 45583481580: the toggle wait timed out there).
 const sendFeedback = (page: Page): Locator => page.getByRole('dialog', { name: 'Send Feedback', exact: true });
 const menuToggle = (page: Page): Locator => page.getByRole('button', { name: 'Toggle menu' });
+const floatingFeedback = (page: Page): Locator =>
+  page.getByRole('button', { name: 'Send feedback', includeHidden: true }).filter({ hasNotText: 'Send feedback' });
 async function openSendFeedback(page: Page): Promise<Locator> {
-  await page.goto(groupPage());
+  await page.goto('/');
   const toggle = menuToggle(page);
-  await toggle.waitFor({ state: 'visible', timeout: 15_000 });
-  await toggle.click();
-  await page.getByRole('button', { name: 'Send feedback' }).filter({ hasText: 'Send feedback' }).click();
+  const fab = floatingFeedback(page);
+  await toggle.or(fab.filter({ visible: true })).first().waitFor({ state: 'visible', timeout: 15_000 });
+  if (await toggle.isVisible()) {
+    await toggle.click();
+    await page.getByRole('button', { name: 'Send feedback' }).filter({ hasText: 'Send feedback' }).click();
+  } else {
+    await fab.filter({ visible: true }).click();
+  }
   const dialog = sendFeedback(page);
   await dialog.waitFor({ state: 'visible', timeout: 15_000 });
   return dialog;
@@ -334,8 +341,6 @@ const reachSendFailed: SurfaceRow['reach'] = async (page) => {
 // O09: the floating feedback button, icon-only (its name has no visible text), drawn only from md
 // up while the header is not in its menu form; elsewhere the header menu offers the same entry.
 // Found attached, not visible: at the font32 cell the md query no longer matches and it is not drawn.
-const floatingFeedback = (page: Page): Locator =>
-  page.getByRole('button', { name: 'Send feedback', includeHidden: true }).filter({ hasNotText: 'Send feedback' });
 const reachFloatingFeedback: SurfaceRow['reach'] = async (page) => {
   await page.goto('/');
   const fab = floatingFeedback(page);
