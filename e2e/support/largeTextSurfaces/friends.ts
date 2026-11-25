@@ -11,8 +11,10 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
 import { settleAnimations } from '../inFlight';
+import { scrubbedFetch } from '../scrubbedFetch';
 import { EMOJI_NAME, THIRTY_LETTER_WORD } from '../wordLines';
-import type { SurfaceRow } from './index';
+import type { SurfaceRow, SweepCell } from './index';
+import { stageNight } from './night';
 
 type Friendship = { id: string; friend: { id: string; username: string | null } };
 
@@ -90,7 +92,7 @@ async function openInvitePanel(page: Page, shown: 'rows' | 'empty'): Promise<Loc
 
 // D02: one answered friend (the emoji name) is shown as already in the group, so the In group tag
 // is read too. The group's own members read is let through and the friend added to what comes
-// back (route.fetch is a read); the route is registered once per page, after the guard.
+// back (a read, passed through scrubbedFetch); the route is registered once per page, after the guard.
 const inGroupRouted = new WeakSet<Page>();
 const reachInvite: SurfaceRow['reach'] = async (page) => {
   if (!inGroupRouted.has(page)) {
@@ -102,7 +104,7 @@ const reachInvite: SurfaceRow['reach'] = async (page) => {
           await route.fallback();
           return;
         }
-        const response = await route.fetch();
+        const response = await scrubbedFetch(route);
         const body = (await response.json().catch(() => null)) as unknown;
         const member = { id: EMOJI_FRIEND.friend.id, username: EMOJI_NAME };
         const json = Array.isArray(body) ? [...body, member] : body && typeof body === 'object' && Array.isArray((body as { members?: unknown }).members) ? { ...(body as object), members: [...(body as { members: unknown[] }).members, member] } : body;
@@ -180,6 +182,65 @@ const reachCreated: SurfaceRow['reach'] = async (page) => {
 
 const PANEL_FRIENDS = [LONG_FRIEND, EMOJI_FRIEND, SHORT_FRIEND, NAMELESS_FRIEND];
 
+// THE MEMBER POPOVER (O05). The name popover is the desktop path (a phone shows the inline indicator
+// instead, census O05), so the row is reached at 1280 x 800 and each cell then resizes the window
+// with the popover open. It opens on the night page, staged as plan 89.6-19's R05-event row stages
+// it (e2e/support/largeTextSurfaces/night.ts ("export async function stageNight")): that page is as
+// wide as the window at 320 / 200%, and the cells read page sideways document-wide. The night's
+// RSVP read is answered here, after the staging, so it runs first: the group's real members as yes,
+// plus one person with the 30-letter name who is nobody's friend (status none), so their popover
+// offers Add friend. The popover is opened from the keyboard (focus the name, Enter), which keeps it
+// open until Escape or a press elsewhere; a hover-opened one could close when a resize moves the
+// name from under a still pointer. Add friend is never pressed.
+const groupId = (): string => {
+  const id = process.env.E2E_GROUP_ID ?? '';
+  if (id === '') throw new Error('E2E_GROUP_ID must be set: the CI step that runs scripts/e2e-fixtures.js exports it, and the popover row opens that group night');
+  return id;
+};
+const eventPath = (): string => process.env.E2E_EVENT_DETAIL_PATH ?? `/gameDetail?event_id=1&group_id=${groupId()}`;
+const eventId = (): string => new URL(eventPath(), 'http://localhost').searchParams.get('event_id') ?? '1';
+const STRANGER = { id: '8961a021-0000-4000-8000-0000000000a5', username: THIRTY_LETTER_WORD };
+const rsvpRouted = new WeakSet<Page>();
+const reachPopover: SurfaceRow['reach'] = async (page) => {
+  await stageNight(page);
+  if (!rsvpRouted.has(page)) {
+    rsvpRouted.add(page);
+    const id = eventId();
+    await page.route(
+      (url) => url.pathname === `/api/rsvp/event/${id}`,
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.fallback();
+          return;
+        }
+        const roster = await scrubbedFetch(route, { url: new URL(`/api/groups/${groupId()}/users`, route.request().url()).toString() });
+        const body = (await roster.json().catch(() => [])) as unknown;
+        const members = (Array.isArray(body) ? body : []) as Array<{ id?: unknown; username?: string | null }>;
+        const row = (n: number, userId: string, username: string) => ({ id: `8961a021-0000-4000-8000-0000000001${String(n).padStart(2, '0')}`, event_id: id, user_id: userId, status: 'yes', note: null, User: { id: userId, username } });
+        const rsvps = [...members.filter((m) => typeof m.id === 'string').map((m, n) => row(n, m.id as string, m.username ?? 'Member')), row(99, STRANGER.id, STRANGER.username)];
+        await route.fulfill({ json: { rsvps, summary: { yes: rsvps.length, maybe: 0, no: 0 } } });
+      },
+    );
+  }
+  await page.goto(eventPath());
+  const name = page.getByRole('main').getByRole('button', { name: THIRTY_LETTER_WORD, exact: true }).first();
+  await name.waitFor({ state: 'visible', timeout: 15_000 });
+  await name.focus();
+  await page.keyboard.press('Enter');
+  const popover = page.locator('[data-member-popover]').first();
+  await popover.getByRole('button', { name: 'Add friend', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(popover);
+  return { root: popover };
+};
+
+// O05 extras, every cell: the popover's Add friend keeps the 44px floor (P4: a floor miss is fixed,
+// never accepted), and the popover stays open through the resize.
+const popoverExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const add = await page.locator('[data-member-popover]').first().getByRole('button', { name: 'Add friend', exact: true }).boundingBox();
+  if (!add) throw new Error(`O05 ${cell.id}: the popover or its Add friend is gone after the resize`);
+  if (add.height < 44 - 0.5) throw new Error(`O05 ${cell.id}: Add friend is ${add.height}px tall, under the 44px floor`);
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R04', census: 'R04', kind: 'route', owner: '89.6-21', status: 'enforced', reach: reachFriends, answers: answerFriends([LONG_FRIEND, EMOJI_FRIEND, SHORT_FRIEND, NAMELESS_FRIEND]) },
   { id: 'R04-empty', census: 'R04', kind: 'route', owner: '89.6-21', status: 'enforced', state: 'no friends', reach: reachNoFriends, answers: answerFriends([]) },
@@ -188,5 +249,5 @@ export const rows: SurfaceRow[] = [
   { id: 'D02-empty', census: 'D02', kind: 'dialog', owner: '89.6-21', status: 'enforced', state: 'no friends', reach: reachInviteEmpty, answers: answerPanel([]) },
   { id: 'D02-found', census: 'D02', kind: 'dialog', owner: '89.6-21', status: 'enforced', state: 'the found-person row', reach: reachInviteFound, answers: answerPanel(PANEL_FRIENDS, (url) => (isPersonSearch(url) ? FOUND_PERSON : undefined)) },
   { id: 'D03', census: 'D03', kind: 'dialog', owner: '89.6-21', status: 'enforced', reach: reachCreated, answers: answerPanel(PANEL_FRIENDS, (url) => (isCreatedGroupRead(url) ? [] : undefined)) },
-  { id: 'O05', census: 'O05', kind: 'overlay', owner: '89.6-21', status: 'pending' },
+  { id: 'O05', census: 'O05', kind: 'overlay', owner: '89.6-21', status: 'enforced', reachAt: { width: 1280, height: 800 }, reach: reachPopover, extras: popoverExtras },
 ];
