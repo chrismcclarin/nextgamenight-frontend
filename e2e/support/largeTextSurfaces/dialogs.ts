@@ -288,10 +288,13 @@ const deleteConfirmExtras: NonNullable<SurfaceRow['extras']> = async (page: Page
 
 // D09: Send Feedback, opened from the header menu's Send feedback row (the row with visible text;
 // the floating button is icon-only), the path of e2e/feedback-submit.spec.ts ("async function openFromMenu").
+// Opened on the group page, not on Home: in the sweep's CI run the toggle on Home was drawn but not
+// in the accessibility tree (flip run 45580029361; the tutorial auto-opens on Home only), and the
+// dialog is the surface whatever page is under it.
 const sendFeedback = (page: Page): Locator => page.getByRole('dialog', { name: 'Send Feedback', exact: true });
 const menuToggle = (page: Page): Locator => page.getByRole('button', { name: 'Toggle menu' });
 async function openSendFeedback(page: Page): Promise<Locator> {
-  await page.goto('/');
+  await page.goto(groupPage());
   const toggle = menuToggle(page);
   await toggle.waitFor({ state: 'visible', timeout: 15_000 });
   await toggle.click();
