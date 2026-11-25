@@ -3503,8 +3503,9 @@ export default function GameDetailPage() {
                                         )}
                                     </div>
                                     {(canInvite || canRemove) && (
-                                    /* ml-auto: stays right-aligned when it drops to its own row. */
-                                    <div className="flex items-center gap-2 shrink-0 ml-auto">
+                                    /* ml-auto: stays right-aligned when it drops to its own row.
+                                       DECISION Phase 89.6-19 (participants): Invite and Remove wrap as whole buttons when the row cannot hold both (GR), chosen OVER the no-shrink box that pushed them past the dialog (CI run 45641026757: the dialog scrolled sideways 35px at 320 / 200%). Changing this is a decision, not a cleanup. */
+                                    <div className="flex flex-wrap items-center gap-2 ml-auto">
                                         {/* Req 15: the invite sits BEFORE Remove, not after.
                                             Both act on the same guest row, and putting the
                                             constructive action first keeps the destructive

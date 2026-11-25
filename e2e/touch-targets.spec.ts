@@ -1358,7 +1358,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      WHAT IT MEASURES AND IN WHAT ORDER:
 
        1. A PLANTED replica of the shipped row, ALWAYS. The row is
-          `<div class="flex items-center gap-2 shrink-0 ml-auto">` (src/app/gameDetail/page.js ("flex items-center gap-2 shrink-0 ml-auto")) with
+          `<div class="flex flex-wrap items-center gap-2 ml-auto">` (src/app/gameDetail/page.js ("flex flex-wrap items-center gap-2 ml-auto")) with
           `GuestInviteButton` (className at src/app/gameDetail/page.js ("border border-line ${branchInk}")) and the two-tap Remove (className at src/app/gameDetail/page.js ("border shrink-0 ${"))
           inside it, re-derived 2026-09-15. The replica carries the LONGEST label each control can
           render because a row only overflows at its widest state and a short-label probe would
@@ -1406,8 +1406,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       host.setAttribute('style', 'width: 375px; padding: 0; margin: 0;');
 
       const row = document.createElement('div');
-      // The shipped row wrapper, src/app/gameDetail/page.js ("flex items-center gap-2 shrink-0 ml-auto") (re-derived 2026-09-28).
-      row.className = 'flex items-center gap-2 shrink-0 ml-auto';
+      // The shipped row wrapper, src/app/gameDetail/page.js ("flex flex-wrap items-center gap-2 ml-auto") (re-derived 2026-09-28).
+      // AMENDED Phase 89.6-19 (participants): the wrapper wraps its two buttons whole and no longer refuses to shrink.
+      row.className = 'flex flex-wrap items-center gap-2 ml-auto';
 
       const make = (tag: 'span' | 'button', className: string, text: string) => {
         const el = document.createElement(tag);
