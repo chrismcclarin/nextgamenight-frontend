@@ -716,3 +716,32 @@ describe('availability-form/[token] — R29 Try again on the amber card (88.9-52
     expect(heading).not.toHaveAttribute('tabindex');
   });
 });
+
+// R14 (phase 89.6, owner 2026-11-25 "Follow your suggestion"): the opening sentence. The backend's
+// success response sends no game today (backend:Sonnet/routes/magicAuth.js ("// Success response with info needed by frontend")),
+// so every real link used to say "the upcoming Game TBD session". With no game the sentence now
+// reads "the upcoming session"; a game name, once the backend sends one (Phase 91), shows unchanged.
+describe('availability-form/[token] — R14 the opening sentence names the game only when one is sent', () => {
+  const { game: _game, ...NO_GAME_BODY } = VALID_TOKEN_BODY;
+
+  it('R14: with no game the sentence reads the upcoming session, and Game TBD is nowhere on the page', async () => {
+    validate().mockResolvedValue(NO_GAME_BODY);
+    render(<AvailabilityFormPage />);
+
+    await screen.findByRole('heading', { level: 1, name: 'Submit Your Availability' });
+    expect(
+      screen.getByText("Select the times you're available for the upcoming session.", { selector: 'p' }),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('Game TBD');
+  });
+
+  it('R14 (pin): a sent game name still reads in the sentence', async () => {
+    validate().mockResolvedValue({ ...VALID_TOKEN_BODY, game: { name: 'Catan' } });
+    render(<AvailabilityFormPage />);
+
+    await screen.findByRole('heading', { level: 1, name: 'Submit Your Availability' });
+    expect(
+      screen.getByText("Select the times you're available for the upcoming Catan session.", { selector: 'p' }),
+    ).toBeInTheDocument();
+  });
+});
