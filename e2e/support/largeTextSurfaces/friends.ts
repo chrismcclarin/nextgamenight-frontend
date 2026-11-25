@@ -13,6 +13,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { settleAnimations } from '../inFlight';
 import { scrubbedFetch } from '../scrubbedFetch';
 import { EMOJI_NAME, THIRTY_LETTER_WORD } from '../wordLines';
+import { toDialogTop } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
 import { stageNight } from './night';
 
@@ -206,6 +207,9 @@ const reachInviteFound: SurfaceRow['reach'] = async (page) => {
   await dialog.getByRole('button', { name: 'Send', exact: true }).click();
   await dialog.locator('[data-add-friend-prompt]').waitFor({ state: 'visible', timeout: 15_000 });
   await settleAnimations(dialog);
+  // The found-person row makes the panel taller than the 215 / 187 page-zoom window and the Send
+  // press scrolls the dialog down; the read is taken from the dialog's top, as plan 25's rows are (89.6-21 B, D22).
+  await toDialogTop(dialog);
   return { root: dialog, dialog };
 };
 

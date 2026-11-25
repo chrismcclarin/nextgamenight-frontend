@@ -24,6 +24,7 @@ import { EXCEPTION_SELECTORS } from '../largeTextExceptions';
 import { routeMemberRoster } from '../memberRoster';
 import { scrubbedFetch } from '../scrubbedFetch';
 import { TWO_WORD_NAME, expectLargeTextCell, expectPageZoomUsable, readLargeTextCell, readPageZoomCell } from '../wordLines';
+import { toDialogTop } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login owns.
@@ -214,13 +215,6 @@ const nightExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: 
 };
 
 const firstLine = (error: unknown): string => String(error instanceof Error ? error.message : error).split('\n')[0];
-
-/** Scroll every scrolled box of a dialog back to its top: the header at the top, as plans 10 and 11 read a tall dialog. */
-async function toDialogTop(dialog: Locator): Promise<void> {
-  await dialog.evaluate((el) => {
-    for (const node of [el, ...Array.from(el.querySelectorAll('*'))]) if (node.scrollTop > 0) node.scrollTop = 0;
-  });
-}
 
 // D27: the staged night's See all (7) opens the Participants dialog.
 const participantsDialog = (page: Page): Locator => page.getByRole('dialog', { name: 'Participants (7)', exact: true });

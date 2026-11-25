@@ -233,8 +233,9 @@ const ownerAsAdmin = (rows: unknown[]): unknown[] => [
 // A reached dialog is read from its top, as the shell rows read theirs (e2e/support/largeTextSurfaces/dialogShell.ts ("the header is read with the dialog scrolled to its top")).
 // Pressing a control low in a tall dialog, or the focus a confirm moves to its field, scrolls the
 // dialog box down; the page-zoom read then lists everything above as lost ("starts above the
-// page"), though a finger scrolls the dialog back up. Measured on the D07-leave, D08 and D10-attached flip runs (89.6-25).
-async function toDialogTop(dialog: Locator): Promise<void> {
+// page"), though a finger scrolls the dialog back up. Measured on the D07-leave, D08 and D10-attached flip runs (89.6-25),
+// and on D02-found (89.6-21). The one copy: night.ts and friends.ts import it from here.
+export async function toDialogTop(dialog: Locator): Promise<void> {
   await dialog.evaluate((el) => {
     for (const node of [el, ...Array.from(el.querySelectorAll('*'))]) if (node.scrollTop > 0) node.scrollTop = 0;
   });
