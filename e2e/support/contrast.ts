@@ -803,3 +803,37 @@ export function describeDelta(label: string, floor: number, a: string, b: string
     `indistinguishable; only a lightness delta says so (SPEC Req 1).`
   );
 }
+
+/**
+ * Phase 89.6-14 — the ONE painted-pixel read: the sRGB channels of a single CSS pixel as the
+ * browser painted it, at viewport coordinates (x, y).
+ *
+ * WHY A SCREENSHOT, and why it is decoded IN THE PAGE. A computed style says what a rule asks
+ * for; only the painted pixel says which layer won (an opaque outline paints over a border and
+ * over an inset box-shadow band, which no computed value shows). The repo carries no PNG
+ * decoder (no pngjs, sharp or upng in package.json) and a hand-written inflate would be a
+ * second thing to trust, so the 1 x 1 PNG is handed back to the page as a data URL, decoded by
+ * an Image, drawn on a detached 1 x 1 canvas and read with getImageData, the same canvas read
+ * probeElement's normaliser makes. A data URL never reaches the network, so a spec that aborts
+ * and counts every request still counts 0.
+ *
+ * scale 'css' makes the clip one CSS pixel on any device scale factor (the phone project runs
+ * at 2); pass integer coordinates so the pixel does not straddle two painted rows.
+ */
+export async function samplePaintedPixel(page: Page, x: number, y: number): Promise<[number, number, number]> {
+  const shot = await page.screenshot({ clip: { x, y, width: 1, height: 1 }, scale: 'css' });
+  const url = `data:image/png;base64,${shot.toString('base64')}`;
+  return page.evaluate(async (src: string): Promise<[number, number, number]> => {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('samplePaintedPixel: the detached canvas gave no 2d context.');
+    ctx.drawImage(img, 0, 0, 1, 1);
+    const px = ctx.getImageData(0, 0, 1, 1).data;
+    return [px[0], px[1], px[2]];
+  }, url);
+}

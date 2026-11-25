@@ -53,6 +53,8 @@ export const floors = [
   { spec: 'e2e/feedback-stacking.spec.ts', project: 'journeys', floor: 4, why: '4 of 6 listed run in journeys; 2 skipped here by an isMobile predicate' },
   { spec: 'e2e/feedback-stacking.spec.ts', project: 'phone', floor: 3, why: '3 of 6 listed run in phone; 3 skipped here by an isMobile predicate' },
   { spec: 'e2e/feedback-submit.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
+  { spec: 'e2e/focus-ring-reader.spec.ts', project: 'journeys', floor: 9, why: '9 of 9 listed run in journeys; no conditional skip: floored so CI prints a per-spec line for the ring reader self-test (added by 89.6-14, outside the skip population on purpose)' },
+  { spec: 'e2e/focus-ring-reader.spec.ts', project: 'phone', floor: 9, why: '9 of 9 listed run in phone; no conditional skip: floored so CI prints a per-spec line for the ring reader self-test (added by 89.6-14, outside the skip population on purpose)' },
   { spec: 'e2e/friend-request-kept-on-failure.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/friends-long-address.spec.ts', project: 'phone', floor: 4, why: '4 of 4 listed run in phone; the other project is skipped by an isMobile predicate (a 375 layout defect)' },
   { spec: 'e2e/game-suggestion-card.spec.ts', project: 'phone', floor: 3, why: '3 of 3 listed run in phone (the third added by 88.9-52 R4-E D2, the card at large text); the other project is skipped by an isMobile predicate' },
