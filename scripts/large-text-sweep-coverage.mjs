@@ -130,7 +130,8 @@ function check(dir, { mode = 'pr', close = false } = {}) {
   for (const row of pending) lines.push(`pending: ${row.id} until ${row.owner}`);
   for (const row of enforced) {
     const result = readJson(join(dir, `${row.id}.json`));
-    const read = new Map((Array.isArray(result?.cells) ? result.cells : []).map((entry) => [entry?.cell, entry?.verdict]));
+    const cells = Array.isArray(result?.cells) ? result.cells : [];
+    const read = new Map(cells.map((entry) => [entry?.cell, entry?.verdict]));
     for (const cell of expected) {
       if (!read.has(cell)) {
         lines.push(`missing: ${row.id} ${cell}`);
@@ -138,6 +139,15 @@ function check(dir, { mode = 'pr', close = false } = {}) {
       } else if (read.get(cell) !== 'pass') {
         lines.push(`failed: ${row.id} ${cell}`);
         failed += 1;
+      }
+    }
+    // What the three owned surfaces cleared in a cell (SPEC A3 (2) to (4); spill by orchestrator
+    // ruling D12, plan 89.6-16) is written down here, never failed: a green run uploads nothing,
+    // so this log is the only place a reader can see it by name.
+    for (const entry of cells) {
+      for (const kind of ['split', 'held', 'spill']) {
+        const cleared = entry?.cleared?.[kind];
+        if (Array.isArray(cleared) && cleared.length > 0) lines.push(`cleared: ${row.id} ${entry.cell} ${kind}: ${cleared.join(' | ')}`);
       }
     }
     times.push([row.id, typeof result?.ms === 'number' ? result.ms : 0]);
@@ -168,7 +178,7 @@ function check(dir, { mode = 'pr', close = false } = {}) {
   return { lines, ok };
 }
 
-/** Plant eleven faults, each in its own results folder; true only when every one is caught. */
+/** Plant ten faults and two clean folders, each in its own results folder; true only when every one reads as expected. */
 function selfTest() {
   const base = mkdtempSync(join(tmpdir(), 'large-text-sweep-coverage-'));
   const passCell = (cell) => ({ cell, verdict: 'pass' });
@@ -206,6 +216,7 @@ function selfTest() {
     ['a pr-mode run whose rows take 901 s', folder({ 'rows.json': rowsFile(), 'R17.json': resultFile(PR_CELL_IDS, { ms: 901_000 }) }), {}, false, /^over budget: 901s, /],
     ['an empty state no enforced row holds, under --close', folder({ 'rows.json': rowsFile({ rows: allEnforced, emptyStates: [{ census: 'R01', state: 'No groups yet', row: 'R01-empty', owner: '89.6-16', shownBy: 'R01' }] }), 'R17.json': resultFile() }), { close: true }, false, /^empty-state open: R01-empty \(R01 "No groups yet"\) until 89\.6-16$/],
     ['a clean folder, its one empty state held by an enforced row, under --close', folder({ 'rows.json': rowsFile({ rows: allEnforced }), 'R17.json': resultFile() }), { close: true }, true, /^empty-state parity: 0$/],
+    ['a cell whose month-grid spill was cleared is written down and passes', folder({ 'rows.json': rowsFile(), 'R17.json': resultFile(PR_CELL_IDS, { cells: PR_CELL_IDS.map((cell) => (cell === '768x1024-dark-200' ? { cell, verdict: 'pass', cleared: { split: [], held: [], spill: ['"Gloomhaven" spills 83.86px out of its div'] } } : { cell, verdict: 'pass' })) }) }), {}, true, /^cleared: R17 768x1024-dark-200 spill: "Gloomhaven" spills 83\.86px out of its div$/],
   ];
   let held = 0;
   for (const [name, dir, options, expectOk, expectLine] of cases) {
@@ -217,7 +228,7 @@ function selfTest() {
   }
   rmSync(base, { recursive: true, force: true });
   console.log(`self-test: ${held} of ${cases.length}`);
-  return held === cases.length && cases.length === 11 ? 0 : 1;
+  return held === cases.length && cases.length === 12 ? 0 : 1;
 }
 
 function main(argv) {
