@@ -588,7 +588,7 @@ export default function ResponseDashboard({
     if (errorState.showError) {
       return (
         <>
-          <div className="bg-surface-card rounded-card border border-line p-4">
+          <div className="bg-surface-card rounded-card border border-line p-edge-page">
             <FetchErrorBanner
               state={errorState}
               thing="the respondents"
@@ -604,7 +604,7 @@ export default function ResponseDashboard({
     // Loading state: nothing has loaded for this prompt yet (the first load, or a new prompt).
     return (
       <>
-        <div className="bg-surface-card rounded-card border border-line p-4">
+        <div className="bg-surface-card rounded-card border border-line p-edge-page">
           {/* DECISION Phase 88.6.1-86 (close ruling P-14, owner 2026-10-17): CHOSEN — the
               ratified loading line in the slot of the heading bar (the Responses heading lands
               here once the roster loads), outside the pulse, in the plain-paragraph shape of the
@@ -636,7 +636,7 @@ export default function ResponseDashboard({
 
   return (
     <>
-    <div className="bg-surface-card rounded-card border border-line p-4">
+    <div className="bg-surface-card rounded-card border border-line p-edge-page">
       <Heading ref={responsesHeadingRef} level={3} size="heading" className="text-content-primary mb-3">
         Responses: {responseCount}/{totalCount} responded
       </Heading>

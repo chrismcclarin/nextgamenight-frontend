@@ -43,7 +43,7 @@ import { StatusRegion } from './StatusRegion';
    `tailwind-merge` also keeps both (a shorthand does not conflict-eat a longhand). If you ever
    see the accent stripe go neutral, that ordering is what changed. */
 const bannerVariants = cva(
-  'flex items-start gap-3 rounded-card border border-line border-l-4 px-4 py-3 text-base bg-surface-elevated text-content-primary',
+  'flex items-start gap-3 rounded-card border border-line border-l-4 px-edge-page py-3 text-base bg-surface-elevated text-content-primary',
   {
     variants: {
       tone: {

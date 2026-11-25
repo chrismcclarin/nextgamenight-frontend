@@ -297,9 +297,10 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
            while busy, starts with the visible words, and no child box (suffix or Spinner) can
            change it; the Profile schedule Delete names its busy state the same way. Going back
            to the span is a decision, not a cleanup. */
+        // DECISION Phase 89.6-39 (O-M1-bare): the empty / failed suggestions box keeps its 8px side edge as a calc on the card token, chosen OVER the 12px card edge (a look change at normal text, not on the pick page; offered at look 2 as owner item L-39a) and OVER a new 8px token for one box. Pixel-identical at normal text, held at 8px at 200% text (owner pick O-M1 = D, HR-9 per SPEC A9). Changing this is a decision, not a cleanup.
         <div
           data-testid={shown.kind === 'failed' ? 'quick-suggestions-failed' : 'quick-suggestions-empty'}
-          className="flex-1 min-w-0 flex items-center gap-2 border-2 border-dashed border-line rounded-card px-2"
+          className="flex-1 min-w-0 flex items-center gap-2 border-2 border-dashed border-line rounded-card px-[calc(var(--spacing-edge-card)_-_4px)]"
         >
           <p className="text-xs text-content-muted italic">
             {shown.kind === 'failed'

@@ -676,7 +676,7 @@ export default function CalendarListView({
             <Heading level={3} size="heading" className="min-h-11 flex items-center px-4 text-content-primary">Upcoming events</Heading>
             <div className="space-y-3">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="border border-line rounded-lg p-4 animate-pulse">
+                <div key={i} className="border border-line rounded-lg p-edge-page animate-pulse">
                   <div className="h-4 w-1/3 bg-surface-elevated rounded-sm mb-2" />
                   <div className="h-3 w-1/4 bg-surface-elevated rounded-sm" />
                 </div>

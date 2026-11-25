@@ -20,7 +20,7 @@ export default function PendingMemberBanner({ groupId }) {
     };
 
     return (
-        <div className="bg-surface-accent-subtle border border-line-accent rounded-card p-4 mb-4 flex items-center justify-between">
+        <div className="bg-surface-accent-subtle border border-line-accent rounded-card p-edge-page mb-4 flex items-center justify-between">
             {/* DECISION Phase 88.6-34: this body STAYS at Label 14 — chosen OVER UI-SPEC §4.3's
                 "`<p>` running prose -> Body 16" row and over this plan's own task text, both of
                 which say 16. The record says 14 more specifically and THREE times: plan 88.6-17

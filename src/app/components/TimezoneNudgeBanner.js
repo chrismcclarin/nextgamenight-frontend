@@ -89,7 +89,7 @@ export default function TimezoneNudgeBanner() {
   return (
     <div
       role="status"
-      className="bg-status-warning-subtle border border-status-warning rounded-card p-3 mb-4 flex items-start gap-3"
+      className="bg-status-warning-subtle border border-status-warning rounded-card p-edge-card mb-4 flex items-start gap-3"
     >
       <svg
         className="w-5 h-5 text-content-status-warning shrink-0 mt-0.5"
@@ -108,7 +108,7 @@ export default function TimezoneNudgeBanner() {
       {/* DECISION Phase 88.6-26 (UI-SPEC 4.3 vs the shipped Banner family): the body STAYS at 14,
           chosen OVER the 16 a mechanical read of 4.3's "<p> running prose -> Body 16" row gives.
           On the merits 16 is the wrong answer HERE: the shipped Banner primitive's own cva base is
-          text-sm (src/components/ui/Banner.tsx ("rounded-card border border-line border-l-4 px-4 py-3")) and three banners render through it, src/app/components/PendingMemberBanner.js ("text-content-secondary text-sm") —
+          text-sm (src/components/ui/Banner.tsx ("rounded-card border border-line border-l-4 px-edge-page py-3")) and three banners render through it, src/app/components/PendingMemberBanner.js ("text-content-secondary text-sm") —
           the sibling this file's docblock says it matches "for visual cohesion" — is text-sm, and
           two plans in this same phase already answered this exact question the same way (88.6-17
           kept the SMS-disabled banner at 14 "because Banner.tsx's own copy is 14"; 88.6-19 kept a

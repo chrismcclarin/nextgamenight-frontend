@@ -732,7 +732,7 @@ export default function GroupPlanningPage() {
                 line to break on and can never be squeezed into letter-stacks; no minimum width is
                 needed and none is set. CHOSEN OVER a wider cap (still a cut) and OVER a block
                 link (it would put every crumb on its own line at every width). */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-edge-card py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 {group && (
@@ -837,7 +837,7 @@ export default function GroupPlanningPage() {
                 >
                     Availability Polls
                 </Heading>
-                <div className="bg-surface-page rounded-lg surface-flat-phone md:p-4">
+                <div className="bg-surface-page rounded-lg surface-flat-phone md:p-edge-page">
                     <PromptScheduleSection
                         groupId={groupId}
                         group={group}

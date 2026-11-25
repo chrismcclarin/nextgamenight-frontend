@@ -2787,7 +2787,7 @@ export default function GameDetailPage() {
                     (R7-M7) rules the change, and plan 88.6.1-55 amends that marker in place. These
                     four links plus Profile's Home link (plan 88.6.1-53) are the five D-46 counted.
                     Removing the ring, the attribute or the cap is a decision, not a cleanup. */}
-                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
+                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-edge-card py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                     <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
                     {effectiveGroupId && singleEvent?.Group?.name && (
                         /* Phase 71.1-02 Blocker 2 fix: only render the group
@@ -3793,7 +3793,7 @@ export default function GameDetailPage() {
             <RetainedContentFocusGuard retained={groupContentRetained} focusTarget={gameTitleRef} />
             {/* Breadcrumbs */}
             {/* Same ring, hidden separators and `min-w-0` as the event-view breadcrumb — `DECISION Phase 88.6.1-52 (D-46 / R7-M7)`. */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-edge-card py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
                 {group_id && (
                     <>

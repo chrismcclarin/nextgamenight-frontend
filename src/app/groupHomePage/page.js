@@ -1142,7 +1142,7 @@ function GroupHomePage(){
                 record match the code. The separator below is hidden from assistive tech in the same
                 plan (D-46), so a screen reader no longer reads "greater than" between the crumbs; it
                 looks the same. */}
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-edge-card py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || GROUP_PAGE_NAME}</span>

@@ -294,7 +294,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
     // schedules (backend scripts/e2e-fixtures.js creates an AvailabilityPrompt
     // only), so ScheduleList renders its empty state (src/app/components/ScheduleList.js ("if (!schedules || schedules.length === 0) {")).
     // NOTE: the empty-state chain ends one level ABOVE a populated schedule
-    // card (src/app/components/ScheduleList.js ("surface-flat-phone-divided md:p-4"): md:p-4, so +32px total only at md and up) — the baseline doc must
+    // card (src/app/components/ScheduleList.js ("surface-flat-phone-divided md:p-edge-page"): md:p-edge-page, 16px a side, only at md and up) — the baseline doc must
     // state this when comparing against RESEARCH C-3's populated-chain 168px.
     const anchor = page.getByText(/no schedules yet/i);
     await expect(anchor).toBeVisible({ timeout: 15_000 });

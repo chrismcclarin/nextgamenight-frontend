@@ -166,7 +166,7 @@ export default function ScheduleList({
         return (
           <div
             key={schedule.id}
-            className="border border-line rounded-card surface-flat-phone-divided md:p-4 hover:shadow-theme-md transition-shadow bg-surface-card"
+            className="border border-line rounded-card surface-flat-phone-divided md:p-edge-page hover:shadow-theme-md transition-shadow bg-surface-card"
           >
             <div className="flex items-start justify-between">
               {/* Left: Schedule info */}
