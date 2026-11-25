@@ -1260,9 +1260,9 @@ function FriendsPage() {
                         line stays on the parent, outside the scroll box, and the tabs fill the
                         row's height, so there is nothing to scroll up or down. A pressed tab is
                         brought fully into view (the click handler below); a tab reached by
-                        keyboard is scrolled to by the browser. AMENDED Phase 89.6-21 (strip-cue): measured, the browser scrolls a focused tab only when it is wholly hidden; a focus handler now brings a partly hidden tab into view, past the edge cue (scroll-px-8). At ordinary text the three tabs
+                        keyboard is scrolled to by the browser. AMENDED Phase 89.6-21 (strip-cue): measured, the browser scrolls a focused tab only when it is wholly hidden; a focus handler now brings a partly hidden tab into view, clear of the edge cues where it fits between them, else wholly inside the strip (no scroll padding: scroll-px-8 cut a pressed tab wider than the room between the cues, measured 2026-11-25, which this marker's pressed-tab rule forbids). At ordinary text the three tabs
                         fit and nothing scrolls. */}
-                    <div ref={tabStripRef} className="flex overflow-x-auto scroll-px-8">
+                    <div ref={tabStripRef} className="flex overflow-x-auto">
                         {tabs.map(({ key, label, count }, index) => (
                             /* DECISION Phase 88.6-19, two calls at this one control.
 
@@ -1396,11 +1396,21 @@ function FriendsPage() {
                             {index > 0 && <span aria-hidden="true" className="w-8 shrink min-w-0" />}
                             <button
                                 ref={tabRefs[key]}
-                                // 89.6-21 (strip-cue): a tab reached by keyboard is brought clear of the edge cue,
-                                // as a pressed one is below (the scroll padding keeps it past the fade).
+                                // 89.6-21 (strip-cue): a tab reached by keyboard is brought clear of the edge
+                                // cues (each w-8, 2rem) when it fits between them; a wider one is brought
+                                // wholly inside the strip, as a pressed one is below. At normal text nothing
+                                // overflows, so nothing scrolls.
                                 onFocus={(e) => {
                                     const focused = e.currentTarget;
-                                    if (typeof focused.scrollIntoView === 'function') {
+                                    const strip = tabStripRef.current;
+                                    if (!strip) return;
+                                    const box = strip.getBoundingClientRect();
+                                    const tab = focused.getBoundingClientRect();
+                                    const cue = 2 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+                                    if (tab.width <= box.width - 2 * cue) {
+                                        if (tab.left < box.left + cue) strip.scrollLeft -= box.left + cue - tab.left;
+                                        else if (tab.right > box.right - cue) strip.scrollLeft += tab.right - (box.right - cue);
+                                    } else if (typeof focused.scrollIntoView === 'function') {
                                         focused.scrollIntoView({ block: 'nearest', inline: 'nearest' });
                                     }
                                 }}
