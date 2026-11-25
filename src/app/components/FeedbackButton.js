@@ -700,7 +700,15 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
                       colour pair (the primary button's aria-disabled rule in globals.css) instead
                       of the disabled wash. Dropping either half, or restoring the native
                       attribute, is a decision, not a cleanup. */}
-                  <div className="flex justify-end">
+                  {/* DECISION Phase 89.6-25 (F4-in-body): owner pick F1-F3 = F4, 2026-11-22 ('At large
+                      text on a phone the buttons stack full width, Cancel on top, the action below:
+                      the order you see is the order a keyboard or screen reader moves through'): this
+                      form's Submit sits in the Body, so it takes the Modal footer's container variant
+                      itself and goes full width below the 12rem dialog container, chosen OVER moving it
+                      into Modal.Footer (a restructure across this file's success hand-off and latch
+                      markers) and OVER a right-aligned natural-width button (a second look for one
+                      footer). Changing this is a decision, not a cleanup. */}
+                  <div className="flex flex-wrap justify-end @max-[12rem]/dialog:flex-col @max-[12rem]/dialog:items-stretch">
                     <Button
                       type="submit"
                       variant="primary"

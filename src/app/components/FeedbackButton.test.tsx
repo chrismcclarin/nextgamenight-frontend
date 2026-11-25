@@ -293,6 +293,17 @@ describe('FeedbackButton — the pressed Submit (88.6.1-33, D-35, Req 4 and 5)',
   });
 });
 
+// Phase 89.6-25 (owner pick F4, 2026-11-22): Send Feedback's Submit sits in the Body, so its row
+// takes the Modal footer's container variant itself: it wraps when it does not fit and stacks full
+// width below the 12rem dialog container
+describe('FeedbackButton — F4 in the Body (89.6-25)', () => {
+  it('89.6-25 F4: the Send Feedback submit row wraps and stacks full width below the 12rem dialog container', async () => {
+    const { dialog } = await openDialog();
+    const row = within(dialog).getByRole('button', { name: 'Submit' }).parentElement as HTMLElement;
+    expect(row).toHaveClass('flex-wrap', 'justify-end', '@max-[12rem]/dialog:flex-col', '@max-[12rem]/dialog:items-stretch');
+  });
+});
+
 describe('FeedbackButton — the success timer and late outcomes (88.6.1-33, W017)', () => {
   const FIRST = 'A first message, sent before closing.';
   const SECOND = 'A second message, typed after reopening.';
