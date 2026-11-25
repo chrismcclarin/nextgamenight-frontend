@@ -20,6 +20,7 @@ import {
   parseDateOnly,
   dateOnlyDayStart,
   dateOnlyDayEnd,
+  formatTzLegend,
 } from './datetime';
 
 const TZ = 'America/New_York';
@@ -262,5 +263,45 @@ describe('date-only values keep their own calendar day in every zone (R4-A2)', (
       expect(dateOnlyDayStart('not a date', 'UTC')).toBeNull();
       expect(dateOnlyDayEnd('', 'UTC')).toBeNull();
     });
+  });
+});
+
+// Phase 89.6-40 W1 (owner ruling 2026-11-22 10:53 PM Pacific, 'W1) yes'): both calendar legends
+// name the zone without a season, from the browser's formatter (timeZoneName longGeneric); an
+// engine without the option keeps today's abbreviation label.
+describe('formatTzLegend', () => {
+  const MARCH = new Date('2031-03-15T12:00:00Z');
+  const JANUARY = new Date('2031-01-15T12:00:00Z');
+
+  it('names the zone without a season: Pacific Time in March and in January, Eastern Time for New York', () => {
+    expect(formatTzLegend(MARCH, 'America/Los_Angeles')).toBe('Pacific Time');
+    expect(formatTzLegend(JANUARY, 'America/Los_Angeles')).toBe('Pacific Time');
+    expect(formatTzLegend(MARCH, 'America/New_York')).toBe('Eastern Time');
+  });
+
+  it('keeps the abbreviation label when the engine has no longGeneric zone name', () => {
+    const original = Intl.DateTimeFormat;
+    // A constructor (never an arrow: it is called with new) that refuses only the longGeneric option.
+    const Stub = function (this: unknown, locales?: string | string[], options?: Intl.DateTimeFormatOptions) {
+      if (options?.timeZoneName === ('longGeneric' as Intl.DateTimeFormatOptions['timeZoneName'])) {
+        throw new RangeError('Value longGeneric out of range for Intl.DateTimeFormat options property timeZoneName');
+      }
+      return new original(locales, options);
+    } as unknown as typeof Intl.DateTimeFormat;
+    Object.assign(Stub, { supportedLocalesOf: original.supportedLocalesOf });
+    Stub.prototype = original.prototype;
+    Intl.DateTimeFormat = Stub;
+    try {
+      expect(formatTzLegend(MARCH, 'America/Los_Angeles')).toBe(formatWithTzAbbr(MARCH, 'America/Los_Angeles', 'zzz'));
+      expect(formatTzLegend(MARCH, 'America/Los_Angeles')).toBe('PDT');
+    } finally {
+      Intl.DateTimeFormat = original;
+    }
+  });
+
+  it('returns null for a missing, blank or invalid zone (never the host zone)', () => {
+    expect(formatTzLegend(MARCH, null)).toBeNull();
+    expect(formatTzLegend(MARCH, '')).toBeNull();
+    expect(formatTzLegend(MARCH, 'Not/A_Zone')).toBeNull();
   });
 });
