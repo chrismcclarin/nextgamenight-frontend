@@ -1,6 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 
-import { assertTheme, contrastRatio, focusByKeyboard, forceLightMode } from './support/contrast';
+import { assertTheme, contrastRatio, focusByKeyboard, forceLightMode, sampleBottomCentrePixel, settleFocusTransitions } from './support/contrast';
 import { expectNoApiWrites, holdUntilReleased, holdWrites, type WriteHold } from './support/inFlight';
 
 // Phase 88.9 plan 68: the owner's Profile look fixes, read in a real browser. jsdom applies no
@@ -483,6 +483,18 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
     await expect(first).toBeFocused();
     const ring = await first.evaluate((el) => getComputedStyle(el).boxShadow);
     expect(ring, `X54: the focused tab's ring is not inset (${ring})`).toContain('inset');
+    // Phase 89.6-14 (O-1 B): the ring must not hide the active tab's underline. The first tab is the
+    // active one; the painted pixel 1px above its bottom edge, at its centre, is its underline colour.
+    await expect(first, 'X54: the focused first tab is not the active one').toHaveAttribute('data-state', 'active');
+    await settleFocusTransitions(first);
+    const cue = { colour: await first.evaluate((el) => getComputedStyle(el).borderBottomColor) };
+    const { pixel, x: px, y: py } = await sampleBottomCentrePixel(page, first, 'X54 focused first tab');
+    const want = cue.colour.match(/rgba?\((\d+), (\d+), (\d+)/);
+    if (!want) throw new Error(`X54: the active tab's border-bottom-color ${cue.colour} is not an rgb() value`);
+    expect(
+      pixel.every((v, i) => Math.abs(v - Number(want[i + 1])) <= 2),
+      `X54: the pixel at (${px}, ${py}) is rgb(${pixel.join(', ')}), not the active underline ${cue.colour} within 2 per channel: the focus ring hides the underline (${ring})`
+    ).toBe(true);
   });
 
   // X55 (owner at N37): a small "Remind me:" beside a large select. The select cannot shrink on a

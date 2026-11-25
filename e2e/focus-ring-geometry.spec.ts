@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 
 import { test, expect, type Locator, type Page, type Route, type TestInfo } from '@playwright/test';
 
-import { assertTheme, focusByKeyboard, focusRingMeasurement, forceLightMode, haloGroundRatio } from './support/contrast';
+import { assertTheme, C40_BAND, describeRing, focusByKeyboard, focusRingMeasurement, forceLightMode, type RingMeasurement } from './support/contrast';
 import { E2E_FAKE_GAME_ID, E2E_GAME_PATH, routeFakeGameSuccess } from './support/fakeGame';
 import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 
@@ -27,6 +27,13 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 // that clips its overflow or by the screen edge. A ring with no offset has no halo and is recorded
 // only. Padding, radius and box size are looks: recorded, never asserted, so this spec cannot turn
 // an unruled look into a red build.
+// AMENDED Phase 89.6-14 (O-1 B): the house ring is 2 + 2, an outline over a fixed inner band; the
+// halo-equals-surface clause is replaced by C40 separation. "House ring" is decided by the shared
+// reader (focusRingMeasurement in e2e/support/contrast.ts) resolving: an outset ring is a 2px outline
+// at offset 2 over a 2px band, an inset ring a transparent outline at -2 over inset bands of 2 and
+// 4, and the two bands are at least C40_BAND (9:1) apart. Every number comes from the reader's band
+// layer, never from the first or only shadow of the list. The ring's reach (how far it paints
+// outside the box) is the reader's, so the clip check measures the outline, not the box-shadow.
 // AMENDED Phase 88.9-52 (A-03): ONE more assertion, for every measured control, house ring or not:
 // SOME focus indicator is painted — a box-shadow layer with a spread, or an outline with a width,
 // in a colour that is not fully transparent (paintsIndicator below). Whether a focused control
@@ -50,9 +57,6 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 // browser (the state the captured frames were in); the game page's upcoming night and its two
 // replies are made up and answered in the browser. Nothing is written and no control is pressed.
 
-const HALO_EQUAL = 1.01;
-const RING_SPREAD = 4;
-const HALO_SPREAD = 2;
 
 const RING_FRIEND = { id: 'e2e-friends-x61-f', friend: { id: '88966a61-0000-4000-8000-0000000000d1', username: 'E2E Ring Friend' } };
 const RING_REQUEST = {
@@ -83,8 +87,7 @@ interface RingRead {
   ink: Edges | null;
   /** Ink edge to the control's own edge, per side (negative: the ink pokes out of the box). */
   inkToBox: Edges | null;
-  /** Ink edge to the inner edge of the ring, per side (the box gap plus the halo). */
-  inkToRing: Edges | null;
+
   borderRadius: string;
   boxShadow: string;
   /** The outline as computed: its style, its width in px and its colour (A-03). */
@@ -92,10 +95,11 @@ interface RingRead {
   outlineWidth: number;
   outlineColour: string;
   layers: ShadowLayer[];
-  /** The largest non-inset spread: how far the ring reaches outside the box. */
+  /**
+   * How far the ring reaches outside the box: the reader's reach when the house ring resolved,
+   * otherwise the widest outward spread or a painted outline's offset plus width.
+   */
   outward: number;
-  /** The smaller non-inset spread when two are painted: the halo band. 0 when there is none. */
-  halo: number;
   /** The first ancestor (or the screen) that cuts the ring, with how far it is cut per side. */
   clippedBy: { by: string; over: Edges } | null;
   /** Tabs only: the ring's bottom edge minus the top of the strip's bottom line. */
@@ -107,14 +111,24 @@ interface RingRecord extends RingRead {
   theme: 'dark' | 'light';
   viewport: number;
   houseRing: boolean;
-  haloColour: string | null;
-  surface: string | null;
-  haloRatio: number | null;
+  /** Ink edge to the inner edge of the outer ring, per side (89.6-14: the box gap plus the outline offset, or less the inset band). */
+  inkToRing: Edges | null;
+  /** From the shared reader when the house ring resolved (89.6-14), else null. */
+  ringKind: 'offset' | 'inset' | null;
+  outer: string | null;
+  inner: string | null;
+  outlineOffset: number | null;
+  bandWidth: number | null;
+  reach: number | null;
+  bandRatio: number | null;
+  /** The reader's throw when it did not resolve. */
+  notHouse: string | null;
 }
 
 // One evaluate per control, after it holds a keyboard focus and its animations have settled.
-async function readRing(control: Locator): Promise<RingRead> {
-  return control.evaluate((el) => {
+// reach: the shared reader's reach when the house ring resolved (89.6-14); null reads it here.
+async function readRing(control: Locator, reach: number | null = null): Promise<RingRead> {
+  return control.evaluate((el, readerReach) => {
     const round = (n: number) => Math.round(n * 100) / 100;
     const cs = getComputedStyle(el);
 
@@ -143,8 +157,10 @@ async function readRing(control: Locator): Promise<RingRead> {
             return { inset: /\binset\b/.test(part), spread: lengths[3] ?? 0, colour };
           });
     const outside = layers.filter((l) => !l.inset && l.spread > 0).map((l) => l.spread).sort((a, b) => a - b);
-    const outward = outside.length ? outside[outside.length - 1] : 0;
-    const halo = outside.length >= 2 ? outside[0] : 0;
+    // An outline paints outside the box by its offset plus its width when it shows (89.6-14).
+    const outlineShows = cs.outlineStyle !== 'none' && !/^rgba\([^)]*,\s*0\)$/.test(cs.outlineColor) && cs.outlineColor !== 'transparent';
+    const outlineReach = outlineShows ? (parseFloat(cs.outlineOffset) || 0) + (parseFloat(cs.outlineWidth) || 0) : 0;
+    const outward = readerReach ?? Math.max(0, outlineReach, outside.length ? outside[outside.length - 1] : 0);
 
     const rect = el.getBoundingClientRect();
     const box = { left: round(rect.left), top: round(rect.top), right: round(rect.right), bottom: round(rect.bottom) };
@@ -182,14 +198,6 @@ async function readRing(control: Locator): Promise<RingRead> {
           top: round(ink.top - box.top),
           right: round(box.right - ink.right),
           bottom: round(box.bottom - ink.bottom),
-        }
-      : null;
-    const inkToRing = inkToBox
-      ? {
-          left: round(inkToBox.left + halo),
-          top: round(inkToBox.top + halo),
-          right: round(inkToBox.right + halo),
-          bottom: round(inkToBox.bottom + halo),
         }
       : null;
 
@@ -253,7 +261,6 @@ async function readRing(control: Locator): Promise<RingRead> {
       height: round(rect.height),
       ink,
       inkToBox,
-      inkToRing,
       borderRadius: cs.borderRadius,
       boxShadow: cs.boxShadow,
       outlineStyle: cs.outlineStyle,
@@ -261,11 +268,10 @@ async function readRing(control: Locator): Promise<RingRead> {
       outlineColour: cs.outlineColor,
       layers: layers.filter((l) => l.spread > 0),
       outward,
-      halo,
       clippedBy,
       pastStripLine,
     };
-  });
+  }, reach);
 }
 
 // A colour that paints nothing: the keyword, a zero FOURTH value in the comma form
@@ -297,22 +303,30 @@ interface Context {
 // no offset ring at all is itself a failure, so the test cannot pass by measuring nothing.
 async function measure(ctx: Context, control: Locator, what: string, mustBeHouse: boolean): Promise<void> {
   const { page, testInfo, theme, records } = ctx;
-  await focusByKeyboard(page, control);
-  await settleAnimations(control);
-  const read = await readRing(control);
   const where = `${what} (${theme}, ${testInfo.project.name})`;
-
-  const houseRing = read.halo > 0;
-  let haloColour: string | null = null;
-  let surface: string | null = null;
-  let haloRatio: number | null = null;
-  if (houseRing) {
-    const m = await focusRingMeasurement(page, control, where);
-    const h = await haloGroundRatio(m, control);
-    haloColour = h.halo;
-    surface = h.behind;
-    haloRatio = Math.round(h.ratio * 1000) / 1000;
+  // The house ring is decided by the shared reader resolving (89.6-14); it focuses by keyboard and
+  // waits for the control's transitions. Its throw names the shape it found.
+  let m: RingMeasurement | null = null;
+  let notHouse: string | null = null;
+  try {
+    m = await focusRingMeasurement(page, control, where);
+  } catch (error) {
+    notHouse = error instanceof Error ? error.message : String(error);
+    await focusByKeyboard(page, control);
   }
+  await settleAnimations(control);
+  const read = await readRing(control, m ? m.reach : null);
+  const houseRing = m !== null;
+  // Ink to the outer ring's inner edge: the outline offset outside the box, or the inset band's spread inside it.
+  const shift = m ? (m.ringGroundKind === 'offset' ? m.outlineOffset : -m.bandWidth) : 0;
+  const inkToRing = read.inkToBox
+    ? {
+        left: Math.round((read.inkToBox.left + shift) * 100) / 100,
+        top: Math.round((read.inkToBox.top + shift) * 100) / 100,
+        right: Math.round((read.inkToBox.right + shift) * 100) / 100,
+        bottom: Math.round((read.inkToBox.bottom + shift) * 100) / 100,
+      }
+    : null;
   const record: RingRecord = {
     ...read,
     label: `${what}: ${read.label}`,
@@ -320,9 +334,15 @@ async function measure(ctx: Context, control: Locator, what: string, mustBeHouse
     theme,
     viewport: page.viewportSize()?.width ?? 0,
     houseRing,
-    haloColour,
-    surface,
-    haloRatio,
+    inkToRing,
+    ringKind: m ? m.ringGroundKind : null,
+    outer: m ? m.outer : null,
+    inner: m ? m.inner : null,
+    outlineOffset: m ? m.outlineOffset : null,
+    bandWidth: m ? m.bandWidth : null,
+    reach: m ? m.reach : null,
+    bandRatio: m ? Math.round(m.bandRatio * 1000) / 1000 : null,
+    notHouse,
   };
   records.push(record);
 
@@ -334,18 +354,16 @@ async function measure(ctx: Context, control: Locator, what: string, mustBeHouse
     )
     .toBe(true);
   if (mustBeHouse) {
-    expect.soft(houseRing, `${where}: no offset ring is painted (box-shadow: ${read.boxShadow})`).toBe(true);
+    expect.soft(houseRing, `${where}: the house ring is not painted: ${notHouse}`).toBe(true);
   }
-  if (!houseRing) return;
-  expect.soft(read.outward, `${where}: the ring reaches ${read.outward}px outside the control, the house ring ${RING_SPREAD}px`).toBe(RING_SPREAD);
-  expect.soft(read.halo, `${where}: the halo band is ${read.halo}px, the house ring ${HALO_SPREAD}px`).toBe(HALO_SPREAD);
-  expect
-    .soft(
-      haloRatio,
-      `${where}: the halo ${haloColour} measured ${haloRatio}:1 against the surface under the control ${surface}; ` +
-        `the house ring's halo must equal the surface (at most ${HALO_EQUAL}:1)`,
-    )
-    .toBeLessThanOrEqual(HALO_EQUAL);
+  if (!m) return;
+  const ring = describeRing(where, m);
+  const inset = m.ringGroundKind === 'inset';
+  expect.soft(m.outlineWidth, `${where}: the outline is ${m.outlineWidth}px, the house ring 2px. ${ring}`).toBe(2);
+  expect.soft(m.outlineOffset, `${where}: the outline sits at ${m.outlineOffset}px, the house ring ${inset ? -2 : 2}px. ${ring}`).toBe(inset ? -2 : 2);
+  expect.soft(m.bandWidth, `${where}: the inner band is ${m.bandWidth}px, the house ring ${inset ? 4 : 2}px. ${ring}`).toBe(inset ? 4 : 2);
+  expect.soft(m.reach, `${where}: the ring reaches ${m.reach}px outside the control, the house ring ${inset ? 0 : 4}px. ${ring}`).toBe(inset ? 0 : 4);
+  expect.soft(m.bandRatio, `${where}: the two bands are not C40-apart. ${ring}`).toBeGreaterThanOrEqual(C40_BAND);
   expect
     .soft(
       read.clippedBy,
@@ -370,8 +388,14 @@ async function publish(testInfo: TestInfo, records: RingRecord[]): Promise<void>
       size: [r.width, r.height],
       radius: r.borderRadius,
       ring: r.outward,
-      halo: r.halo,
-      haloRatio: r.haloRatio,
+      kind: r.ringKind,
+      outer: r.outer,
+      inner: r.inner,
+      outlineWidth: r.outlineWidth,
+      outlineOffset: r.outlineOffset,
+      bandWidth: r.bandWidth,
+      reach: r.reach,
+      bandRatio: r.bandRatio,
       inkToBox: r.inkToBox,
       inkToRing: r.inkToRing,
       pastStripLine: r.pastStripLine,

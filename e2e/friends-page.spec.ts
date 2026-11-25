@@ -21,14 +21,17 @@
 //
 // It runs in CI only: both projects need the `.auth` storage state, which does not exist locally.
 // The jsdom pins in `src/app/friends/page.test.tsx` are the RED halves.
+//
+// AMENDED 89.6-14: the tab ring is read through the shared outline reader (focusRingMeasurement in
+// e2e/support/contrast.ts): the focused tab wears the two-tone inset ring (a transparent outline at
+// -2px over two inset bands, spreads 2 and 4), so "the ring" in the R4 D7 checks below is the OUTER
+// inset layer (spread 2, painted over the inner one), picked by its shape, never by its position.
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { assertTheme, forceLightMode } from './support/contrast';
+import { assertTheme, describeRing, focusRingMeasurement, forceLightMode, probeElement, sampleBottomCentrePixel } from './support/contrast';
 import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 import { describeSamples, paintedTexts, recordLabel, spread, stopLabelRecorder, valuesAt } from './support/labelRecorder';
 
 const INVITE_ROUTE = '**/invites/send';
-const RING_SPREAD = '0px 0px 0px 2px inset';
-const RING_WIDTH = 2;
 
 function friendsTab(page: Page): Locator {
   // The tab's name is its label plus its count pill, e.g. "Friends" or "Friends 3".
@@ -52,9 +55,15 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
     const tab = friendsTab(page);
     await expect(tab).toBeFocused();
 
-    const focused = await boxShadow(tab);
-    expect(focused, 'the focused tab paints a 2px inset ring').toContain(RING_SPREAD);
-    expect(focused, 'no outset ring is left').not.toContain('0px 0px 0px 4px');
+    const ring = await focusRingMeasurement(page, tab, 'the focused Friends tab');
+    await expect(tab).toBeFocused();
+    const focused = ring.boxShadow;
+    expect(ring.ringGroundKind, `the focused tab paints an inset ring: ${describeRing('Friends tab', ring)}`).toBe('inset');
+    expect(ring.outlineOffset, `the transparent outline sits at -2px: ${describeRing('Friends tab', ring)}`).toBe(-2);
+    expect(ring.bandWidth, `the inner band reaches 4px in: ${describeRing('Friends tab', ring)}`).toBe(4);
+    expect(ring.reach, `no ring paints outside the tab: ${describeRing('Friends tab', ring)}`).toBe(0);
+    // The ring's inner edge: the inner band's spread in from the box.
+    const RING_WIDTH = ring.bandWidth;
 
     const geometry = await tab.evaluate((el) => {
       const box = el.getBoundingClientRect();
@@ -101,14 +110,30 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
     // So: no bottom border while focused, a 2px band at the bottom edge listed BEFORE the ring in
     // the box-shadow (earlier layers are painted on top), in a colour that is not the ring's.
     expect(underline, 'R4 D7: while focused the underline is a band, not a border under the ring').toBe(0);
-    const layers = focused.split(/,(?![^(]*\))/).map((layer) => layer.trim());
-    const bandAt = layers.findIndex((layer) => layer.endsWith('0px -2px 0px 0px inset'));
-    const ringAt = layers.findIndex((layer) => layer.endsWith(RING_SPREAD));
+    // Each layer picked by its shape: the band is inset 0 -2px 0 0; the ring layer is the OUTER
+    // inset band, inset 0 0 0 2px (it paints over the inner one, so it is the ring's visible edge).
+    const layers = ring.probe.shadowLayers ?? [];
+    const shaped = (y: number, spread: number): number =>
+      layers.findIndex((l) => l.inset && l.lengths.length === 4 && l.lengths[0] === 0 && l.lengths[1] === y && l.lengths[2] === 0 && l.lengths[3] === spread);
+    const bandAt = shaped(-2, 0);
+    const ringAt = shaped(0, 2);
     expect(bandAt, `R4 D7: no 2px underline band in the focused tab's box-shadow (${focused})`).toBeGreaterThanOrEqual(0);
+    expect(ringAt, `R4 D7: no outer inset ring layer (inset 0 0 0 2px) in the focused tab's box-shadow (${focused})`).toBeGreaterThanOrEqual(0);
     expect(bandAt, `R4 D7: the underline band is painted under the ring (${focused})`).toBeLessThan(ringAt);
-    expect(layers[bandAt].replace('0px -2px 0px 0px inset', '').trim(), 'R4 D7: the band and the ring are one colour, so the underline cannot be told from the ring').not.toBe(
-      layers[ringAt].replace(RING_SPREAD, '').trim(),
+    expect(layers[bandAt].colour.css, 'R4 D7: the band and the ring are one colour, so the underline cannot be told from the ring').not.toBe(
+      layers[ringAt].colour.css,
     );
+    // R4 D7, painted (89.6-14): the pixel 1px above the focused tab's bottom edge, at its centre, is
+    // the band's colour, so the ring does not hide the underline.
+    const bandColour = layers[bandAt].colour.css ?? '';
+    const sample = await sampleBottomCentrePixel(page, tab, 'R4 D7 focused Friends tab');
+    const want = bandColour.match(/rgb\((\d+), (\d+), (\d+)\)/);
+    expect(want, `R4 D7: the band colour ${bandColour} did not normalise`).not.toBeNull();
+    expect(
+      sample.pixel.every((v, i) => Math.abs(v - Number(want?.[i + 1])) <= 2),
+      `R4 D7: the pixel at (${sample.x}, ${sample.y}) is rgb(${sample.pixel.join(', ')}), not the band ${bandColour} within 2 per channel (${focused})`
+    ).toBe(true);
+    await expect(tab).toBeFocused();
     // The ring is the 2px band just inside the tab's box, on all four sides now (R4 D7: the
     // underline is painted over its bottom edge). The label is clear of it.
     const inner = {
@@ -157,7 +182,12 @@ test.describe('friends page tab ring and Invite to Group (Phase 88.6.1-40)', () 
     // Positive control: focus moves on, and the Friends tab no longer paints the ring.
     await page.keyboard.press('Tab');
     await expect(tab).not.toBeFocused();
-    expect(await boxShadow(tab), 'no inset ring once blurred').not.toContain(RING_SPREAD);
+    const blurred = await probeElement(tab, ['outline-style', 'box-shadow']);
+    expect(blurred.computed['outline-style'].raw, 'no outline once blurred').toBe('none');
+    expect(
+      (blurred.shadowLayers ?? []).some((l) => l.inset && l.lengths[3] === 4),
+      `no inner inset ring band once blurred (${blurred.computed['box-shadow'].raw})`
+    ).toBe(false);
     // R4 D7: without focus the underline is the tab's real 2px bottom border again, no band.
     expect(await tab.evaluate((el) => getComputedStyle(el).borderBottomWidth), 'R4 D7: the blurred active tab has no 2px bottom border').toBe('2px');
     expect(await boxShadow(tab), 'R4 D7: the underline band is still painted once blurred').not.toContain('0px -2px 0px 0px inset');
