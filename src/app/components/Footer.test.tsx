@@ -30,24 +30,18 @@ vi.mock('./FeedbackForm', () => ({ default: () => null }));
 vi.mock('./BGGLogo', () => ({ default: () => null }));
 
 import Footer from './Footer';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
-const RING = [
-  'focus:outline-hidden',
-  'focus-visible:ring-2',
-  'focus-visible:ring-focus-ring',
-  'focus-visible:ring-offset-2',
-  'focus-visible:ring-offset-surface-page',
-];
 const LINK_BOX = ['min-h-11', 'inline-flex', 'items-center'];
 
 function expectFooterControls(signedIn: boolean) {
   const footer = within(screen.getByRole('contentinfo'));
   for (const name of ['About', 'Privacy', 'Terms']) {
     const link = footer.getByRole('link', { name });
-    expect(link, `${name} link (${signedIn ? 'signed in' : 'signed out'})`).toHaveClass(
-      ...LINK_BOX,
-      ...RING,
-    );
+    const where = `${name} link (${signedIn ? 'signed in' : 'signed out'})`;
+    expect(link, where).toHaveClass(...LINK_BOX, 'focus:outline-hidden');
+    expectFocusRing(link, where);
+    expectRingGround(link, 'page', where);
   }
   expect(footer.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/Privacy');
   const reportBug = footer.queryByRole('button', { name: /report bug/i });
@@ -56,7 +50,9 @@ function expectFooterControls(signedIn: boolean) {
     return;
   }
   expect(reportBug).not.toBeNull();
-  expect(reportBug).toHaveClass('min-h-11', ...RING);
+  expect(reportBug).toHaveClass('min-h-11', 'focus:outline-hidden');
+  expectFocusRing(reportBug as HTMLElement, 'Report bug');
+  expectRingGround(reportBug as HTMLElement, 'page', 'Report bug');
 }
 
 describe('X1 (88.9 B5a) — the footer controls', () => {
