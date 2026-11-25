@@ -394,7 +394,13 @@ function GroupInvitePage() {
                 <a
                   href={`/api/auth/login?returnTo=${encodeURIComponent(`/invite/group/${token}`)}`}
                 >
-                  Join {groupInfo.group_name}
+                  {/* DECISION Phase 89.6-23 (links-label): the label sits in a .bb-label span inside
+                      the slotted anchor, chosen OVER bare text (Button adds .bb-label only to its own
+                      children, never under asChild, so a long group name spilled out of the button and
+                      the page scrolled sideways at 320 / 200%, sweep row R11) and OVER a nowrap or a
+                      width rule. GR: the label wraps inside its control. Removing the span is a
+                      decision, not a cleanup. */}
+                  <span className="bb-label">Join {groupInfo.group_name}</span>
                 </a>
               </Button>
 
