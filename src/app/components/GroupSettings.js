@@ -1577,7 +1577,14 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                         of the old 50% wash. MATCHED PAIR: the leave confirm in ManageMembers.js
                         takes the same shape in plan 88.6.1-50. Changing this is a decision, not a
                         cleanup. */}
-                    <div className="flex gap-3">
+                    {/* DECISION Phase 89.6-25 (leave-row): GR (owner, 2026-11-22: 'A row stays a row
+                        while everything in it fits whole. When it does not, items stack.'): Cancel and
+                        Confirm Leave are a bb-cluster, so Confirm Leave moves under Cancel before
+                        either label breaks, chosen OVER the plain row (at 320 with 200% text it ran
+                        103px out of the dialog sideways, 48px at 375) and OVER F4's full-width stack (that is the dialog footer's pick;
+                        this is an inline confirm inside the Body). Changing this is a decision, not a
+                        cleanup. */}
+                    <div className="bb-cluster gap-3">
                       <Button
                         type="button"
                         variant="secondary"

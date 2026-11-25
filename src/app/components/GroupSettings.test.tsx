@@ -867,6 +867,16 @@ describe('Phase 88.6-20 — the leave-group failure is ANNOUNCED (R1 third arm /
     expect(logger.error as Mock).toHaveBeenCalled();
     expect((logger.error as Mock).mock.calls[0][0]).toContain('leaving group');
   });
+
+  // Phase 89.6-25 (leave-row, GR): Cancel and Confirm Leave are a cluster, so Confirm Leave moves
+  // under Cancel before either label breaks (a plain row ran 103px out of the dialog sideways at 320 with 200% text)
+  it('89.6-25 leave-row: the Cancel / Confirm Leave row is a bb-cluster that keeps its gap, in DOM order', async () => {
+    const confirm = await openLeaveConfirm();
+    const row = confirm.parentElement as HTMLElement;
+    expect(row).toHaveClass('bb-cluster', 'gap-3');
+    const buttons = within(row).getAllByRole('button');
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual(['Cancel', 'Confirm Leave']);
+  });
 });
 
 // ---------------------------------------------------------------------------

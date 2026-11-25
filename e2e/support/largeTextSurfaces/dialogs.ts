@@ -230,6 +230,16 @@ const ownerAsAdmin = (rows: unknown[]): unknown[] => [
   }),
   SYNTHETIC_MEMBER,
 ];
+// A reached dialog is read from its top, as the shell rows read theirs (e2e/support/largeTextSurfaces/dialogShell.ts ("the header is read with the dialog scrolled to its top")).
+// Pressing a control low in a tall dialog, or the focus a confirm moves to its field, scrolls the
+// dialog box down; the page-zoom read then lists everything above as lost ("starts above the
+// page"), though a finger scrolls the dialog back up. Measured on the D07-leave and D08 flip run (89.6-25).
+async function toDialogTop(dialog: Locator): Promise<void> {
+  await dialog.evaluate((el) => {
+    for (const node of [el, ...Array.from(el.querySelectorAll('*'))]) if (node.scrollTop > 0) node.scrollTop = 0;
+  });
+}
+
 // One roster route per page: the sweep runs a reach again on the same page for the light cell, and a page's routes outlive its navigations.
 const rostered = new WeakSet<Page>();
 
@@ -241,6 +251,7 @@ const reachLeaveConfirm: SurfaceRow['reach'] = async (page) => {
   const dialog = await openCustomizeGroup(page);
   await dialog.getByRole('button', { name: 'Leave Group', exact: true }).click();
   await dialog.getByRole('button', { name: 'Confirm Leave', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await toDialogTop(dialog);
   return { root: dialog, dialog };
 };
 
@@ -251,6 +262,7 @@ const reachDeleteConfirm: SurfaceRow['reach'] = async (page) => {
   await settings.getByRole('button', { name: 'Delete Group', exact: true }).click();
   const dialog = deleteConfirm(page);
   await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  await toDialogTop(dialog);
   return { root: dialog, dialog };
 };
 
