@@ -8,7 +8,7 @@
 // WHAT A ROW PRINTS. CI keeps nothing from a passing browser test, so the picker reads of D07 are
 // also printed as one ZZ25 line per picker and cell (the test's attachments hold the full boxes).
 // The phase reads those lines with execute/ci-log.sh in the planning folder.
-import { test, type Locator, type Page } from '@playwright/test';
+import { test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 
 import { settleAnimations } from '../inFlight';
 import { routeMemberRoster } from '../memberRoster';
@@ -450,6 +450,78 @@ const attachedExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cel
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
+// D11: the "Thank You!" panel after a report is sent. The public writer is answered in the browser
+// with the CORS answers of e2e/feedback-form-phone.spec.ts ("const isPublicWriter = (url: URL) => url.pathname.endsWith('/feedback');"),
+// registered after the guard, so no request leaves the browser and no feedback row or mail is made.
+// The panel closes itself two seconds after it shows (src/app/components/FeedbackForm.js ("successTimerRef.current = setTimeout(() => {")),
+// sooner than a pass of cells is read, so the reach installs the page clock before it navigates and
+// pauses it once the panel shows; the row is clock: 'held', so each cell's settle advances the
+// paused clock by a few frames and the close never runs. The clock is the context's (the font32
+// page shares it), so a later reach resumes it before it navigates. Submit is pressed; nothing writes.
+// DECISION Phase 89.6-25 (D11-hold): the panel is held by pausing the page clock, chosen OVER a test
+// seam in FeedbackForm (a production change made only for a test) and OVER wrapping the page's
+// setTimeout (a hack); the 2-second close itself is unchanged here (a WCAG 2.2.1 lead for plan
+// 89.6-34). Orchestrator ruling D10. Changing this is a decision, not a cleanup.
+const clockInstalled = new WeakSet<BrowserContext>();
+const publicWriterAnswered = new WeakSet<Page>();
+const pausedAt = new WeakMap<Page, number>();
+const thankYou = (page: Page): Locator => page.getByRole('dialog', { name: 'Thank You!', exact: true });
+const reachThankYou: SurfaceRow['reach'] = async (page) => {
+  const context = page.context();
+  if (clockInstalled.has(context)) await page.clock.resume();
+  else {
+    await page.clock.install();
+    clockInstalled.add(context);
+  }
+  if (!publicWriterAnswered.has(page)) {
+    await page.route(
+      (url) => url.pathname.endsWith('/feedback'),
+      async (route) => {
+        const request = route.request();
+        const headers = request.headers();
+        const origin = headers['origin'] ?? '*';
+        if (request.method() === 'OPTIONS') {
+          await route.fulfill({
+            status: 204,
+            headers: {
+              'access-control-allow-origin': origin,
+              'access-control-allow-methods': 'POST, OPTIONS',
+              'access-control-allow-headers': headers['access-control-request-headers'] ?? 'content-type',
+            },
+          });
+          return;
+        }
+        if (request.method() === 'POST') {
+          await route.fulfill({ status: 201, contentType: 'application/json', headers: { 'access-control-allow-origin': origin }, body: JSON.stringify({ success: true }) });
+          return;
+        }
+        await route.fallback();
+      },
+    );
+    publicWriterAnswered.add(page);
+  }
+  const form = await openReportBug(page);
+  await form.getByPlaceholder(/Brief description/i).fill('Synthetic large-text report');
+  await form.getByPlaceholder(/provide as much detail/i).fill('Synthetic e2e report typed at large text.');
+  await form.getByRole('button', { name: 'Submit', exact: true }).click();
+  const dialog = thankYou(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  const now = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(now + 500);
+  pausedAt.set(page, now + 500);
+  return { root: dialog, dialog };
+};
+
+// D11 extras, every cell: the panel is still open (the hold held), and how far the paused clock has
+// been advanced since the pause, against the two-second close.
+const thankYouExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const since = await page.evaluate(() => Date.now());
+  const advanced = since - (pausedAt.get(page) ?? Number.NaN);
+  const open = await thankYou(page).isVisible();
+  say(`D11 ${cell.id} open=${open} advanced=${advanced}ms`);
+  if (!open) throw new Error(`D11 ${cell.id}: the Thank You! panel closed before the cell was read (the clock advanced ${advanced}ms after the pause)`);
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'D07', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: customizeGroupExtras },
   { id: 'D07-leave', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'leave-confirm', reach: reachLeaveConfirm, answers: answerPromptSettings },
@@ -458,9 +530,7 @@ export const rows: SurfaceRow[] = [
   { id: 'D09-error', census: 'D09', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'send-failed', reach: reachSendFailed },
   { id: 'D10', census: 'D10', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachReportBug },
   { id: 'D10-attached', census: 'D10', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'screenshot-attached', reach: reachAttached, extras: attachedExtras },
-  // pending: D11 until the orchestrator rules (plan 89.6-25 STOP): the thank-you closes itself after two seconds, and the
-  // planned hold (the page clock paused) also stops requestAnimationFrame, which every cell's settle waits on.
-  { id: 'D11', census: 'D11', kind: 'dialog', owner: '89.6-25', status: 'pending' },
+  { id: 'D11', census: 'D11', kind: 'dialog', owner: '89.6-25', status: 'enforced', clock: 'held', reach: reachThankYou, extras: thankYouExtras },
   // pending: D24 until 89.6-41 (the planning page scrolls sideways at 320 / 200% until 89.6-20; plan 41 depends on 20 and on this plan)
   { id: 'D24', census: 'D24', kind: 'dialog', owner: '89.6-41', status: 'pending' },
   { id: 'O09', census: 'O09', kind: 'overlay', owner: '89.6-25', status: 'enforced', reachAt: { width: 1280, height: 800 }, reach: reachFloatingFeedback, extras: floatingFeedbackExtras },
