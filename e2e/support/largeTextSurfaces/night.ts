@@ -1,5 +1,6 @@
 // Surface rows: the night page (the event view of census R05), Participants and Delete this session. Owner: plan 89.6-19.
-// One row per line, each with its census id. Plan 89.6-19 turned all three on; D31 waits under plan 89.6-29 (its marker).
+// One row per line, each with its census id. Plan 89.6-19 turned all three on; R05-event waits under plan 89.6-34 and
+// D31 under plan 89.6-29 (their markers).
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
 // WHAT IS STAGED (stageNight). The real event read of the CI fixture night, answered in the browser
@@ -347,7 +348,18 @@ const deleteSessionExtras: NonNullable<SurfaceRow['extras']> = async (page: Page
 };
 
 export const rows: SurfaceRow[] = [
-  { id: 'R05-event', census: 'R05', kind: 'route', owner: '89.6-19', status: 'enforced', reach: reachNight, extras: nightExtras },
+  // DECISION Phase 89.6-19 (R05-event pending on the owner's hyphen ruling; orchestrator decision D17 A of 2026-11-25,
+  // the owner can veto): this row goes from enforced to PENDING under plan 89.6-34 (the close plan), as D18 and D20 did
+  // in e2e/support/largeTextSurfaces/members.ts ("D18 and D20 pending on the owner's hyphen ruling"), chosen OVER leaving
+  // it enforced and red, OVER restructuring the Participants chip row (its layout is the owner's own pick O-9c = B) and
+  // OVER changing the staged name or the split read (both are what the owner's ruling decides). Its one red, after the
+  // read compared wrapped inline links by their line fragments (plan 89.6-19, ruling D17 C), is at 768 wide, font32:
+  // the guest name Featherstonehaugh-Cholmondeley breaks only at its hyphen and would be whole if the row above it
+  // stacked, so the read lists it split. Every other cell, and both page-zoom widths, held (CI run 45648738582).
+  // Whether a break at a hyphen is a defect is the owner's open question D; ruled either way, this row goes back to
+  // enforced with D18 and D20. The coverage script's --close run fails on any pending row, so the phase cannot close
+  // with it off. Changing this is a decision, not a cleanup.
+  { id: 'R05-event', census: 'R05', kind: 'route', owner: '89.6-34', status: 'pending', reach: reachNight, extras: nightExtras },
   { id: 'D27', census: 'D27', kind: 'dialog', owner: '89.6-19', status: 'enforced', reach: reachParticipants, extras: participantsExtras },
   // DECISION Phase 89.6-19 (D31 pending under plan 89.6-29; orchestrator decision D17 B of 2026-11-25, the owner can
   // veto): this row goes from enforced to PENDING under plan 89.6-29, which owns the game view, chosen OVER fixing the
