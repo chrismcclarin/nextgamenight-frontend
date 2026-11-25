@@ -166,7 +166,18 @@ export const rows: SurfaceRow[] = [
   { id: 'D13', census: 'D13', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachMembers },
   { id: 'D16', census: 'D16', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachTransfer },
   { id: 'D17', census: 'D17', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachLeave },
-  { id: 'D18', census: 'D18', kind: 'dialog', owner: '89.6-11', status: 'enforced', reachAt: { width: 768, height: 1024 }, reach: reachRemove },
+  // DECISION Phase 89.6-15 (D18 and D20 pending on the owner's hyphen ruling; orchestrator decision D8 of 2026-11-24, the
+  // owner can veto): these two rows go back from enforced (plan 89.6-11) to PENDING under plan 89.6-34 (the close plan),
+  // chosen OVER leaving them enforced and red (every later push would stop before the floor steps), OVER restructuring the
+  // dialog header for a hyphen break, and OVER changing the split read (both are what the owner's ruling decides). Since
+  // plan 89.6-15 thinned the dialog header's edge (48px to 24px a side at 32px text), at 768 wide, dark, 200% text the
+  // long name in the title breaks only at its hyphen beside the close and would be whole if the close moved up, so the
+  // read lists it split; before, it was wider than any room and listed wide. Whether a break at a hyphen is a defect is
+  // the owner's open question D. Ruled (a) a hyphen break is fine: the read changes and these rows go back to enforced;
+  // ruled (b) it is a defect: the dialog header stacks the close for it and these rows go back to enforced. The
+  // coverage script's --close run fails on any pending row, so the phase cannot close with these off. Changing this is a
+  // decision, not a cleanup.
+  { id: 'D18', census: 'D18', kind: 'dialog', owner: '89.6-34', status: 'pending', reachAt: { width: 768, height: 1024 }, reach: reachRemove },
   { id: 'D19', census: 'D19', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachReset },
-  { id: 'D20', census: 'D20', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachMakeAdmin },
+  { id: 'D20', census: 'D20', kind: 'dialog', owner: '89.6-34', status: 'pending', reach: reachMakeAdmin },
 ];
