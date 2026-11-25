@@ -7,6 +7,7 @@ import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
+import { useScrollEdges } from '../../lib/hooks/useScrollEdges';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import {
     FetchErrorBanner,
@@ -215,6 +216,9 @@ function FriendsPage() {
     const requestsTabRef = useRef(null);
     const sentTabRef = useRef(null);
     const tabRefs = { friends: friendsTabRef, requests: requestsTabRef, sent: sentTabRef };
+    // CI-01g (89.6-21): the tab strip's scroll box, and which of its ends hide tabs (the strip-cue marker at the strip).
+    const tabStripRef = useRef(null);
+    const stripEdges = useScrollEdges(tabStripRef);
     // The id of the search result shown now (written beside every write of the result, in
     // handleSearch): a send that settles later reads it to decide whether its outcome still
     // belongs on screen.
@@ -1242,8 +1246,8 @@ function FriendsPage() {
                     )}
                 </div>
 
-                {/* Tabs */}
-                <div className="border-b border-line mb-6">
+                {/* Tabs. relative: the strip's edge cues (89.6-21, strip-cue) sit over the scroll box, inside the strip line. */}
+                <div className="relative border-b border-line mb-6">
                     {/* DECISION Phase 88.9-52 (R4 S3, the round-3 capture: at 200% text the three
                         tabs were 549px in a 311px strip, the PAGE scrolled sideways, 581px on a
                         375px screen, and Sent was off screen): this row scrolls inside itself.
@@ -1251,14 +1255,14 @@ function FriendsPage() {
                         (src/components/ui/Tabs.tsx ("the strip SCROLLS at 375px, it does not wrap")): a wrapped strip turns a one-line
                         control into a block that reflows the page under the thumb. The group
                         page's own tab row has two short tabs and neither wraps nor scrolls, so it
-                        decides nothing here. REJECTED: letting the tabs shrink (R11's marker
+                        decides nothing here. AMENDED Phase 89.6-21 (strip-cue): true at normal text only; at large text plan 89.6-17 makes the group page's tab row scroll too, with the same edge cue (useScrollEdges). REJECTED: letting the tabs shrink (R11's marker
                         below: the count pill drops under its word); wrapping the row. The strip
                         line stays on the parent, outside the scroll box, and the tabs fill the
                         row's height, so there is nothing to scroll up or down. A pressed tab is
                         brought fully into view (the click handler below); a tab reached by
-                        keyboard is scrolled to by the browser. At ordinary text the three tabs
+                        keyboard is scrolled to by the browser. AMENDED Phase 89.6-21 (strip-cue): measured, the browser scrolls a focused tab only when it is wholly hidden; a focus handler now brings a partly hidden tab into view, past the edge cue (scroll-px-8). At ordinary text the three tabs
                         fit and nothing scrolls. */}
-                    <div className="flex overflow-x-auto">
+                    <div ref={tabStripRef} className="flex overflow-x-auto scroll-px-8">
                         {tabs.map(({ key, label, count }, index) => (
                             /* DECISION Phase 88.6-19, two calls at this one control.
 
@@ -1392,6 +1396,14 @@ function FriendsPage() {
                             {index > 0 && <span aria-hidden="true" className="w-8 shrink min-w-0" />}
                             <button
                                 ref={tabRefs[key]}
+                                // 89.6-21 (strip-cue): a tab reached by keyboard is brought clear of the edge cue,
+                                // as a pressed one is below (the scroll padding keeps it past the fade).
+                                onFocus={(e) => {
+                                    const focused = e.currentTarget;
+                                    if (typeof focused.scrollIntoView === 'function') {
+                                        focused.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                                    }
+                                }}
                                 onClick={() => {
                                     // A tab change clears both action lines: DECISION Phase 88.6.1-72 (N5 / N6; D-33 row 22; D-42).
                                     if (key !== activeTab) {
@@ -1435,6 +1447,13 @@ function FriendsPage() {
                             </Fragment>
                         ))}
                     </div>
+                    {/* DECISION Phase 89.6-21 (strip-cue): at large text the scrolling strip fades its hidden end toward the page ground, chosen OVER wrapping the strip (the R4 S3 marker above) and OVER chevron buttons (two more tab stops). Shown at look 2. Nothing renders while every tab fits, so normal text is unchanged. Changing this is a decision, not a cleanup. */}
+                    {stripEdges.start && (
+                        <span aria-hidden="true" data-strip-cue="start" className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-linear-to-r from-surface-page to-transparent" />
+                    )}
+                    {stripEdges.end && (
+                        <span aria-hidden="true" data-strip-cue="end" className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-surface-page to-transparent" />
+                    )}
                 </div>
 
                 {/* Friends Tab */}

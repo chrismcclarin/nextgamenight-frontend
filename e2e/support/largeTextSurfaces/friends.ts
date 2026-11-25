@@ -54,6 +54,65 @@ const namelessShownAsMember: SurfaceRow['extras'] = async (page) => {
   expect(`${name} | ${shown}`, `R04-partial: the friend with no username reads checkbox '${name}', name '${shown}'`).toBe('Select Member | Member');
 };
 
+// R04 extras, the 320 x 568 dark 200% cell only (CI-01g, the Friends half): the tab strip scrolls
+// there, so its end cue shows, and is gone once the strip is scrolled to its end
+// (src/app/friends/page.js ("DECISION Phase 89.6-21 (strip-cue)")). Then, back at the start, the
+// Requests tab is reached by keyboard (Tab from the Friends tab) and must sit as clear of the fades
+// as the geometry allows (review M027 / M115). Last, the Requests label's distance to its tab's
+// left and right edges is printed for plan 89.6-31 (UI-SPEC: Friends tab ring inside, as built;
+// nothing changes here). The strip and the focus are put back for the cells after this one.
+const CUE_CELL = '320x568-dark-200';
+const friendsExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  if (cell.id !== CUE_CELL) return;
+  const main = page.locator('main');
+  const strip = main.locator('.overflow-x-auto').filter({ has: page.getByRole('button', { name: /^Requests/ }) }).first();
+  const cue = (side: 'start' | 'end') => main.locator(`[data-strip-cue="${side}"]`);
+  await expect(cue('end'), 'R04 CI-01g: the strip scrolls at 320 / 200% but shows no end cue').toBeVisible();
+  await expect(cue('start'), 'R04 CI-01g: a start cue shows while the strip is at its start').toHaveCount(0);
+  await strip.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
+  await expect(cue('end'), 'R04 CI-01g: the end cue stays after the strip reached its end').toHaveCount(0);
+  await expect(cue('start'), 'R04 CI-01g: no start cue once the strip is scrolled from its start').toBeVisible();
+  await strip.evaluate((el) => el.scrollTo({ left: 0 }));
+  await expect(cue('start'), 'R04 CI-01g: the start cue stays after the strip went back to its start').toHaveCount(0);
+
+  const friendsTab = main.getByRole('button', { name: /^Friends/ }).first();
+  const requestsTab = main.getByRole('button', { name: /^Requests/ }).first();
+  await friendsTab.focus();
+  await page.keyboard.press('Tab');
+  await expect(requestsTab, 'R04 CI-01g: Tab from the Friends tab did not reach Requests').toBeFocused();
+  const coverage = () =>
+    requestsTab.evaluate(async (tab) => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const t = tab.getBoundingClientRect();
+      const box = (tab.closest('.overflow-x-auto') as HTMLElement).getBoundingClientRect();
+      const cues = Array.from(document.querySelectorAll('[data-strip-cue]')).map((el) => el.getBoundingClientRect());
+      const covered = cues.reduce((sum, c) => sum + Math.max(0, Math.min(t.right, c.right) - Math.max(t.left, c.left)), 0);
+      const cueWidth = cues[0]?.width ?? 32;
+      const allowed = Math.max(0, t.width - (box.width - 2 * cueWidth)) + 0.5;
+      return { covered, allowed };
+    });
+  await expect
+    .poll(async () => {
+      const read = await coverage();
+      return read.covered <= read.allowed ? 'clear' : `covered ${read.covered}px, allowed ${read.allowed}px`;
+    }, { message: 'R04 CI-01g: the keyboard-focused Requests tab stays under the edge cue' })
+    .toBe('clear');
+
+  const gaps = await requestsTab.evaluate((tab) => {
+    const text = Array.from(tab.childNodes).find((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim() !== '') as Text;
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const label = range.getBoundingClientRect();
+    const t = tab.getBoundingClientRect();
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    return { left: r2(label.left - t.left), right: r2(t.right - label.right) };
+  });
+  // Read by plan 89.6-31 from the CI log: the label-to-edge gaps of the focused Requests tab.
+  process.stdout.write(`89.6-21 R04 Requests tab gaps at ${CUE_CELL}: label to left edge ${gaps.left}px, label to right edge ${gaps.right}px\n`);
+  await requestsTab.evaluate((tab) => (tab as HTMLElement).blur());
+  await strip.evaluate((el) => el.scrollTo({ left: 0 }));
+};
+
 // THE INVITE PANEL (D02, D03). D02 is Invite Members, opened from Home's first group card as
 // e2e/friend-invite-panel-header.spec.ts does; D03 is the same panel opened by a group create
 // ("<name> is live"). The panel's header is plan 89.6-10's; these rows read its body. The panel
@@ -242,7 +301,7 @@ const popoverExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell
 };
 
 export const rows: SurfaceRow[] = [
-  { id: 'R04', census: 'R04', kind: 'route', owner: '89.6-21', status: 'enforced', reach: reachFriends, answers: answerFriends([LONG_FRIEND, EMOJI_FRIEND, SHORT_FRIEND, NAMELESS_FRIEND]) },
+  { id: 'R04', census: 'R04', kind: 'route', owner: '89.6-21', status: 'enforced', reach: reachFriends, answers: answerFriends([LONG_FRIEND, EMOJI_FRIEND, SHORT_FRIEND, NAMELESS_FRIEND]), extras: friendsExtras },
   { id: 'R04-empty', census: 'R04', kind: 'route', owner: '89.6-21', status: 'enforced', state: 'no friends', reach: reachNoFriends, answers: answerFriends([]) },
   { id: 'R04-partial', census: 'R04', kind: 'route', owner: '89.6-21', status: 'enforced', state: 'a friend with no username', reach: reachFriends, answers: answerFriends([NAMELESS_FRIEND]), extras: namelessShownAsMember },
   { id: 'D02', census: 'D02', kind: 'dialog', owner: '89.6-21', status: 'enforced', reach: reachInvite, answers: answerPanel(PANEL_FRIENDS) },
