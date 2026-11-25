@@ -1204,6 +1204,50 @@
   </main>
 </section>
 
+<!--
+  spill and a scroll container (R13, orchestrator decision D20): a row of day headers 600px wide in
+  a bordered, filled card, inside a box that scrolls sideways (overflow-x auto) and, in a second
+  card, inside a box that clips (overflow-x hidden). "Sun" sits past the card's right edge, scrolled
+  away or clipped: the box between paints nothing of it outside the card, so it is NO SPILL (the cut
+  check and the page-zoom reach judge clipped text). The read before R13 climbed past the scroll box
+  to the card and called it spill (the availability grid's day headers, plan 89.6-23).
+-->
+<section data-case="spill-scrolled-away">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-xscroller overflow-x-auto">
+        <div class="lt-wide flex w-[600px] justify-between">
+          <span class="text-base text-content-primary">Fri</span>
+          <span class="text-base text-content-primary">Sat</span>
+          <span class="text-base text-content-primary">Sun</span>
+        </div>
+      </div>
+    </div>
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-xscroller overflow-x-hidden">
+        <div class="lt-wide flex w-[600px] justify-between">
+          <span class="text-base text-content-primary">Fri</span>
+          <span class="text-base text-content-primary">Sat</span>
+          <span class="text-base text-content-primary">Sun</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- the same row of day headers in the same card with no box between that scrolls or clips: "Sun" paints out past the card's right edge. SPILL, before R13 too. -->
+<section data-case="spill-no-scroll-box">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+      <div class="lt-wide flex w-[600px] justify-between">
+        <span class="text-base text-content-primary">Fri</span>
+        <span class="text-base text-content-primary">Sat</span>
+        <span class="text-base text-content-primary">Sun</span>
+      </div>
+    </div>
+  </main>
+</section>
+
 <!-- select-fit: a select held to a narrow box, then the same select at its own width. -->
 <section data-case="select-bad">
   <main data-frame class="lt-frame px-4 py-4">

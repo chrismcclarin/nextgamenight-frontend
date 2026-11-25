@@ -1495,6 +1495,29 @@ test('check: spill (89.6-02): reports its bad twin and passes its good twin', as
   expect(requests, 'the page made a request').toEqual([]);
 });
 
+// R13 (orchestrator decision D20, 2026-11-25): the spill box search stops at the nearest box whose
+// overflow-x is not visible. Content past a box that scrolls or clips sideways is clipped by it, and
+// reachable by scrolling: it paints nowhere outside the card around it. The availability grid's day
+// headers read as spilling up to 972px at 768 / 200% because the search climbed past such a box.
+test('check: spill, a scroll container (89.6-02, R13): a word scrolled away in a box that scrolls sideways, or clipped by one that hides, inside a filled card is not spill, and the same word painting out of the card with no such box between still is', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const scrolled = await readLargeTextCell(await renderTwin(page, 'spill-scrolled-away'));
+  const shape = await page.locator('.lt-xscroller').evaluateAll((els) =>
+    els.map((el) => {
+      const card = el.closest('.lt-card')?.getBoundingClientRect();
+      const words = Array.from(el.querySelectorAll('span')).map((s) => s.getBoundingClientRect());
+      return { overflowX: getComputedStyle(el).overflowX, sunPastCard: card ? Math.round(words[2].right - card.right) : null };
+    }),
+  );
+  const open = await readLargeTextCell(await renderTwin(page, 'spill-no-scroll-box'));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ scrolled, shape, open }, null, 2), contentType: 'application/json' });
+  expect(shape.map((s) => s.overflowX), 'the two boxes are not one that scrolls and one that hides sideways: the harness is not the shape it says').toEqual(['auto', 'hidden']);
+  for (const s of shape) expect(s.sunPastCard, `"Sun" is not past the card's right edge in the ${s.overflowX} box: the harness is not the shape it says`).toBeGreaterThan(1);
+  expect(scrolled.spill, `a word scrolled away or clipped inside its card reads as spill (${JSON.stringify(scrolled)})`).toEqual([]);
+  expect(open.spill.join(' | '), `a word painting out of its filled card with no scroll box between does not read as spill (${JSON.stringify(open)})`).toContain('"Sun" spills');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
 test('check: select-fit (89.6-02): reports its bad twin and passes its good twin', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
   const bad = await readLargeTextCell(await renderTwin(page, 'select-bad'));
