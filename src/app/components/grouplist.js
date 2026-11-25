@@ -1442,9 +1442,11 @@ const GroupList = ({
                          44px, and the icon inside grows with the text up to 32px'): the 46 x 44 box is
                          held in CSS px at every text size and the icon follows the text, chosen OVER
                          the rem box that doubled at 200% and was cut by its card edge;
-                         pixel-identical at normal text. */
+                         pixel-identical at normal text. The box is centred on the row (self-center),
+                         chosen OVER the row's stretch, which made it as tall as a wrapped Invite Member
+                         beside it (46 x 58 at 187 wide, 46 x 116 at 320 / 200%: CI 45619950831). */
                       <button
-                        className="inline-flex items-center justify-center min-h-[44px] min-w-[46px] p-0 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:focus-ring"
+                        className="inline-flex items-center justify-center self-center min-h-[44px] min-w-[46px] p-0 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:focus-ring"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);
