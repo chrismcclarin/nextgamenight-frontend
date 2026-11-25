@@ -453,7 +453,7 @@ function GuestInviteButton({ groupId, userId, guestName }) {
                `enabled-hover:` for the same reason, and so `tailwind-merge` sees it as
                conflicting with the base token instead of stacking a second background. */
             className={`border border-line ${branchInk}`}
-            title={title}
+            /* DECISION Phase 89.6-19 (S-3): the live Invite / Retry button carries no title, chosen OVER keeping it (VoiceOver read a second, near-identical line after the name, register B3-04) and OVER rewording it (the name already says who and what). The settled chip keeps its title: it is the only fuller explanation of its state. Changing this is a decision, not a cleanup. */
             busy={status === 'sending'}
             busySuffix=", sending"
         >
