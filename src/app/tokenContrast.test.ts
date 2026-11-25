@@ -687,6 +687,36 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     ).toBe('var(--color-header-dot-bg)');
   });
 
+  it('89.6 R8 C40: the two ring bands measure at least 9:1 against each other in both themes', () => {
+    // Owner pick O-1 = B, 2026-11-22 (the phase's picks read, row O-1: 'Two-colour ring, 2px: a
+    // thin inner band plus a darker outer ring; passes all 96'): one two-tone keyboard ring, a 2px
+    // outer ring in --focus-ring-outer and a 2px inner band in --focus-ring-inner. W3C technique C40
+    // asks the two colours to be at least 9:1 apart, so whatever ground, fill or photo the ring sits
+    // on, one of the two bands clears 3:1 against it.
+    //
+    // The values are pinned as well as the ratio, because the pick named them: light purple-900
+    // outside and white inside, dark amber-400 outside and purple-950 inside. Measured 2026-11-24
+    // with the WCAG formula, unrounded: light 13.8488, dark 10.1295.
+    //
+    // RED shape: before the runtime pair exists the resolver throws on --focus-ring-outer.
+    const req = 'R8 C40 (89.6) / W3C C40 (the two ring bands)';
+    const picked = {
+      light: { outer: '#232d3e', inner: '#ffffff' },
+      dark: { outer: '#fbbf24', inner: '#161d29' },
+    } as const;
+    for (const theme of ['light', 'dark'] as const) {
+      expect(
+        resolve(theme, '--focus-ring-outer'),
+        `C40: [${theme}] --focus-ring-outer must resolve to the picked ${picked[theme].outer}`,
+      ).toBe(picked[theme].outer);
+      expect(
+        resolve(theme, '--focus-ring-inner'),
+        `C40: [${theme}] --focus-ring-inner must resolve to the picked ${picked[theme].inner}`,
+      ).toBe(picked[theme].inner);
+      expectRatio(theme, '--focus-ring-outer', '--focus-ring-inner', 9.0, req);
+    }
+  });
+
   // ===================================================================================
   // Req 3 — shadows (UI-SPEC §5.4)
   // ===================================================================================

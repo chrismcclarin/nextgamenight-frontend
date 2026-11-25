@@ -40,7 +40,7 @@ export const gates = [
   { file: 'src/app/components/availabilityGridColumns.test.ts', min: 6, why: 'Phase 88 Req 4 phone geometry — the six aligned AvailabilityGrid column widths stay in lockstep' },
   { file: 'src/app/decisionMarkers.test.ts', min: 23, why: 'Phase 88 D-36 / D-37 — the decision markers Phase 88 overrode say so, in place' },
   { file: 'src/app/rawColorValues.test.ts', min: 7, why: 'Phase 88 Req 2 — no raw hex or black shadows' },
-  { file: 'src/app/tokenContrast.test.ts', min: 103, why: '89.6-09 raised 101 -> 103 (R7 U1, dot-token); 89.6-09 raised 100 -> 101 (R7 E1); 88.9-52 round 3 raised 96 -> 100 (R6 admin button, R8c ghost hover, N1b dark Preferred, N1c stripe, W45); 88.9-52 PIX-8 raised 95 -> 96 (active Friends tab ink); 88.9-52 fix batch raised 87 -> 95 (W28 W30 W4+W5 W20 W29 W36 W45 W3); Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
+  { file: 'src/app/tokenContrast.test.ts', min: 104, why: '89.6-12 raised 103 -> 104 (R8 C40); 89.6-09 raised 101 -> 103 (R7 U1, dot-token); 89.6-09 raised 100 -> 101 (R7 E1); 88.9-52 round 3 raised 96 -> 100 (R6 admin button, R8c ghost hover, N1b dark Preferred, N1c stripe, W45); 88.9-52 PIX-8 raised 95 -> 96 (active Friends tab ink); 88.9-52 fix batch raised 87 -> 95 (W28 W30 W4+W5 W20 W29 W36 W45 W3); Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
   { file: 'src/app/pillFamily.test.ts', min: 3, why: 'Phase 88.9-63 X16 / X17a — one pill family, sentence case, names 600' },
   { file: 'src/app/miniPicks.test.ts', min: 9, why: '88.9-52 fix batch raised 8 -> 9 (W40 Toaster pin); 88.9 RULING A mini-page picks; 88.9-56 R-C5 rating ink (floor raised to the count); 88.9-56 R-C3b guard scan' },
   { file: 'src/app/strictModeMountFlag.test.tsx', min: 3, why: '88.9-52 W12 / MOUNT — the StrictMode mount-flag guard: detector self-check, source scan, render under StrictMode' },
@@ -157,6 +157,7 @@ export const gates = [
   { file: 'src/test-utils/viewerRsvp.test.ts', min: 4, why: 'Phase 88.6.2-22 / code review C-ML2 — the injected viewer Yes keeps the backend row shape, summary and yes-maybe-no order' },
   { file: 'src/app/largeTextBlocks.test.ts', min: 7, why: 'Phase 89.6-05 SPEC R6 / D-08 — the building blocks stay in their components layer, hide nothing, keep their px edge tokens and ship (bundle guard lockstep)' },
   { file: 'src/lib/ci-grep-gate.fixture.test.ts', min: 79, why: 'Phase 88-29 / 88.6.2-26 — the registry lockstep itself (the 88-32 turtle); 88.6.2-27 added the age-ciphertext pairing and P3 tests; the 88.6.2 code review (B-ML1/B-ML3) added the encrypt self-test step pin; 88.9-57 52-X1 pin; 89.6-05 the large-text matrix step (3 tests); 89.6-08 the sweep step (2 tests) and its full-mode input (1 test)' },
+  { file: 'src/app/focusRingUtility.test.ts', min: 5, why: 'Phase 89.6-12 — the two-tone focus-ring utilities and their runtime properties (owner pick O-1 = B); compile read plus source pins' },
   { file: 'src/app/clippedTextRatchet.test.ts', min: 6, why: 'Phase 89.6-08 SPEC R4 / P1 — clipped text never grows outside the five exceptions; 89.6-34 lowers the ceilings' },
 ];
 
