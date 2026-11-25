@@ -1,5 +1,5 @@
 // Surface rows: the shared dialog shell, read on three dialogs (the shell extras; census D07, D12 and D19). Owner: plan 89.6-10.
-// D07-shell is pending under plan 89.6-25 since Phase 89.6-11: the marker at its row says why.
+// D07-shell was pending under plan 89.6-25 from Phase 89.6-11 until plan 89.6-25 re-enforced it: the marker at its row says why.
 // One row per line, each with its census id.
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
@@ -29,16 +29,10 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 import { settleAnimations } from '../inFlight';
 import { expectLargeTextCell, expectPageZoomUsable, readLargeTextCell, readPageZoomCell } from '../wordLines';
+// The group page, Customize Group's opening steps and its prompt-settings answer are shared with
+// the Customize Group surface rows (Phase 89.6-25), in one place: e2e/support/largeTextSurfaces/dialogs.ts ("export async function openCustomizeGroup").
+import { answerPromptSettings, customizeGroup, groupPage, openCustomizeGroup } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
-
-// The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
-// owns. No fallback id, as in e2e/manage-members-refresh.spec.ts ("No '1' fallback"): a row that
-// opened some other group would read a dialog the fixtures do not own.
-const groupPage = (): string => {
-  const id = process.env.E2E_GROUP_ID ?? '';
-  if (id === '') throw new Error('E2E_GROUP_ID must be set: the CI step that runs scripts/e2e-fixtures.js exports it, and the dialog shell rows open that group');
-  return `/groupHomePage?id=${id}`;
-};
 
 export interface ShellBox {
   left: number;
@@ -278,7 +272,6 @@ async function headerOf(dialog: Locator, what: string): Promise<Locator> {
 
 const manageMembers = (page: Page): Locator => page.getByRole('dialog', { name: 'Manage Group Members', exact: true });
 const resetConfirm = (page: Page): Locator => page.getByRole('dialog', { name: 'Reset the invite link?', exact: true });
-const customizeGroup = (page: Page): Locator => page.getByRole('dialog', { name: 'Customize Group', exact: true });
 
 async function openManageMembers(page: Page): Promise<Locator> {
   await page.goto(groupPage());
@@ -307,12 +300,7 @@ const reachResetConfirm: SurfaceRow['reach'] = async (page) => {
 
 // D07: the group page's gear opens Customize Group (the entry path of e2e/support/groupSettings.ts ("export async function openGroupSettingsFromGear")).
 const reachCustomizeGroup: SurfaceRow['reach'] = async (page) => {
-  await page.goto(groupPage());
-  const gear = page.getByRole('button', { name: 'Group settings', exact: true });
-  await gear.waitFor({ state: 'visible', timeout: 15_000 });
-  await gear.click();
-  const dialog = customizeGroup(page);
-  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  const dialog = await openCustomizeGroup(page);
   return { root: await headerOf(dialog, 'D07-shell'), dialog };
 };
 
@@ -320,9 +308,8 @@ const reachCustomizeGroup: SurfaceRow['reach'] = async (page) => {
 // settings (src/app/components/PromptScheduleReadOnly.js ("() => promptSettingsAPI.getGroupPromptSettings(groupId),")),
 // and the backend's handler for that read saves a clean-up: a GET that writes. It is answered in
 // the browser with the empty settings body, the answer of
-// e2e/toast-bridge-offset.spec.ts ("const EMPTY_PROMPT_SETTINGS = { id: null, schedules: [], games: [], members: [] };").
-const answerPromptSettings: NonNullable<SurfaceRow['answers']> = (url) =>
-  url.pathname.endsWith('/prompt-settings') ? { id: null, schedules: [], games: [], members: [] } : undefined;
+// e2e/toast-bridge-offset.spec.ts ("const EMPTY_PROMPT_SETTINGS = { id: null, schedules: [], games: [], members: [] };"):
+// answerPromptSettings, imported above.
 
 /**
  * The extras of a shell row, per cell: the footer holds the cell's checks, and the shell's
@@ -359,7 +346,10 @@ export const rows: SurfaceRow[] = [
   // with 200% text (both themes). Plan 89.6-25 fixes the picker and sets this row back to enforced in that commit; the
   // coverage script's --close run fails on any pending row, so the phase cannot close with this one off. The reach, the
   // answers and the extras stay, so turning it on is the status word alone. Changing this is a decision, not a cleanup.
-  { id: 'D07-shell', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'pending', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: shellExtras('D07-shell', customizeGroup) },
+  // AMENDED Phase 89.6-25: re-enforced by plan 89.6-25 in the commit that fixes the emoji picker (both pickers hold at most
+  // four columns and drop to fewer, so the picker no longer overflows the dialog box); its reach and answers now come from
+  // the Customize Group rows' module, one copy of each.
+  { id: 'D07-shell', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: shellExtras('D07-shell', customizeGroup) },
   { id: 'D12-shell', census: 'D12', kind: 'dialog', owner: '89.6-10', status: 'enforced', reach: reachManageMembers, extras: shellExtras('D12-shell', manageMembers) },
   { id: 'D19-shell', census: 'D19', kind: 'dialog', owner: '89.6-10', status: 'enforced', reach: reachResetConfirm, extras: shellExtras('D19-shell', resetConfirm) },
 ];

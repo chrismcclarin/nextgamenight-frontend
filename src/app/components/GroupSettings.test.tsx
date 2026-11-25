@@ -1022,13 +1022,15 @@ describe('Phase 88.6.1-43 — the default-icon picker is a radio group (D-20 / D
     const radios = within(group).getAllByRole('radio');
     radios.forEach((r, i) => {
       for (const cls of [
-        'p-4',
+        'p-[16px]',
         'border-2',
         'rounded-lg',
         'text-3xl',
       ]) {
         expect(r).toHaveClass(cls);
       }
+      // Phase 89.6-25 (H-23, O-M4 Fixed+): the padding is 16px at every text size, no longer the rem p-4
+      expect(r).not.toHaveClass('p-4');
       expectFocusRing(r, ICONS[i].name);
       expect(r).not.toHaveClass('min-h-11');
       if (ICONS[i].name === 'Trophy') {
@@ -1049,6 +1051,21 @@ describe('Phase 88.6.1-43 — the default-icon picker is a radio group (D-20 / D
       expect(child).toHaveAttribute('aria-hidden', 'true');
       expect(child.textContent).toBe(ICONS[i].url);
     });
+  });
+
+  // Phase 89.6-25 (H-23, the owner's finding): a fixed four-column grid burst its emoji out of
+  // the tiles at 200% text; both pickers now hold at most four columns and drop to fewer
+  it('89.6-25 H-23: both pickers drop to fewer columns instead of a fixed four, and the icon tiles hold a px padding', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, profile_picture_url: '\u{1F3C6}' });
+    const icons = await iconGroup();
+    const colours = screen.getByRole('group', { name: 'Choose a default color:' });
+    for (const picker of [icons, colours]) {
+      expect(Array.from(picker.classList).filter((cls) => /^grid-cols-\d/.test(cls))).toEqual([]);
+      expect(picker).toHaveClass('grid', 'gap-2');
+    }
+    const radios = within(icons).getAllByRole('radio');
+    expect(radios).toHaveLength(8);
+    for (const r of radios) expect(r).toHaveClass('p-[16px]');
   });
 });
 

@@ -326,7 +326,7 @@ const PRESET_LABELS = ['Red', 'Orange', 'Amber', 'Green', 'Teal', 'Blue', 'Viole
 
 /** The picker's labelled set: `role="group"` + `aria-labelledby="group-colour-choice"`,
  *  whose visible label is the "Choose a default color:" paragraph
- *  (src/app/components/GroupSettings.js ("Choose a default color:"), its group src/app/components/GroupSettings.js ("grid grid-cols-4 gap-2 justify-items-center")). Role/label only — never a Tailwind class (this file ("SELECTOR POLICY: role/label/text only")). */
+ *  (src/app/components/GroupSettings.js ("Choose a default color:"), its group src/app/components/GroupSettings.js ("grid gap-2 justify-items-center")). Role/label only — never a Tailwind class (this file ("SELECTOR POLICY: role/label/text only")). */
 function swatchGrid(page: Page): Locator {
   return page.getByRole('group', { name: /choose a default color/i });
 }

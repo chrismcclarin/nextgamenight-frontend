@@ -22,10 +22,22 @@ import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Button } from '../../components/ui/Button';
+import { iconTextSize } from '../../components/ui/Icon';
 import { Heading } from '../../components/ui/Heading';
 import { Modal } from './Modal';
 import { Input } from '../../components/ui/Input';
 import { useRadioGroup } from '../../components/ui/useRadioGroup';
+
+// The column template of the two pickers (Phase 89.6-25, H-23): at most four columns, fewer when a
+// column would be narrower than the item's own smallest size. The quarter term is the width of one of
+// four columns (1.5rem = the three gap-2 gaps); the 0.1px keeps four columns where four fit exactly,
+// whatever the browser's rounding of that division. The why is the icon-grid DECISION marker at the icon picker.
+function upToFourColumns(itemMin) {
+  return `repeat(auto-fill, minmax(max(${itemMin}, calc((100% - 1.5rem) / 4 - 0.1px)), 1fr))`;
+}
+
+// The icon tile's emoji size (owner pick O-M4 = Fixed+): 30px at normal text, following the text up to 32px.
+const ICON_EMOJI_SIZE = iconTextSize(30);
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -844,8 +856,29 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 Not yet heard on a device: if VoiceOver does not read a tile by its name, that
                 goes back to the owner; do not remove the tooltip to fix it. No visible change
                 at any width, and the tile size is untouched (D-21: no floor change). Changing
-                this is a decision, not a cleanup. */}
-            <div {...iconRadio.groupProps} className="grid grid-cols-4 gap-2">
+                this is a decision, not a cleanup.
+
+                AMENDED Phase 89.6-25 (icon-grid): the radio group, the names and the kept
+                tooltip (ruling 2026-10-05) are unchanged; 'No visible change at any width' now
+                holds at normal text only: at large text and on narrow screens the grid drops
+                columns and the emoji follows text up to 32px (see the icon-grid DECISION below). */}
+            {/* DECISION Phase 89.6-25 (icon-grid): GR, the governing rule (owner, 2026-11-22: 'A row
+                stays a row while everything in it fits whole. When it does not, items stack.
+                Nothing is squeezed, shrunk, cut or broken to avoid stacking. Scrolling down is
+                fine; scrolling sideways is not.'): both pickers hold at most four columns and drop
+                to three, two or one when a column would be narrower than its item
+                (upToFourColumns: the quarter term keeps four wherever four fit, so normal text is
+                unchanged; the item minimum takes over where they do not). Found by the owner on
+                his iPhone at 200% Safari zoom (215 wide, root 16px): 'the emoji's we have for group
+                icon's were busting out of the boxes'. The tiles are icon-only controls and emoji
+                sizes are icon sizes (owner picks O-M4 = Fixed+ and O-6 = Ratify, 2026-11-22), so a
+                tile keeps its 16px padding and its emoji follows the text up to 32px. Chosen OVER a
+                fixed four (the burst), OVER bb-cluster (tiles hug their content: narrower,
+                left-packed tiles at 375 with normal text and a ragged last row) and OVER rem tiles
+                (one column of eight 138px tiles at 320 with 200% text). The icon minimum is the
+                icon plus 30px, not 32px, so the 62px columns at 320 with normal text keep four
+                without resting on a rounding edge. Changing this is a decision, not a cleanup. */}
+            <div {...iconRadio.groupProps} className="grid gap-2" style={{ gridTemplateColumns: upToFourColumns(`calc(${ICON_EMOJI_SIZE} + 30px)`) }}>
               {DEFAULT_PROFILE_PICTURES.map((pic, index) => (
                 <button
                   key={index}
@@ -877,11 +910,18 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                      group from the shared useRadioGroup hook (role, checked state, roving tab
                      stop and arrow keys come from it; its click handler calls the same
                      handleSelectDefaultPicture this tile used to call itself). They stay bare
-                     buttons for this marker's reason, and the ring string is unchanged. */
-                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors focus:outline-hidden focus-visible:focus-ring ${
+                     buttons for this marker's reason, and the ring string is unchanged.
+
+                     AMENDED Phase 89.6-25 (icon-grid): still a bare button for the reason above;
+                     its padding is now 16px at every text size and its emoji size follows text up
+                     to 32px (owner pick O-M4 = Fixed+); the ring string is as plan 89.6-13 left it.
+                     The inline font size beats text-3xl's size; text-3xl stays for its unitless
+                     1.2 line height (36px at normal text, as before). */
+                  className={`p-[16px] border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors focus:outline-hidden focus-visible:focus-ring ${
                     profilePictureUrl === pic.url ? 'border-accent bg-surface-muted' : 'border-line'
                   }`}
                   title={pic.name}
+                  style={{ fontSize: ICON_EMOJI_SIZE }}
                 >
                   <span aria-hidden="true">{pic.url}</span>
                 </button>
@@ -948,7 +988,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 eight as a LABELLED set rather than a bare row of buttons — the
                 visible <p> above is already the label, it just was not wired to
                 them. */}
-            <div className="grid grid-cols-4 gap-2 justify-items-center" role="group" aria-labelledby="group-colour-choice">
+            <div className="grid gap-2 justify-items-center" style={{ gridTemplateColumns: upToFourColumns('2.75rem') }} role="group" aria-labelledby="group-colour-choice">
               {GROUP_COLOUR_PRESETS.map((preset) => {
                 /* The swatch is a RENDER site, so it shows the tint: a swatch
                    must preview what you will actually get. The stored value it
@@ -1162,7 +1202,13 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                    REJECTED — a fixed `w-16 h-16`: it stops the chip shrinking on
                    the narrowest phone this project measures.
                    REJECTED — the floor classes alone with no cap, which is the
-                   146px desktop chip above. A decision, not a cleanup. */
+                   146px desktop chip above. A decision, not a cleanup.
+
+                   AMENDED Phase 89.6-25 (icon-grid): the numbers above stand at
+                   normal text (four columns at 375 and 320); where four columns
+                   of the swatch's 2.75rem floor do not fit (large text, or the
+                   215 and 187 widths of iPhone Safari zoom) the grid drops to
+                   fewer, so a swatch never overlaps its neighbour. */
 
                 /* DECISION Phase 88.3.1 (M33 / AMENDMENT D): the RESTING boundary
                    below takes the `-strong` rung of the line token, at THIS ONE

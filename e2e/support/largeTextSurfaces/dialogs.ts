@@ -16,13 +16,13 @@ import type { SurfaceRow, SweepCell } from './index';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
 // owns. No fallback id: a row that opened some other group would read a dialog the fixtures do not own.
-const groupPage = (): string => {
+export const groupPage = (): string => {
   const id = process.env.E2E_GROUP_ID ?? '';
-  if (id === '') throw new Error('E2E_GROUP_ID must be set: the CI step that runs scripts/e2e-fixtures.js exports it, and the Customize Group rows open that group');
+  if (id === '') throw new Error('E2E_GROUP_ID must be set: the CI step that runs scripts/e2e-fixtures.js exports it, and the group dialog rows open that group');
   return `/groupHomePage?id=${id}`;
 };
 
-const customizeGroup = (page: Page): Locator => page.getByRole('dialog', { name: 'Customize Group', exact: true });
+export const customizeGroup = (page: Page): Locator => page.getByRole('dialog', { name: 'Customize Group', exact: true });
 
 /** The group page's gear opens Customize Group (owners and admins only). */
 export async function openCustomizeGroup(page: Page): Promise<Locator> {
@@ -37,7 +37,7 @@ export async function openCustomizeGroup(page: Page): Promise<Locator> {
 
 // Customize Group mounts the check-in schedule summary, whose prompt-settings read is a GET that
 // writes; it is answered in the browser with the empty settings body ("No schedules configured.").
-const answerPromptSettings: NonNullable<SurfaceRow['answers']> = (url) =>
+export const answerPromptSettings: NonNullable<SurfaceRow['answers']> = (url) =>
   url.pathname.endsWith('/prompt-settings') ? { id: null, schedules: [], games: [], members: [] } : undefined;
 
 interface Box {

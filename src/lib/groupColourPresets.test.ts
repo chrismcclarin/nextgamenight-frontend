@@ -137,7 +137,8 @@ describe('the eight-preset palette — shape and identity (UI-SPEC §10.1 tests 
 
   it('1. there are exactly eight presets, in the load-bearing UI-SPEC §2.2 order', () => {
     expect(GROUP_COLOUR_PRESETS).toHaveLength(8);
-    // The order IS a decision: it is the picker's `grid-cols-4` reading order (warm -> cool
+    // The order IS a decision: it is the picker's `grid-cols-4` reading order (AMENDED Phase 89.6-25:
+    // up to four columns now; the reading order is unchanged) (warm -> cool
     // round the hue wheel) AND the tie-break order for the migration's nearest-preset rule
     // (CONTEXT D-02, plan 88.3.1-05). Re-sorting the array re-decides a database migration.
     expect(GROUP_COLOUR_PRESETS.map((p) => p.name).join(',')).toEqual(
