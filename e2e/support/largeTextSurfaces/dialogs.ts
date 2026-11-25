@@ -286,14 +286,129 @@ const deleteConfirmExtras: NonNullable<SurfaceRow['extras']> = async (page: Page
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
+// D09: Send Feedback, opened from the header menu's Send feedback row (the row with visible text;
+// the floating button is icon-only), the path of e2e/feedback-submit.spec.ts ("async function openFromMenu").
+const sendFeedback = (page: Page): Locator => page.getByRole('dialog', { name: 'Send Feedback', exact: true });
+const menuToggle = (page: Page): Locator => page.getByRole('button', { name: 'Toggle menu' });
+async function openSendFeedback(page: Page): Promise<Locator> {
+  await page.goto('/');
+  const toggle = menuToggle(page);
+  await toggle.waitFor({ state: 'visible', timeout: 15_000 });
+  await toggle.click();
+  await page.getByRole('button', { name: 'Send feedback' }).filter({ hasText: 'Send feedback' }).click();
+  const dialog = sendFeedback(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  return dialog;
+}
+const reachSendFeedback: SurfaceRow['reach'] = async (page) => {
+  const dialog = await openSendFeedback(page);
+  return { root: dialog, dialog };
+};
+
+// D09-error: a send that failed. The writer is answered in the browser with 418 and an empty body
+// (the answer of e2e/feedback-submit.spec.ts ("418 with an empty body: no code, no known status")),
+// registered after the guard, so no request leaves the browser and no GitHub issue is filed.
+const SEND_FAILED = "We couldn't send your feedback. Please try again.";
+const writerAnswered = new WeakSet<Page>();
+const reachSendFailed: SurfaceRow['reach'] = async (page) => {
+  if (!writerAnswered.has(page)) {
+    await page.route('**/api/feedback/github', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ status: 418, contentType: 'application/json', body: JSON.stringify({}) });
+    });
+    writerAnswered.add(page);
+  }
+  const dialog = await openSendFeedback(page);
+  await dialog.getByPlaceholder("Tell us what's on your mind...").fill('Synthetic large-text feedback, more than ten characters.');
+  await dialog.getByRole('button', { name: 'Submit', exact: true }).click();
+  await dialog.getByRole('alert').filter({ hasText: SEND_FAILED }).waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: dialog, dialog };
+};
+
+// O09: the floating feedback button, icon-only (its name has no visible text), drawn only from md
+// up while the header is not in its menu form; elsewhere the header menu offers the same entry.
+// Found attached, not visible: at the font32 cell the md query no longer matches and it is not drawn.
+const floatingFeedback = (page: Page): Locator =>
+  page.getByRole('button', { name: 'Send feedback', includeHidden: true }).filter({ hasNotText: 'Send feedback' });
+const reachFloatingFeedback: SurfaceRow['reach'] = async (page) => {
+  await page.goto('/');
+  const fab = floatingFeedback(page);
+  await fab.waitFor({ state: 'attached', timeout: 15_000 });
+  return { root: fab };
+};
+
+// O09 extras, every cell: exactly one feedback entry is offered, the floating button (56 x 56,
+// inside the viewport) or the header menu toggle. In cell 320x568-dark-200 only, the same page is
+// then read at 1280 x 800 with 200% text: the floating button shows, the toggle does not, and at
+// the end of the page the footer's copyright line starts 8px (within 1px) below the button.
+const floatingFeedbackExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const tag = `O09 ${cell.id}`;
+  const problems: string[] = [];
+  const fab = floatingFeedback(page);
+  const toggle = page.getByRole('button', { name: 'Toggle menu', includeHidden: true });
+  const entries = async (): Promise<{ fab: boolean; toggle: boolean; box: Box | null; viewport: { width: number; height: number } }> => {
+    const fabShown = await fab.isVisible();
+    const toggleShown = await toggle.isVisible();
+    const box = fabShown ? await fab.evaluate((el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; }) : null;
+    const viewport = await page.evaluate(() => ({ width: document.documentElement.clientWidth, height: window.innerHeight }));
+    return { fab: fabShown, toggle: toggleShown, box, viewport };
+  };
+  const checkOne = (seen: Awaited<ReturnType<typeof entries>>, at: string): void => {
+    if (seen.fab === seen.toggle) problems.push(`${at}: ${seen.fab ? 'both' : 'neither'} the floating button and the header menu toggle are offered, expected exactly one`);
+    if (seen.box) {
+      if (Math.abs(seen.box.width - 56) > 0.5 || Math.abs(seen.box.height - 56) > 0.5) problems.push(`${at}: the floating button is ${r2(seen.box.width)} x ${r2(seen.box.height)}, expected 56 x 56`);
+      if (seen.box.left < -0.5 || seen.box.top < -0.5 || seen.box.right > seen.viewport.width + 0.5 || seen.box.bottom > seen.viewport.height + 0.5) problems.push(`${at}: the floating button (${r2(seen.box.left)} to ${r2(seen.box.right)} by ${r2(seen.box.top)} to ${r2(seen.box.bottom)}) is outside the viewport`);
+    }
+  };
+  const seen = await entries();
+  checkOne(seen, tag);
+  say(`O09 ${cell.id} entry=${seen.fab ? 'floating' : seen.toggle ? 'menu' : 'none'}${seen.box ? ` box=${r2(seen.box.width)}x${r2(seen.box.height)}` : ''}`);
+
+  if (cell.id === '320x568-dark-200') {
+    const at = `${tag} at 1280 x 800`;
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.evaluate(async () => {
+      const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await frame();
+      await frame();
+    });
+    const wide = await entries();
+    checkOne(wide, at);
+    if (!wide.fab) problems.push(`${at}: the floating button is not shown`);
+    if (wide.toggle) problems.push(`${at}: the header menu toggle is shown`);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.evaluate(async () => {
+      const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await frame();
+      await frame();
+    });
+    const copyright = page.getByRole('contentinfo').getByText(/©/).first();
+    const gap = await page.evaluate(
+      ([button, line]) => {
+        if (!button || !line) return null;
+        return line.getBoundingClientRect().top - button.getBoundingClientRect().bottom;
+      },
+      [await fab.elementHandle(), await copyright.elementHandle()] as const,
+    );
+    say(`O09 1280x800-200 entry=${wide.fab ? 'floating' : wide.toggle ? 'menu' : 'none'}${wide.box ? ` box=${r2(wide.box.width)}x${r2(wide.box.height)}` : ''} copyright-gap=${gap === null ? 'none' : r2(gap)}`);
+    if (gap === null) problems.push(`${at}: the floating button or the footer copyright line was not found`);
+    else if (Math.abs(gap - 8) > 1) problems.push(`${at}: at the end of the page the copyright line starts ${r2(gap)}px below the floating button, expected 8px (within 1px)`);
+  }
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'D07', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: customizeGroupExtras },
   { id: 'D07-leave', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'leave-confirm', reach: reachLeaveConfirm, answers: answerPromptSettings },
   { id: 'D08', census: 'D08', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachDeleteConfirm, answers: answerPromptSettings, extras: deleteConfirmExtras },
-  { id: 'D09', census: 'D09', kind: 'dialog', owner: '89.6-25', status: 'pending' },
+  { id: 'D09', census: 'D09', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachSendFeedback },
+  { id: 'D09-error', census: 'D09', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'send-failed', reach: reachSendFailed },
   { id: 'D10', census: 'D10', kind: 'dialog', owner: '89.6-25', status: 'pending' },
   { id: 'D11', census: 'D11', kind: 'dialog', owner: '89.6-25', status: 'pending' },
   // pending: D24 until 89.6-41 (the planning page scrolls sideways at 320 / 200% until 89.6-20; plan 41 depends on 20 and on this plan)
   { id: 'D24', census: 'D24', kind: 'dialog', owner: '89.6-41', status: 'pending' },
-  { id: 'O09', census: 'O09', kind: 'overlay', owner: '89.6-25', status: 'pending' },
+  { id: 'O09', census: 'O09', kind: 'overlay', owner: '89.6-25', status: 'enforced', reachAt: { width: 1280, height: 800 }, reach: reachFloatingFeedback, extras: floatingFeedbackExtras },
 ];
