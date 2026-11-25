@@ -1786,6 +1786,24 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     };
   }
 
+  // Phase 89.6-19 (register B3-04, S-3): VoiceOver read the button's title as a second line after its name.
+  it('S-3 (89.6-19): Invite and Retry are heard once — no title, no accessible description', async () => {
+    const first = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+    expect(invite).not.toHaveAttribute('title');
+    expect(invite).not.toHaveAccessibleDescription();
+    await act(async () => {
+      invite.click();
+    });
+    await act(async () => {
+      first.fail(new Error('network'));
+    });
+    const retry = await screen.findByRole('button', { name: RETRY_INVITE });
+    expect(retry).not.toHaveAttribute('title');
+    expect(retry).not.toHaveAccessibleDescription();
+  });
+
   it('sends ONCE for two activations dispatched with NO render flush between them', async () => {
     deferredInvite();
     renderEventDetail({ role: 'owner', participants: [GUEST] });
