@@ -121,31 +121,29 @@ describe('Button', () => {
         toks,
         `88.6-06 D10 — variant=${variant}: the hover half of the elevation pair must be the exact token \`enabled-hover:shadow-theme-md\`, never a bare \`hover:\` one`
       ).toContain('enabled-hover:shadow-theme-md');
-      expect(toks).toContain('focus-visible:ring-2');
-      expect(toks).toContain('focus-visible:ring-focus-ring');
-      expect(toks).toContain('focus-visible:ring-offset-2');
+      // AMENDED Phase 89.6-13 (owner pick O-1 = B): the ring is the two-tone utility, one token.
+      expect(toks).toContain('focus-visible:focus-ring');
+      expect(toks.filter((t) => /focus-visible:ring-/.test(t)), `variant=${variant}: no box-shadow ring token is left`).toEqual([]);
     }
   });
 
-  it("88.9 halo: every variant's base carries focus-visible:ring-offset-surface-card right after focus-visible:ring-offset-2, and a same-prefix call-site override replaces it", () => {
-    // 88.9-05 (owner pick A3d + A10c): the house ring's halo is the card
-    // surface by default, so the ring no longer sits on Tailwind's white
-    // offset. A call site on another ground overrides it with the SAME
-    // focus-visible: prefix through cn(); the merge must drop the card token.
+  it("89.6-13 O-1 B: no variant's base carries a ring-offset token, and a call-site class still merges after the ring", () => {
+    // AMENDED Phase 89.6-13: was "88.9 halo" (owner picks A3d + A10c, the card halo in the base).
+    // Owner pick O-1 = B (2026-11-22) retired the halo: the two-tone ring carries its own inner
+    // band, so no variant's base names a ring-offset ground, and a call site's class still merges
+    // through cn() after the ring.
     for (const variant of VARIANT_KEYS) {
       const toks = tokensOf(buttonVariants({ variant }));
-      const at = toks.indexOf('focus-visible:ring-offset-2');
       expect(
-        toks,
-        `88.9-05 halo — variant=${variant}: the base must carry focus-visible:ring-offset-surface-card`
-      ).toContain('focus-visible:ring-offset-surface-card');
-      expect(at).toBeGreaterThanOrEqual(0);
-      expect(toks[at + 1]).toBe('focus-visible:ring-offset-surface-card');
+        toks.filter((t) => t.includes('ring-offset-')),
+        `89.6-13 — variant=${variant}: the base must carry no ring-offset token`
+      ).toEqual([]);
+      expect(toks).toContain('focus-visible:focus-ring');
     }
-    render(<Button className="focus-visible:ring-offset-surface-page">Go</Button>);
+    render(<Button className="w-full">Go</Button>);
     const cls = tokensOf(screen.getByRole('button', { name: 'Go' }).className);
-    expect(cls).toContain('focus-visible:ring-offset-surface-page');
-    expect(cls).not.toContain('focus-visible:ring-offset-surface-card');
+    expect(cls).toContain('focus-visible:focus-ring');
+    expect(cls.indexOf('w-full')).toBeGreaterThan(cls.indexOf('focus-visible:focus-ring'));
   });
 
   it('maps secondary and danger to their legacy .btn-* classes', () => {

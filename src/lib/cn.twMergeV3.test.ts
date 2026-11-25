@@ -39,7 +39,7 @@
  *   - `BUTTON_CVA_BASE`. **MEASURED CURRENT — no change.** R6's premise that plan 06's cva
  *     rewrite had left it stale was already discharged: plan 06 re-seeded it on 2026-09-15 (that
  *     record is below), and re-reading the live `cva` base entries at src/components/ui/Button.tsx ("'btn',"), src/components/ui/Button.tsx ("'shadow-theme-sm enabled-hover:shadow-theme-md',"),
- *     src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:ring-2"), src/components/ui/Button.tsx ("'min-h-11',") reproduces this literal exactly. Recorded as CONFIRMED rather than assumed —
+ *     src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:focus-ring'"), src/components/ui/Button.tsx ("'min-h-11',") reproduces this literal exactly. Recorded as CONFIRMED rather than assumed —
  *     "I checked and it was already right" is the half of a re-seed that otherwise leaves no
  *     trace.
  *   - `COMBOBOX_OPTION_ROW_ACTIVE`. **MEASURED CURRENT — no change.** Plan 02's re-seed still
@@ -70,7 +70,7 @@ import { cn } from '@/lib/cn';
  * SOURCE: the `cva` base array opening at src/components/ui/Button.tsx ("const buttonVariants = cva("), `.join(' ')`ed. (The array
  * is long because it now carries three DECISION markers between its four entries; the
  * entries themselves are src/components/ui/Button.tsx ("'btn',"), src/components/ui/Button.tsx ("'shadow-theme-sm enabled-hover:shadow-theme-md',"),
- * src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:ring-2") and src/components/ui/Button.tsx ("'min-h-11',").)
+ * src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:focus-ring'") and src/components/ui/Button.tsx ("'min-h-11',").)
  *
  * RE-DERIVE NOTE: a later plan that renames, adds or removes any token inside this literal OWNS
  * re-deriving it from `Button.tsx` at that time and recording both strings (old and new) in its own
@@ -92,9 +92,15 @@ import { cn } from '@/lib/cn';
  * (amended 2026-09-09, D10/D42) and the reason a bare `hover:` on the pin side is rejected: before
  * this plan the two tokens were in different scopes and BOTH survived, so a call site pinning
  * `shadow-theme-lg` still shrank to `md` on hover.
+ *
+ * RE-SEEDED Phase 89.6-13 (owner pick O-1 = B, 2026-11-22), the owned re-derive by the plan that
+ * rewrote the ring line: the box-shadow ring and its card halo became the two-tone utility.
+ *   PRE  base: btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11
+ *   POST base: btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:focus-ring min-h-11
+ * The merged expectations below moved by the same tokens and nothing else (measured by running them).
  */
 const BUTTON_CVA_BASE =
-  'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11';
+  'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:focus-ring min-h-11';
 
 /**
  * SOURCE (RE-SEEDED — see below): the `cva` VARIANT map at src/components/ui/Button.tsx ("primary: 'btn-primary',").
@@ -179,7 +185,7 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
     expect(
       cn(BUTTON_CVA_BASE, 'shadow-theme-lg enabled-hover:shadow-theme-lg')
     ).toBe(
-      'btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11 shadow-theme-lg enabled-hover:shadow-theme-lg'
+      'btn focus:outline-hidden focus-visible:focus-ring min-h-11 shadow-theme-lg enabled-hover:shadow-theme-lg'
     );
   });
 
@@ -202,7 +208,7 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
     expect(
       cn(BUTTON_CVA_BASE, BUTTON_VARIANT_CLASS.primary, 'btn-secondary w-full')
     ).toBe(
-      'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11 btn-primary btn-secondary w-full'
+      'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:focus-ring min-h-11 btn-primary btn-secondary w-full'
     );
   });
 

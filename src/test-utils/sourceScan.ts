@@ -208,8 +208,12 @@ export function withoutComments(src: string): string {
  * focus-visible:ring-offset-surface-card spelling, and the two apply under different states).
  */
 
-/** A whole house ring token; group 1 is its variant chain (focus-visible:, peer-..., group-...). */
-export const HOUSE_RING_TOKEN = /^((?:peer-|group-)?focus-visible:)ring-focus-ring$/;
+/**
+ * A whole house ring token; group 1 is its variant chain (focus-visible:, peer-..., group-...).
+ * AMENDED Phase 89.6-13 (owner pick O-1 = B, 2026-11-22): the house ring is the two-tone
+ * focus-ring utility, outset or inset; it was the box-shadow colour token ring-focus-ring.
+ */
+export const HOUSE_RING_TOKEN = /^((?:peer-|group-)?focus-visible:)focus-ring(?:-inset)?$/;
 
 /** A whole house offset-width token (ring-offset-1 or ring-offset-2) on any house chain. */
 export const HOUSE_OFFSET_WIDTH_TOKEN = /^(?:peer-|group-)?focus-visible:ring-offset-[12]$/;

@@ -267,6 +267,31 @@ describe('Phase 89.6-12 — the two-tone focus-ring utilities (owner pick O-1 = 
     expect(population, 'the scan must find at least ten checkbox inputs in src').toBeGreaterThanOrEqual(10);
     expect(offenders, `checkbox inputs carrying an app ring or a hidden outline:\n${offenders.join('\n')}`).toEqual([]);
   });
+
+  it('9. every focus-ring candidate src uses compiles', async () => {
+    // Phase 89.6-13 (owner pick O-1 = B): the ring codemod moved every keyboard ring onto the two
+    // utilities, under whatever variant chain the old ring carried (focus-visible:, peer-, md: ...).
+    // Tailwind emits a candidate only when its variant chain resolves, so a chain the engine
+    // cannot build would leave that control with no ring and nothing red. This reads every
+    // distinct whole token in src whose utility is focus-ring or focus-ring-inset, builds them,
+    // and asserts each one emitted a rule.
+    const srcRoot = path.join(__dirname, '..');
+    const candidates = new Set<string>();
+    for (const file of sourceFiles(srcRoot)) {
+      for (const chunk of stringChunks(fs.readFileSync(file, 'utf8'))) {
+        for (const token of chunk.text.split(/\s+/)) {
+          const utility = token.replace(/^!/, '').split(':').pop() ?? '';
+          if (token.includes(':') && (utility === 'focus-ring' || utility === 'focus-ring-inset')) candidates.add(token);
+        }
+      }
+    }
+    expect(candidates.size, `at least three distinct focus-ring candidates in src; found ${[...candidates].join(', ')}`).toBeGreaterThanOrEqual(3);
+    const out = await build([...candidates, 'focus-visible:focus-rung']);
+    // Negative control: a misspelt candidate emits nothing, so the per-candidate read can fail.
+    expect(out.includes('.focus-visible\\:focus-rung'), 'a misspelt candidate must emit no rule').toBe(false);
+    const missing = [...candidates].filter((c) => !out.includes(`.${c.replace(/:/g, '\\:')}`));
+    expect(missing, `focus-ring candidates in src that emit no rule:\n${missing.join('\n')}`).toEqual([]);
+  });
 });
 
 /** Every class token in an opening tag's className value (a string or a template literal). */

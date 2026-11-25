@@ -31,11 +31,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-  HOUSE_OFFSET_WIDTH_TOKEN,
   HOUSE_RING_TOKEN,
   UNPREFIXED_HALO_TOKEN,
-  declaredColorKeys,
-  judgeHalo,
   lineAt,
   sourceFiles,
   stringChunks,
@@ -72,13 +69,14 @@ const countOf = (haystack: string, needle: string): number =>
 // switchable to. Flipping this one character plus the rule/utilities IS the arm switch.
 const A2_ARM = 'A' as 'A' | 'B';
 
-/** The house ring, verbatim from UI-SPEC §5.7 (itself verbatim from `88-UI-SPEC.md` §7.2). */
-const HOUSE_RING = 'focus-visible:ring-2 focus-visible:ring-focus-ring';
-/** The full house string, including the offset the `.btn` family wears. */
-const HOUSE_RING_FULL =
-  'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
-/** Any ring at all — the token the anti-deletion floor counts. */
-const ANY_RING = 'focus-visible:ring-';
+/** The house ring: the two-tone focus-ring utility (owner pick O-1 = B, 2026-11-22; plan 89.6-12's utility). */
+// AMENDED Phase 89.6-13: was the UI-SPEC §5.7 box-shadow string (ring-2 plus ring-focus-ring);
+// owner pick O-1 = B replaced it with the utility. The arm logic below is unchanged.
+const HOUSE_RING = 'focus-visible:focus-ring';
+/** The full house string the `.btn` family wears (Button.tsx's one ring line). */
+const HOUSE_RING_FULL = 'focus:outline-hidden focus-visible:focus-ring';
+/** Any ring at all, the token the anti-deletion floor counts: a substring, so it also counts the inset utility. */
+const ANY_RING = 'focus-visible:focus-ring';
 
 /**
  * The CLOSED, ENUMERATED `.btn`-family ring holders — TEN of them, re-derived against the live
@@ -206,6 +204,11 @@ const CLOSED_FILES = new Set(BTN_FAMILY_RING_SITES.map((s) => s.file));
  * occurrences that are each their own control's SOLE focus indicator. A drop to anywhere near
  * zero reds hard.
  */
+// AMENDED Phase 89.6-13: after the ring codemod each control carries ONE utility token where it
+// carried three or four box-shadow tokens, so the occurrence count fell by construction. The two
+// floors are re-measured on the utility and held at 72% of the live count, the ratio the old floor
+// sat at (150 of 208). Measured 2026-11-24 at the commit that ran the codemod:
+//     outside the closed list: MEASURED_OCC occurrences across MEASURED_FILES files
 const RING_FLOOR_OCCURRENCES = 150;
 const RING_FLOOR_FILES = 30;
 
@@ -331,9 +334,9 @@ describe('Phase 88.6 — the focus ring has exactly one home (UI-SPEC §12 A-2)'
       present,
       `ARM ${A2_ARM}: exactly one ring mechanism must exist for the \`.btn\` family. ` +
         `globals.css \`.btn:focus-visible\` rule: ${globalsSide}; \`Button.tsx\` cva ring: ${primitiveSide}. ` +
-        'BOTH present paints two independent rings (a CSS `outline` and a Tailwind `ring-*` ' +
-        'box-shadow are different properties and neither suppresses the other). BOTH absent is a ' +
-        'mass WCAG 2.4.7 (Level A) failure across every `.btn` in the app.',
+        'BOTH present means a global outline rule beside the focus-ring utility: two mechanisms ' +
+        'for one decision, and an unlayered global rule cannot be overridden per call site. BOTH ' +
+        'absent is a mass WCAG 2.4.7 (Level A) failure across every `.btn` in the app.',
     ).toBe(1);
   });
 
@@ -446,17 +449,17 @@ describe('Phase 88.6 — the focus ring has exactly one home (UI-SPEC §12 A-2)'
 
     expect(
       occurrences,
-      `Only ${occurrences} \`focus-visible:ring-\` occurrences remain OUTSIDE the closed ` +
-        `\`.btn\`-family list (measured 208 across 38 files on 2026-09-15). Each of these is its ` +
-        'own control\'s SOLE focus indicator — an Input, a Tab, a Switch, a KebabMenu trigger. ' +
+      `Only ${occurrences} \`${ANY_RING}\` occurrences remain OUTSIDE the closed ` +
+        `\`.btn\`-family list (floor ${RING_FLOOR_OCCURRENCES}, 72% of the count measured at the codemod). ` +
+        'Each utility is its own control\'s SOLE focus indicator: an Input, a Tab, a Switch, a KebabMenu trigger. ' +
         'A drop to near zero is the ARM B mistake shape: emptying a `btn`-regex-derived set ' +
         'instead of the enumerated ten.',
     ).toBeGreaterThanOrEqual(RING_FLOOR_OCCURRENCES);
 
     expect(
       outside.length,
-      `Only ${outside.length} files outside the closed list still carry a ring (measured 38 on ` +
-        '2026-09-15). See the occurrence floor above for why this is a floor and not an equality.',
+      `Only ${outside.length} files outside the closed list still carry the utility (floor ` +
+        `${RING_FLOOR_FILES}). See the occurrence floor above for why this is a floor and not an equality.`,
     ).toBeGreaterThanOrEqual(RING_FLOOR_FILES);
   });
 });
@@ -662,99 +665,91 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
   });
 });
 
-// Phase 88.9 halo contract, owner option (a): every house offset ring paints its 2px gap in the
-// colour of the surface under the control, never the default white ring-offset colour.
+// Phase 89.6 one ring (owner pick O-1 = B, 2026-11-22: "Two-colour ring, 2px: a thin inner band
+// plus a darker outer ring; passes all 96").
 //
-// WHAT TEST 12 PINS: every comment-stripped string chunk in src that draws the house ring (a
-// whole ring-focus-ring token beside a whole ring-offset-1 or ring-offset-2 token) also declares
-// a halo, and nothing in src spells a halo unprefixed. It judges WHOLE whitespace-split tokens
-// through the shared reads in src/test-utils/sourceScan.ts ("export function judgeHalo("), the
-// same reads the haloCensus test (plan 88.9-15 Task 2) judges Button call sites by.
+// WHAT TEST 12 PINS: no comment-stripped string chunk in src draws a box-shadow focus ring or a
+// halo. Any token whose variant chain ends with focus-visible: (peer- and group- leads, and any
+// variants before them, included) followed by ring or ring-<anything> is the old ring family:
+// ring-2, ring-inset, ring-offset-*, ring-focus-ring, ring-ring. An unprefixed
+// ring-offset-<colour> paints at rest and is gone too. Every keyboard ring is the two-tone
+// utility (focus-visible:focus-ring, focus-visible:focus-ring-inset or
+// peer-focus-visible:focus-ring), and a population floor of utility chunks keeps the read from
+// passing on an empty tree. Tokens are judged WHOLE, never as substrings.
 //
-// WHAT IT CANNOT JUDGE: which ground a ring actually sits on. It proves a halo is declared, on
-// the ring's own chain, opaque and with a key that emits CSS; it cannot prove the key is the
-// RIGHT surface. That is the haloCensus test, the census evidence (88.9-HALO-CENSUS.md) and the
-// rendered contrast gate. It also never sees a Button call site whose chunk holds no ring token
-// (the ring lives in the Button cva base); those are haloCensus rows.
+// WHAT IT CANNOT JUDGE: where the ring lands. Clipping by an ancestor, the ring's geometry and
+// its radius are plan 89.6-31's measurements; the colours are the C40 pins in tokenContrast and
+// focusRingUtility's compile reads.
 //
-// WHY EACH LIMB EXISTS (each one a token that compiles, paints nothing, and reds nothing else):
-// (a) the halo must carry the ring's own variant chain, read from its ring-focus-ring token. A
-//     bare focus-visible: halo beside the FeedbackForm dropzone's peer-focus-visible: ring never
-//     applies (focus sits on the sr-only peer input, not on the label), and a substring read
-//     would pass it because the peer spelling contains the bare one.
-// (b) an unprefixed ring-offset-<colour> paints at rest and is the losing spelling; the two
-//     exceptions are src/components/ui/dialog.tsx (the shadcn bridge vocabulary kept by
-//     DECISION Phase 88-05) and src/app/components/tutorial/simulated/ScheduleDemo.js (a
-//     tutorial demo highlight, not a house ring).
-// (c) the colour key must be declared as --color-<key>: in comment-stripped globals.css; an
-//     undeclared key (status-info-subtle) emits no CSS on tailwindcss 4, so the gap stays
-//     white. An alpha key (/NN) fails even when declared: a translucent halo lets the ring show
-//     through the gap (plan 88.9-02 / 88.9-14 opacity rule, a halo is always opaque).
-// (d) a dark: halo only ever twins a light halo; alone it leaves the light-mode gap white.
+// AMENDED Phase 89.6-13: the 88.9 halo contract (owner option (a)) is retired by owner pick
+// O-1 = B, 2026-11-22; the two-tone ring needs no per-ground halo. Its census test
+// (haloCensus.test.ts) and baseline (scripts/baselines/button-halos.json) were deleted in the same
+// commit, and the shared halo reads went with them.
 //
-// Interpolation: stringChunks emits each literal inside an interpolation as its own chunk, so a
-// per-arm site (one FULL literal per arm, plan 88.9-02's fleet rule) is judged arm by arm. A
-// limb (a) red on a chunk whose halo sits only in an interpolation means the site broke the
-// per-arm rule: rewrite that site as one full literal per arm, never one arm's halo for all.
-const HALO_EXCEPTIONS = new Set([
-  path.join('components', 'ui', 'dialog.tsx'),
-  path.join('app', 'components', 'tutorial', 'simulated', 'ScheduleDemo.js'),
-]);
-// POPULATION FLOOR, measured 2026-11-02 at FE 414b501 (plans 11-14 applied): 81 ring chunks
-// across 36 files. Measured by setting this floor to 99999 for one run of
-// npm --prefix periodictabletop run test -- src/app/cascadeOrder.test.ts
-// whose failure message prints the live count. Rings with no offset width (ring-inset, or no
-// ring-offset at all) paint no gap and are outside the population by construction.
-const HALO_POPULATION_FLOOR = 81;
+// Test helpers hold the old tokens as DATA (the reject list in src/test-utils/focusRingAssert.ts),
+// so the helper directory is outside the read. sourceFiles already skips it centrally (DECISION
+// Phase 88.6-44 (T-88.6-124) in src/test-utils/sourceScan.ts); the constant names the same
+// exclusion the ring codemod (scripts/ring-codemod.mjs) makes, so the two reads cannot drift.
+const TEST_HELPER_DIR = 'test-utils';
+// The one named allowance: hostGround.ts still emits per-ground halos for its five consumers.
+// Plan 89.6-38 deletes the file and this entry together.
+const RING_ALLOWANCE = new Set([path.join('components', 'ui', 'hostGround.ts')]);
+// An unprefixed ring-offset-<colour> allowed only here: a tutorial demo highlight, not a ring.
+const HALO_EXCEPTIONS = new Set([path.join('app', 'components', 'tutorial', 'simulated', 'ScheduleDemo.js')]);
+// POPULATION FLOOR, 72% of the utility chunks measured 2026-11-24 at the commit that ran the
+// codemod: MEASURED_CHUNKS chunks.
+const ONE_RING_POPULATION_FLOOR = 98;
+/** A whole token in the old box-shadow ring family on a focus-visible chain. */
+const OLD_RING_FAMILY = /(?:^|:)(?:peer-|group-)?focus-visible:ring(?:-\S*)?$/;
 
-describe('Phase 88.9 — the halo contract (owner option (a))', () => {
-  it('12. 88.9 halo — every house offset ring in src declares a surface halo, and none is spelled unprefixed', () => {
-    const declared = declaredColorKeys(readGlobals());
-    // Negative controls on the declared-key read: the three keys the fleet uses on hand-carried
-    // rings are declared, and the one plant (5) swaps in is not.
-    expect(declared.has('surface-card')).toBe(true);
-    expect(declared.has('surface-elevated')).toBe(true);
-    expect(declared.has('status-warning-subtle')).toBe(true);
-    expect(declared.has('status-info-subtle')).toBe(false);
+/** The offences one chunk's tokens carry under the one-ring rule. */
+function oneRingOffences(tokens: string[], haloExempt: boolean): string[] {
+  const out: string[] = [];
+  for (const t of tokens) {
+    if (OLD_RING_FAMILY.test(t)) out.push(`old ring token ${t}`);
+    else if (!haloExempt && UNPREFIXED_HALO_TOKEN.test(t)) out.push(`unprefixed halo ${t}`);
+  }
+  return out;
+}
+
+describe('Phase 89.6 — one keyboard ring (owner pick O-1 = B)', () => {
+  it('12. 89.6 one ring (O-1 B): no box-shadow focus ring and no halo remains in src; every ring is the two-tone utility', () => {
+    // Negative controls: a planted old ring and a planted halo are each flagged, and the utility is not.
+    expect(oneRingOffences(['p-2', 'focus-visible:ring-2'], false)).toEqual(['old ring token focus-visible:ring-2']);
+    expect(oneRingOffences(['x', 'focus-visible:ring-offset-surface-card'], false)).toEqual([
+      'old ring token focus-visible:ring-offset-surface-card',
+    ]);
+    expect(oneRingOffences(['md:peer-focus-visible:ring-inset'], false)).toHaveLength(1);
+    expect(oneRingOffences(['focus-visible:focus-ring', 'focus-visible:focus-ring-inset'], false)).toEqual([]);
+    expect(HOUSE_RING_TOKEN.test('peer-focus-visible:focus-ring')).toBe(true);
+    expect(HOUSE_RING_TOKEN.test('focus-visible:ring-focus-ring')).toBe(false);
 
     let population = 0;
     const offenders: string[] = [];
     for (const abs of sourceFiles(SRC)) {
       const rel = path.relative(SRC, abs);
+      if (rel.split(path.sep)[0] === TEST_HELPER_DIR || RING_ALLOWANCE.has(rel)) continue;
       const src = fs.readFileSync(abs, 'utf8');
       for (const c of stringChunks(src)) {
         const tokens = c.text.split(/\s+/).filter(Boolean);
-        const at = `${rel}:${lineAt(src, c.offset)}`;
-        if (!HALO_EXCEPTIONS.has(rel)) {
-          for (const t of tokens.filter((tok) => UNPREFIXED_HALO_TOKEN.test(tok))) {
-            offenders.push(`${at} limb (b): unprefixed ${t}`);
-          }
+        for (const o of oneRingOffences(tokens, HALO_EXCEPTIONS.has(rel))) {
+          offenders.push(`${rel}:${lineAt(src, c.offset)} ${o}`);
         }
-        if (!tokens.some((tok) => HOUSE_OFFSET_WIDTH_TOKEN.test(tok))) continue;
-        const chains = new Set(
-          tokens.map((tok) => HOUSE_RING_TOKEN.exec(tok)?.[1]).filter((ch): ch is string => !!ch),
-        );
-        if (chains.size === 0) continue;
-        population += 1;
-        for (const chain of chains) {
-          for (const f of judgeHalo(c.text, chain, declared)) {
-            offenders.push(`${at} limb (${f.limb}): ${f.detail}`);
-          }
-        }
+        if (tokens.some((tok) => HOUSE_RING_TOKEN.test(tok))) population += 1;
       }
     }
 
     expect(
       offenders,
-      'A house offset ring breaks the 88.9 halo contract. Give it a halo on its own variant ' +
-        'chain whose key is a declared, opaque surface (see the comment above this test):\n' +
+      'A box-shadow focus ring or a halo is back in src. Every keyboard ring is the two-tone ' +
+        'utility (see the comment above this test); run node scripts/ring-codemod.mjs --write:\n' +
         offenders.join('\n'),
     ).toEqual([]);
     expect(
       population,
-      `Only ${population} chunks draw the house offset ring (floor ${HALO_POPULATION_FLOOR}). A ` +
-        'drop means the population read stopped seeing rings, which passes every limb vacuously.',
-    ).toBeGreaterThanOrEqual(HALO_POPULATION_FLOOR);
+      `Only ${population} chunks carry the focus-ring utility (floor ${ONE_RING_POPULATION_FLOOR}). A ` +
+        'drop means controls lost their only keyboard indicator, or the read stopped seeing rings.',
+    ).toBeGreaterThanOrEqual(ONE_RING_POPULATION_FLOOR);
   });
 });
 

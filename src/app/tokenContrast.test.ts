@@ -1764,9 +1764,16 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
          `src/app/cascadeOrder.test.ts`'s exactly-one-ring gate. Nothing is dropped silently.
          Correct under BOTH A-2 arms — under ARM B the cva utilities are deleted and a global
          `.btn:focus-visible` rule owns the ring, which is likewise not in this slice. */
+      // AMENDED Phase 89.6-13 (owner pick O-1 = B, 2026-11-22): both branches read the two-tone
+      // utility as well as the old spelling, so the check cannot go blind when the ring codemod
+      // rewrites the box-shadow tokens. The legacy branch requires the utility; the primitive
+      // branch forbids any per-site ring, old spelling or utility.
+      const sliceTokens = slice.split(/[\s'"`]+/);
       if (legacy) {
-        expect(slice, `88.3-18 — the Share Game QR button in ${rel} still wears the legacy \`btn btn-accent\` string, so it must carry the house focus-visible ring string, like the Create-Event button it copies`).toContain('focus-visible:ring-focus-ring');
+        expect(sliceTokens, `88.3-18 — the Share Game QR button in ${rel} still wears the legacy \`btn btn-accent\` string, so it must carry the house focus ring (the focus-ring utility), like the Create-Event button it copies`).toContain('focus-visible:focus-ring');
       } else {
+        const utilityRing = sliceTokens.filter((t) => /focus-visible:focus-ring(?:-inset)?$/.test(t));
+        expect(utilityRing, `89.6-13 / A-2 — the Share Game QR button in ${rel} is a \`<Button>\`, so it must NOT carry a per-site focus-ring utility; the ring lives once in \`Button.tsx\`'s cva base. Found: ${utilityRing.join(' ') || '(none)'}`).toEqual([]);
         // AMENDED Phase 88.9-39 (owner pick B2a, R014 / B025): the per-site HALO override
         // `focus-visible:ring-offset-surface-group-halo` on EventDayModal's Share Game QR is the
         // 88.9-05 sanctioned call-site form (Button.tsx's A-2 amendment: a call site on another
