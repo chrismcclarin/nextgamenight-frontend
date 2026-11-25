@@ -584,3 +584,30 @@ describe('89.6-28 X42 — Share Game QR until the night is over', () => {
     expect(screen.queryByRole('button', { name: 'Share Game QR' })).toBeNull();
   });
 });
+
+// 89.6-28 R-C10: a read that resolves with no invite_url opens no QR box (it would encode nothing);
+// the existing failure arm runs instead, its toast and its log, with no new copy.
+describe('89.6-28 R-C10 — an empty invite_url opens no QR box', () => {
+  beforeEach(() => {
+    h.getEventInviteToken.mockReset();
+    toastSpies.error.mockClear();
+    loggerSpies.warn.mockClear();
+    qrProps.current = null;
+  });
+  afterEach(cleanup);
+
+  it.each([
+    ['undefined', {}],
+    ["''", { invite_url: '' }],
+  ])('invite_url %s: no QR dialog opens and the failure toast shows', async (_label, data) => {
+    h.getEventInviteToken.mockResolvedValue(data);
+    render(<EventDayModal selectedDay={selectedDay} onClose={vi.fn()} onEventClick={vi.fn()} />);
+    const user = userEvent.setup();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Share Game QR' }));
+    });
+    expect(toastSpies.error).toHaveBeenCalledTimes(1);
+    expect(loggerSpies.warn).toHaveBeenCalledWith('Failed to get game invite token', expect.any(Object));
+    expect(qrProps.current?.isOpen).toBe(false);
+  });
+});

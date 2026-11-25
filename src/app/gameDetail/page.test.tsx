@@ -195,7 +195,15 @@ vi.mock('@/app/components/GameSuggestionCard', () => ({
     </button>
   ),
 }));
-vi.mock('@/app/components/QRCodeModal', () => ({ default: () => null }));
+// 89.6-28 R-C10: the stub still renders nothing, but records whether the QR dialog was ever opened
+// (the EventDayModal.test.tsx qrProps idiom), so an empty invite_url can be shown to open no box.
+const qrOpened = vi.hoisted(() => ({ count: 0 }));
+vi.mock('@/app/components/QRCodeModal', () => ({
+  default: (props: { isOpen?: boolean }) => {
+    if (props.isOpen) qrOpened.count += 1;
+    return null;
+  },
+}));
 vi.mock('@/app/components/TimezoneNudgeBanner', () => ({ default: () => null }));
 vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
 // StarRatingPicker is deliberately NOT stubbed (plan 88-20). It is the one child
@@ -2792,6 +2800,40 @@ describe('89.6-28 X42 — Share Game QR until the night is over', () => {
   });
 });
 
+// 89.6-28 R-C10: a read that resolves with no invite_url opens no QR box (it would encode nothing);
+// the existing failure arm runs instead, its log and its toast, with no new copy.
+describe('89.6-28 R-C10 — an empty invite_url opens no QR box', () => {
+  beforeEach(() => {
+    pinClockBeforeTheNight();
+    qrOpened.count = 0;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each([
+    ['undefined', {}],
+    ["''", { invite_url: '' }],
+  ])('invite_url %s: no QR dialog opens and the failure toast shows', async (_label, data) => {
+    const toastError = vi.spyOn(toast, 'error').mockImplementation(() => 'id');
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      (eventsAPI.getEventInviteToken as Mock).mockResolvedValueOnce(data);
+      renderEventDetail({ role: 'member' });
+      const share = await screen.findByRole('button', { name: 'Share Game QR' });
+      await act(async () => {
+        share.click();
+      });
+      await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+      expect(warn).toHaveBeenCalledWith('Failed to get game invite token:', expect.any(Object));
+      expect(qrOpened.count).toBe(0);
+    } finally {
+      toastError.mockRestore();
+      warn.mockRestore();
+    }
+  });
+});
+
 describe('gameDetail event-actions kebab: the three authorization gates (D56)', () => {
   it.each(['owner', 'admin'] as const)(
     'gives a group %s the Cancel item and NOT the Leave item',
@@ -3143,6 +3185,8 @@ import { auditFormControls } from '../../test-utils/formControlAudit';
 // beside-retry form (messageBesideRetry over the register line).
 import { getFetchErrorMessage, messageBesideRetry } from '@/components/ui/useFetchErrorState';
 import { signInLatchKey } from '@/lib/hooks/useSignInRedirect';
+import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
 const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };

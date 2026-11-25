@@ -4,12 +4,14 @@
 // migrated modal to the Radix-backed a11y contract: it exposes role=dialog and
 // returns zero axe violations rendered open at size="sm".
 import * as React from 'react';
-import { act, render, screen, cleanup, waitFor } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { logger } from '@/lib/logger';
 import QRCodeModal from './QRCodeModal';
+import { MODAL_FOOTER_CLASS, MODAL_HEADER_CLASS } from './Modal';
+import { QRCodeSVG } from 'qrcode.react';
 import { FOCUS_RING_SOURCE_TOKEN, expectFocusRingEdge } from '@/test-utils/focusRingAssert';
 
 afterEach(() => {
@@ -54,6 +56,8 @@ describe('QRCodeModal (migrated onto <Modal size="sm">)', () => {
     );
     // The freeform QR modal keeps its original two close affordances: the
     // top-right X (aria-label="Close") and the full-width "Close" button.
+    // AMENDED Phase 89.6-28 (O-2 B): the X is now Modal.Header's shared close and the button
+    // sits in Modal.Footer; still exactly two Close controls.
     expect(
       screen.getAllByRole('button', { name: /close/i })
     ).toHaveLength(2);
@@ -66,6 +70,8 @@ describe('QRCodeModal (migrated onto <Modal size="sm">)', () => {
   // AMENDED Phase 88.9-29 (owner pick E8b, 88.9-PICKS-B4.json, 2026-11-06): the text glyph is
   // now the stroked 20px X icon, which has no line-box to ride, so the leading-none read is
   // replaced by the icon read; the 44px box and the inset reads stay.
+  // AMENDED Phase 89.6-28 (O-2 B): the bespoke absolute X is retired for Modal.Header's shared close,
+  // so the inset reads become 'it is the header close' (data-modal-close, no absolute inset).
   it('centers its close glyph optically and sits on the fleet header inset', () => {
     render(
       <QRCodeModal
@@ -83,10 +89,10 @@ describe('QRCodeModal (migrated onto <Modal size="sm">)', () => {
     expect(svgs[0].getAttribute('width')).toBe('20');
     expect(svgs[0].getAttribute('aria-hidden')).toBe('true');
     expect((corner.textContent ?? '').trim()).toBe('');
-    expect(corner.className).toContain('min-h-11');
-    expect(corner.className).toContain('min-w-11');
-    expect(corner.className).toContain('right-3');
-    expect(corner.className).toContain('md:right-6');
+    expect(corner).toHaveAttribute('data-modal-close');
+    expect(corner.className).toContain('min-h-[44px]');
+    expect(corner.className).toContain('min-w-[44px]');
+    expect(corner.className).not.toMatch(/(^|\s)(absolute|right-3|md:right-6)(\s|$)/);
   });
 });
 
@@ -411,7 +417,9 @@ describe('QRCodeModal — controls (88.6.1-12, D-27, W037)', () => {
     const names = Array.from(screen.getByRole('dialog').querySelectorAll('button')).map(
       (b) => b.getAttribute('aria-label') ?? b.textContent?.trim()
     );
-    expect(names).toEqual(['Close', 'Copy Invite Link', 'Close']);
+    // AMENDED Phase 89.6-28 (O-2 B): the header close first, then the footer's Close and Copy
+    // Invite Link in that order (DECISION Phase 89.6-28 (O-2)).
+    expect(names).toEqual(['Close', 'Close', 'Copy Invite Link']);
     expect(screen.queryByRole('button', { name: /reset/i })).toBeNull();
   });
 
@@ -427,5 +435,117 @@ describe('QRCodeModal — controls (88.6.1-12, D-27, W037)', () => {
     expect(buttons[0]).toHaveAccessibleName('Close');
     expect(buttons[0].classList.contains('focus:outline-hidden')).toBe(true);
     expectFocusRingEdge(buttons[0], 'focus-visible:ring-ring', 'the corner close'); // ring-literal: the Modal close's bridge colour, the edge expect's colour argument (ignored after plan 89.6-13's flip)
+  });
+});
+
+// 89.6-28 O-2 B (owner pick, 2026-11-22: 'The standard dialog layout: title left with the x on its
+// line, the code with a full white border, the caption, then Close and Copy Invite Link 12px
+// apart'). The box is Modal.Header / Modal.Body / Modal.Footer; the code keeps a 4-module quiet
+// zone and stays dark on white; the failure region is EMPTY (no child) until a copy is refused
+// (C9); a refused copy scrolls the failure block into view and leaves focus on Copy (CR-1).
+const CAPTION = 'Scan with a phone camera to join this game night.';
+
+function viewBoxModules(svg: Element | null): number {
+  const parts = (svg?.getAttribute('viewBox') ?? '').trim().split(/\s+/);
+  return Number(parts[2]);
+}
+
+describe('89.6-28 O-2 B — the standard dialog', () => {
+  it('the title sits on Modal.Header beside the one shared close; the footer Close is the only other', () => {
+    render(dialogAt(true));
+    const dialog = screen.getByRole('dialog');
+    const title = within(dialog).getByRole('heading', { name: 'Game Night Invite QR' });
+    const closes = within(dialog).getAllByRole('button', { name: 'Close' });
+    expect(closes).toHaveLength(2);
+    const iconOnly = closes.filter((b) => (b.textContent ?? '').trim() === '');
+    expect(iconOnly).toHaveLength(1);
+    expect(iconOnly[0]).toHaveAttribute('data-modal-close');
+    expect(iconOnly[0].parentElement).toBe(title.parentElement);
+    expect(title.parentElement?.className).toBe(MODAL_HEADER_CLASS);
+    expect(dialog).toHaveAccessibleName('Game Night Invite QR');
+  });
+
+  it('the code keeps a 4-module quiet zone each side and the default dark-on-white colours', () => {
+    const { container: ref } = render(<QRCodeSVG value={INVITE_URL} size={200} level="M" marginSize={0} />);
+    const bare = viewBoxModules(ref.querySelector('svg'));
+    cleanup();
+    render(dialogAt(true));
+    const svg = screen.getByRole('dialog').querySelector('svg:has(> title)');
+    expect(svg).not.toBeNull();
+    expect(viewBoxModules(svg)).toBe(bare + 8);
+    const fills = Array.from(svg?.querySelectorAll('path') ?? []).map((path) => path.getAttribute('fill')?.toUpperCase());
+    expect(fills).toEqual(['#FFFFFF', '#000000']);
+  });
+
+  it('the caption renders under the code', () => {
+    render(dialogAt(true));
+    const dialog = screen.getByRole('dialog');
+    const caption = within(dialog).getByText(CAPTION);
+    const svg = dialog.querySelector('svg:has(> title)') as Element;
+    expect(svg.compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('Modal.Footer holds Close then Copy Invite Link, neither with a margin or width of its own', () => {
+    render(dialogAt(true));
+    const dialog = screen.getByRole('dialog');
+    const copy = within(dialog).getByRole('button', { name: 'Copy Invite Link' });
+    const footer = copy.parentElement as HTMLElement;
+    expect(footer.className).toBe(MODAL_FOOTER_CLASS);
+    const names = Array.from(footer.querySelectorAll('button')).map((b) => b.textContent?.trim());
+    expect(names).toEqual(['Close', 'Copy Invite Link']);
+    for (const button of Array.from(footer.querySelectorAll('button'))) {
+      expect(button.className).not.toMatch(/(^|\s)(mb-3|w-full)(\s|$)/);
+    }
+  });
+
+  it('with no copy failure the failure region has no child; a refused copy shows the sentence and the link, and a repeat re-announces', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+    stubClipboard(writeText);
+    vi.spyOn(logger, 'info').mockImplementation(() => {});
+    render(dialogAt(true));
+    const fail = failRegion();
+    expect(fail.children).toHaveLength(0);
+    expect(fail).toHaveClass('sr-only');
+
+    await user.click(screen.getByRole('button', { name: 'Copy Invite Link' }));
+    await waitFor(() => expect(fail.textContent).toBe(COPY_FAILED));
+    const first = fail.firstElementChild;
+    expect(screen.getByRole('link', { name: INVITE_URL })).toBeInTheDocument();
+    expect(fail.contains(screen.getByRole('link', { name: INVITE_URL }))).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: 'Copy Invite Link' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fail.firstElementChild).not.toBe(first));
+    expect(fail.textContent).toBe(COPY_FAILED);
+  });
+
+  it('a refused copy scrolls the failure block into view, once per failure', async () => {
+    const proto = Element.prototype as unknown as { scrollIntoView?: (arg?: unknown) => void };
+    const had = proto.scrollIntoView;
+    const calls: Array<{ el: Element; arg: unknown }> = [];
+    proto.scrollIntoView = function (this: Element, arg?: unknown) {
+      calls.push({ el: this, arg });
+    };
+    try {
+      const user = userEvent.setup();
+      stubClipboard(vi.fn().mockRejectedValue(new Error('denied')));
+      vi.spyOn(logger, 'info').mockImplementation(() => {});
+      render(dialogAt(true));
+      const copy = screen.getByRole('button', { name: 'Copy Invite Link' });
+      await user.click(copy);
+      await waitFor(() => expect(failRegion().textContent).toBe(COPY_FAILED));
+      await user.click(copy);
+      await waitFor(() => expect(calls.filter((c) => failRegion().parentElement === c.el)).toHaveLength(2));
+      const own = calls.filter((c) => failRegion().parentElement === c.el);
+      for (const call of own) expect(call.arg).toEqual({ block: 'nearest' });
+      const block = own[0].el;
+      expect(block.contains(failRegion())).toBe(true);
+      expect(block.contains(screen.getByRole('link', { name: INVITE_URL }))).toBe(true);
+      expect(document.activeElement).toBe(copy);
+    } finally {
+      if (had) proto.scrollIntoView = had;
+      else delete proto.scrollIntoView;
+    }
   });
 });
