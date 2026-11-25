@@ -718,6 +718,45 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
   });
 
+  it('89.6 R8 C40 header scope: the header ring bands measure at least 9:1 against each other and the outer ring at least 3:1 on the header ground', () => {
+    // The header chrome is dark in both themes, so it scopes the ring pair to the dark-theme values
+    // (owner pick O-1 = B: 'dark and the header: purple-950 inside, amber-400 outside'). The scope
+    // is an arbitrary-property class on two sites in src/app/Header.js, read here from the
+    // comment-stripped source and resolved through the palette, so the test measures the values the
+    // header actually sets. Measured 2026-11-24, unrounded: amber-400 on purple-950 10.1295;
+    // amber-400 on the light-theme header warm-800 9.0044, on the dark-theme header warm-900 10.7630.
+    //
+    // RED shape: before the header carries the pair, zero sites are found.
+    const header = withoutComments(fs.readFileSync(path.join(__dirname, 'Header.js'), 'utf8'));
+    const scope = (prop: string) =>
+      [...header.matchAll(new RegExp(`\\[${prop}:var\\((--[a-z0-9-]+)\\)\\]`, 'g'))].map((m) => m[1]);
+    const outers = scope('--focus-ring-outer');
+    const inners = scope('--focus-ring-inner');
+    expect(outers, 'C40 header: expected exactly two sites scoping --focus-ring-outer in Header.js').toHaveLength(2);
+    expect(inners, 'C40 header: expected exactly two sites scoping --focus-ring-inner in Header.js').toHaveLength(2);
+    // The picked pair, by name, at both sites.
+    expect(outers, 'C40 header: both sites scope the outer ring to amber-400').toEqual(['--amber-400', '--amber-400']);
+    expect(inners, 'C40 header: both sites scope the inner band to purple-950').toEqual(['--purple-950', '--purple-950']);
+    const req = 'R8 C40 header scope (89.6) / W3C C40 and 2.4.11';
+    for (let site = 0; site < 2; site += 1) {
+      for (const theme of ['light', 'dark'] as const) {
+        const outer = resolve(theme, outers[site]);
+        const inner = resolve(theme, inners[site]);
+        const apart = ratioHex(outer, inner, `${req} site ${site + 1}`);
+        expect(
+          apart,
+          `${req} — [${theme}] site ${site + 1}: outer ${outers[site]} (${outer}) on inner ${inners[site]} (${inner}) measures ${apart.toFixed(4)}:1, floor 9.00:1`,
+        ).toBeGreaterThanOrEqual(9.0);
+        const ground = resolve(theme, '--color-bg-header');
+        const onGround = ratioHex(outer, ground, `${req} site ${site + 1} on the header`);
+        expect(
+          onGround,
+          `${req} — [${theme}] site ${site + 1}: outer ${outers[site]} (${outer}) on --color-bg-header (${ground}) measures ${onGround.toFixed(4)}:1, floor 3.00:1`,
+        ).toBeGreaterThanOrEqual(3.0);
+      }
+    }
+  });
+
   // ===================================================================================
   // Req 3 — shadows (UI-SPEC §5.4)
   // ===================================================================================

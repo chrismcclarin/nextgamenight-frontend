@@ -19,7 +19,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { withoutComments } from '../test-utils/sourceScan';
+import { lineAt, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const GLOBALS = path.join(__dirname, 'globals.css');
 const raw = fs.readFileSync(GLOBALS, 'utf8');
@@ -198,6 +198,24 @@ describe('Phase 89.6-12 — the two-tone focus-ring utilities (owner pick O-1 = 
         got,
         `${name} box-shadow slots [${got.join(', ')}] must equal the shadow-md composite [${reference.join(', ')}] in order`,
       ).toEqual(reference);
+    }
+  });
+
+  it('6. both header sites keep the old ring scope beside the new pair until plan 89.6-13', () => {
+    // The header chrome is dark in both themes, so it scopes the pair to amber-400 outside and
+    // purple-950 inside. The old ring scope stays beside it: removing it now would recolour the
+    // rings no plan has converted yet. Plan 89.6-13 converts the consumers and removes it.
+    const header = fs.readFileSync(path.join(__dirname, 'Header.js'), 'utf8');
+    const sites = stringChunks(header).filter((chunk) => chunk.text.includes('[--ring:var(--amber-400)]'));
+    expect(sites, 'Header.js: expected exactly two class strings carrying the old ring scope').toHaveLength(2);
+    for (const site of sites) {
+      const line = lineAt(header, site.offset);
+      expect(site.text, `Header.js line ${line}: the new outer scope must sit beside the old one`).toContain(
+        '[--focus-ring-outer:var(--amber-400)]',
+      );
+      expect(site.text, `Header.js line ${line}: the new inner scope must sit beside the old one`).toContain(
+        '[--focus-ring-inner:var(--purple-950)]',
+      );
     }
   });
 });
