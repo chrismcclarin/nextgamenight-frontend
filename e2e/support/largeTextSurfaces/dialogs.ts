@@ -408,13 +408,57 @@ const floatingFeedbackExtras: NonNullable<SurfaceRow['extras']> = async (page: P
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
+// D10: Report Bug or Suggest Feature, opened from the signed-in footer, the path of
+// e2e/feedback-form-phone.spec.ts ("async function openReportBug").
+const reportBug = (page: Page): Locator => page.getByRole('dialog', { name: 'Report Bug or Suggest Feature', exact: true });
+async function openReportBug(page: Page): Promise<Locator> {
+  await page.goto('/');
+  const trigger = page.getByRole('button', { name: 'Report bug or suggest feature' }).first();
+  await trigger.waitFor({ state: 'visible', timeout: 15_000 });
+  await trigger.click();
+  const dialog = reportBug(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  return dialog;
+}
+const reachReportBug: SurfaceRow['reach'] = async (page) => {
+  const dialog = await openReportBug(page);
+  return { root: dialog, dialog };
+};
+
+// D10-attached: a screenshot attached, with a long phone-camera file name. The eight PNG signature
+// bytes are enough: the form checks only the type and the size. Remove is NEVER pressed.
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const ATTACHED_NAME = 'IMG_20261122_093015_large_text_report.png';
+const reachAttached: SurfaceRow['reach'] = async (page) => {
+  const dialog = await openReportBug(page);
+  await dialog.locator('input[type="file"]').setInputFiles({ name: ATTACHED_NAME, mimeType: 'image/png', buffer: PNG_SIGNATURE });
+  await dialog.getByText(/^Screenshot attached:/).waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: dialog, dialog };
+};
+
+// D10-attached extras, the 200% and font32 cells: the Remove screenshot box is the held 44px
+// lozenge (its glyph follows text up to 32px, so the box does not grow).
+const attachedExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  if (cell.mode === '100') return;
+  const remove = reportBug(page).getByRole('button', { name: 'Remove screenshot', exact: true });
+  const box = await remove.evaluate((el) => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height }; });
+  say(`D10-attached ${cell.id} remove=${r2(box.width)}x${r2(box.height)}`);
+  const problems: string[] = [];
+  if (Math.abs(box.height - 44) > 0.5) problems.push(`D10-attached ${cell.id}: the Remove screenshot box is ${r2(box.height)}px tall, expected 44 (O-M4 Fixed+)`);
+  if (box.width < 44 - 0.5) problems.push(`D10-attached ${cell.id}: the Remove screenshot box is ${r2(box.width)}px wide, under 44`);
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'D07', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: customizeGroupExtras },
   { id: 'D07-leave', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'leave-confirm', reach: reachLeaveConfirm, answers: answerPromptSettings },
   { id: 'D08', census: 'D08', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachDeleteConfirm, answers: answerPromptSettings, extras: deleteConfirmExtras },
   { id: 'D09', census: 'D09', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachSendFeedback },
   { id: 'D09-error', census: 'D09', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'send-failed', reach: reachSendFailed },
-  { id: 'D10', census: 'D10', kind: 'dialog', owner: '89.6-25', status: 'pending' },
+  { id: 'D10', census: 'D10', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachReportBug },
+  { id: 'D10-attached', census: 'D10', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'screenshot-attached', reach: reachAttached, extras: attachedExtras },
+  // pending: D11 until the orchestrator rules (plan 89.6-25 STOP): the thank-you closes itself after two seconds, and the
+  // planned hold (the page clock paused) also stops requestAnimationFrame, which every cell's settle waits on.
   { id: 'D11', census: 'D11', kind: 'dialog', owner: '89.6-25', status: 'pending' },
   // pending: D24 until 89.6-41 (the planning page scrolls sideways at 320 / 200% until 89.6-20; plan 41 depends on 20 and on this plan)
   { id: 'D24', census: 'D24', kind: 'dialog', owner: '89.6-41', status: 'pending' },
