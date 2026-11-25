@@ -308,7 +308,7 @@ const reachCreateBusy: SurfaceRow['reach'] = async (page) => {
   return { root: dialog, dialog };
 };
 
-// D04: the phone Calendar sheet (src/app/userHome/UserHomePage.js ("title=\"Calendar\"")), opened
+// D04: the phone Calendar sheet (src/app/userHome/UserHomePage.js ("Req 11b (UI-SPEC S4): the phone calendar sheet")), opened
 // from the phone button named Calendar. The button is hidden from md up (DECISION Phase 88.6-27
 // (W72)), so the row is reached at 375 x 667 (reachAt); the sheet carries no md:hidden of its own
 // (the Req 11b note in UserHomePage.js: an open dialog is never hidden by width), so it stays open

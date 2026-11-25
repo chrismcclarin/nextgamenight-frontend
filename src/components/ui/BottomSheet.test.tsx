@@ -436,3 +436,35 @@ describe('88.9-52 (R4 L3b): the sheet body holds the absolute boxes a consumer p
     }
   });
 });
+
+// Phase 89.6-40 (CAL, pick S2 with S1 and O-M4 Fixed+): src/components/ui/BottomSheet.tsx ("DECISION Phase 89.6-40 (CAL)").
+// jsdom lays nothing out, so this reads the class tokens the large-text sweep's D04 row measures
+// in a browser (e2e/support/largeTextSurfaces/home.ts ("D04 extras, in every cell")).
+describe('BottomSheet at large text (89.6-40, CAL)', () => {
+  it('89.6-40 CAL: the sheet is the container named sheet, its header wraps the title out above the close, and the close icon follows text', () => {
+    render(
+      <BottomSheet open onClose={() => {}} title={TITLE} titleSize="display">
+        <p>Friday game night</p>
+      </BottomSheet>
+    );
+    const sheet = screen.getByRole('dialog', { name: TITLE });
+    const tokens = (element: Element | null): string[] => (element?.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+    expect(tokens(sheet), 'the panel is the container named sheet').toContain('@container/sheet');
+    const heading = sheet.querySelector('h2');
+    const header = heading?.parentElement ?? null;
+    for (const token of ['flex-wrap-reverse', 'px-edge-page']) {
+      expect(tokens(header), `the header carries ${token}`).toContain(token);
+    }
+    expect(tokens(header), 'the header side padding is no longer px-4').not.toContain('px-4');
+    for (const token of ['max-w-full', 'wrap-break-word', 'text-3xl']) {
+      expect(tokens(heading), `the title carries ${token}`).toContain(token);
+    }
+    const close = screen.getByRole('button', { name: 'Close' });
+    expect(tokens(close), 'the close is pushed to the end of its line').toContain('ml-auto');
+    const svg = close.querySelector('svg');
+    expect(svg, 'the close holds an icon').not.toBeNull();
+    expect(svg, 'the close icon follows the text size (the Icon followText marker)').toHaveAttribute('data-follow-text');
+    // The inline min() width itself is dropped by jsdom (src/components/ui/Icon.tsx ("an empty marker a unit test can see")); the marker stands for it.
+    expect(tokens(svg), 'the close icon no longer carries the rem h-5 / w-5 size').not.toContain('h-5');
+  });
+});

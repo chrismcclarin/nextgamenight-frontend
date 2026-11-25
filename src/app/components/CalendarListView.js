@@ -621,9 +621,16 @@ export default function CalendarListView({
      as Modal's own src/app/components/Modal.tsx ("THE OTHER SIDE, now closed (historical)") records; changing this back to `vh` re-opens D-06 AND re-creates the divergence.
 
      `min-h-0` is load-bearing: without it a flex child refuses to shrink below its content and
-     the list overflows the sheet instead of scrolling inside it. */
+     the list overflows the sheet instead of scrolling inside it.
+
+     AMENDED Phase 89.6-40 (CAL): below a 12rem sheet width the region stops being its own scroll
+     box and the sheet body scrolls the Next game night card and the list as one (pick CAL S2); at
+     normal text on a phone the flex fill and its own scroll stand (the 211px box is kept: the CAL
+     card read, lane D's keep). The shell then takes its content height and does not shrink (h-auto,
+     flex-none), and the region gives up its own scroll, fill and cap (overflow-visible, flex-none,
+     max-h-none): src/components/ui/BottomSheet.tsx ("DECISION Phase 89.6-40 (CAL)"). */
   const shellClassName = isSheet
-    ? 'space-y-4 flex h-full min-h-0 flex-col'
+    ? 'space-y-4 flex h-full min-h-0 flex-col @max-[12rem]/sheet:h-auto @max-[12rem]/sheet:flex-none'
     : 'space-y-4';
   // Both arms pad the region's scroll position at the top by 3.5rem (the 44px header, the 4px a
   // row's ring reaches above it, 8px of air; rem, so it grows with the text like the header's
@@ -634,7 +641,7 @@ export default function CalendarListView({
   // 0.25rem of pad, the 1px rule and the 0.5rem gap (33px at 100%; 36px given). Chosen OVER a
   // script that scrolls the heading into view (the X25a DECISION rejects a focus handler).
   const scrollRegionClassName = isSheet
-    ? 'relative overflow-y-auto pr-1 min-h-0 flex-1 max-h-[85dvh] scroll-pt-23'
+    ? 'relative overflow-y-auto pr-1 min-h-0 flex-1 max-h-[85dvh] scroll-pt-23 @max-[12rem]/sheet:overflow-visible @max-[12rem]/sheet:flex-none @max-[12rem]/sheet:max-h-none'
     : 'relative overflow-y-auto pr-1 scroll-pt-23';
   // Inline height only on the desktop arms — the sheet arm is sized by flex.
   const scrollRegionStyle = isSheet ? undefined : { height: containerHeight };

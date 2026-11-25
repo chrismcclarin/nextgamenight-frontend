@@ -56,8 +56,6 @@
  */
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { X } from 'lucide-react';
-
 import { Button } from '@/components/ui/Button';
 import {
   Dialog,
@@ -68,6 +66,7 @@ import {
   handleDialogCloseAutoFocus,
   recordDialogOpener,
 } from '@/components/ui/dialog';
+import { Icon } from '@/components/ui/Icon';
 import { DialogAnnouncer } from '@/components/ui/RootAnnouncer';
 import { cn } from '@/lib/cn';
 
@@ -120,7 +119,10 @@ const HEIGHT_CLASS: Record<BottomSheetHeight, string> = {
    by 88.9-42). The display string re-states leading-tight AFTER text-3xl on purpose:
    tailwind-merge drops the base's leading when a size is merged
    (src/components/ui/dialog.tsx ("DECISION Phase 88.9-29 C6a")). Merging these is a decision,
-   not a cleanup. */
+   not a cleanup.
+   AMENDED Phase 89.6-40 (CAL): the display rung stands; at large text the close and the title
+   stack (the close on its own top row at the right, the title whole below it) instead of the
+   title pushing the close off screen. */
 const TITLE_SIZE_CLASS: Record<BottomSheetTitleSize, string> = {
   heading: 'text-content-primary',
   display: 'text-3xl leading-tight text-content-primary',
@@ -277,6 +279,8 @@ const BottomSheet = React.forwardRef<
                would be a new interaction, not a snap. Measured before editing: ONE
                `shadow-` occurrence in this file. Reverting to the alias is a decision. */
             'fixed inset-x-0 bottom-0 z-50 flex w-full flex-col overflow-hidden rounded-t-[12px] border-t border-line bg-surface-card shadow-theme-lg',
+            // The container named sheet: see the CAL marker at the header below.
+            '@container/sheet',
             // `duration-200` / `ease-out` feed tw-animate-css's --tw-duration
             // and --tw-ease, which is what its enter/exit keyframes read.
             'duration-200 ease-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0',
@@ -290,17 +294,33 @@ const BottomSheet = React.forwardRef<
         >
           {/* Header: the DialogTitle rung (20px/700, leading-tight, the same rung
               `Modal.Header`'s title takes) or the titleSize pass-through's display rung, on the
-              body's horizontal scale, plus the close control. */}
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-2">
-            <DialogTitle className={TITLE_SIZE_CLASS[titleSize]}>
+              body's horizontal scale, plus the close control.
+              DECISION Phase 89.6-40 (CAL): owner pick CAL = S2 (2026-11-22: 'At large text on a
+              phone the Next game night card and the list scroll together as one, so every night
+              can be reached'), with S1 (the x back on screen, a plain fix): GR, the governing rule
+              (owner, 2026-11-22: 'A row stays a row while everything in it fits whole. When it
+              does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking.
+              Scrolling down is fine; scrolling sideways is not.'): the header wraps (the close on
+              its own top row at the right, the title whole below it, the T1 form of the Modal
+              header: src/app/components/Modal.tsx ("export const MODAL_HEADER_CLASS = 'flex flex-wrap-reverse")
+              and its title and close strings, the same tokens, not imported: merging the two
+              shells is Phase 92's per D-08), chosen OVER a title that cannot shrink and pushes the
+              close off screen (27px past the edge at 375 / 200%); the sheet is the container named
+              sheet so its consumer can switch to one scroll below 12rem, chosen OVER a phone media
+              query (blind to text size). The side padding is the page edge token, 16px at every
+              text size (pick O-M1 D, HR-9; pixel-identical at normal text), so "Calendar" fits at
+              320 / 200%. The close holds the 52 x 44 box and its icon follows text to 32px (pick
+              O-M4 Fixed+). Changing this is a decision, not a cleanup. */}
+          <div className="flex shrink-0 flex-wrap-reverse items-center justify-between gap-2 border-b border-line px-edge-page py-2">
+            <DialogTitle className={cn('grow basis-[min-content] max-w-full wrap-break-word', TITLE_SIZE_CLASS[titleSize])}>
               {title}
             </DialogTitle>
             {/* 44x44 via Button's `icon` size (its size map in `Button.tsx`) rather than a
                 bare glyph — the phone touch-target floor applies to the sheet's
                 only chrome control. */}
             <DialogClose asChild>
-              <Button variant="ghost" size="icon">
-                <X className="h-5 w-5" aria-hidden="true" />
+              <Button variant="ghost" size="icon" className="ml-auto">
+                <Icon name="X" size={20} followText />
                 <span className="sr-only">Close</span>
               </Button>
             </DialogClose>
@@ -316,7 +336,7 @@ const BottomSheet = React.forwardRef<
               reasons as src/app/components/Modal.tsx ("DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18)").
               Removing it is a decision, not a cleanup. */}
           <div
-            className={cn('relative min-h-0 flex-1 overflow-y-auto p-4', bodyClassName)}
+            className={cn('relative min-h-0 flex-1 overflow-y-auto p-edge-page', bodyClassName)}
           >
             {children}
           </div>
