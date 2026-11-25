@@ -3017,11 +3017,12 @@ export default function GameDetailPage() {
                     AMENDED Phase 88.9-65 (X42, orchestrator decision, veto open): Share Game QR only before the night starts (hasStarted, as the calendar popup and RSVP controls), chosen OVER an ungated button reachable from an old link; a started night shows heading and chips. */}
                 {(userScope === 'group-member' || userScope === 'game-only') && userRole !== 'pending' && participants.length > 0 && (
                     <div className="card p-edge-card md:p-edge-wide mb-6">
-                        <div className="flex items-center justify-between gap-3 mb-3">
-                            <Heading level={2} size="heading" className="text-content-primary">
+                        <div className="bb-row items-center mb-3">
+                            <Heading level={2} size="heading" className="bb-row-text text-content-primary">
                                 Participants ({participants.length})
                             </Heading>
                             {userScope === 'group-member' && !hasStarted(singleEvent, Date.now()) && (
+                                <div className="bb-row-end">
                                 <Button
                                     variant="accent"
                                     onClick={handleShowGameQR}
@@ -3058,8 +3059,8 @@ export default function GameDetailPage() {
                                        pair and the primitive prop in this file's RAW source, so a
                                        comment naming either one reds the very gate it documents.
                                        Measured 2026-09-16 — the first draft of this line quoted the
-                                       prop and took the count to 2. [AMENDED Phase 88.6.2-21 (W059): test 47's file-level count now reads comment-stripped code, so a comment naming a spelling no longer moves it; the spellings stay described because the slice locator and balloon guard still read raw text and other suites read this file raw (C-8).] */
-                                    className="shrink-0"
+                                       prop and took the count to 2. [AMENDED Phase 88.6.2-21 (W059): test 47's file-level count now reads comment-stripped code, so a comment naming a spelling no longer moves it; the spellings stay described because the slice locator and balloon guard still read raw text and other suites read this file raw (C-8).]
+                                       AMENDED Phase 89.6-19 (participants): the row is the house row (GR, owner 2026-11-22): the heading keeps its words whole and Share Game QR moves under it when both do not fit, so the no-shrink class above is retired; the end box keeps the button at its natural width while it fits. Changing this is a decision, not a cleanup. */
                                     title="Share Game QR"
                                     busy={qrLoading}
                                     busySuffix=", loading"
@@ -3074,6 +3075,7 @@ export default function GameDetailPage() {
                                     </svg>
                                     Share Game QR
                                 </Button>
+                                </div>
                             )}
                         </div>
                         <div className="flex flex-wrap gap-2">

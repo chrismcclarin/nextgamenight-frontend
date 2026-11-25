@@ -35,13 +35,15 @@ const SAVING_CAPTION = 'Saving…';
    {game}, saving name already carries it (no double announcement). Organizer pick lists only: the
    open-ballot vote toggle keeps its opacity-70 dim, it is not the list the ruling names.
    Save-feedback rule 1 governs save controls; a pick in a list shows completion by becoming
-   selected (register 51.4) — not a conflict. Changing this is a decision, not a cleanup. */
+   selected (register 51.4) — not a conflict. Changing this is a decision, not a cleanup.
+   AMENDED Phase 89.6-19 (bb-row): the row is the house row; the caption rule stands.
+   DECISION Phase 89.6-19 (bb-row): GR (owner 2026-11-22): the text keeps its words whole and the control or badge moves under it when both do not fit, chosen OVER justify-between with a shrinking text item (squeezed to one word a line at 200%). Pixel-identical at normal text. Changing this is a decision, not a cleanup. */
 function PickContent({ name, saving }) {
   return (
-    <span className="flex items-center justify-between gap-2">
-      <span className="min-w-0">{name}</span>
+    <span className="bb-row items-center gap-2">
+      <span className="bb-row-text">{name}</span>
       {saving && (
-        <span aria-hidden="true" className="shrink-0 whitespace-nowrap text-xs text-content-secondary">
+        <span aria-hidden="true" className="bb-row-end whitespace-nowrap text-xs text-content-secondary">
           {SAVING_CAPTION}
         </span>
       )}
@@ -739,13 +741,14 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                     ${votingOptionId && !isToggling ? 'opacity-50 cursor-not-allowed' : ''}
                   `}
                 >
-                  <div className="flex items-center justify-between">
-                    <span>{opt.game_name}</span>
+                  {/* The house row, as PickContent above (its 89.6-19 bb-row marker). */}
+                  <div className="bb-row items-center">
+                    <span className="bb-row-text">{opt.game_name}</span>
                     {isVoted && (
                       /* UI-SPEC §4.5, the badge/ink case: 600 -> 700. 400 was REJECTED — this
                          is a 12px state badge whose whole job is to read as a distinct marker
                          beside the option label, and at 400 it stops registering as one. */
-                      <span className="text-content-accent text-xs font-bold">Voted</span>
+                      <span className="bb-row-end text-content-accent text-xs font-bold">Voted</span>
                     )}
                   </div>
                 </button>

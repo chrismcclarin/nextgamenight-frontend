@@ -372,7 +372,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
         </Heading>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="@container/rsvp p-4 space-y-4">
         {/* User status label */}
         {!isPastEvent && (
           <div>
@@ -392,11 +392,12 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
              `role="group"` toggle): `role="group"`
              plus a label naming the EVENT is what distinguishes this trio from any other control
              pair on a page that renders several of them — gameDetail's multi-event arm mounts one
-             `RsvpSection` per interactive card. */
+             `RsvpSection` per interactive card.
+             DECISION Phase 89.6-19 (rsvp-trio): the three buttons stack in a column when three whole buttons do not fit the section (a rem container query, so normal text is unchanged), chosen OVER a held smaller padding (GR: nothing squeezed; a control's padding is not an edge) and OVER wrapping two-and-one (a split segmented control). Measured: three whole buttons need 10.19rem (10.31rem with the selected 2px border), so the column starts below 11rem. The column keeps the owner UAT corner rule of the W44 marker below on the column's own corners, and a selected button keeps its whole 2px border. Changing this is a decision, not a cleanup. */
           <div
             role="group"
             aria-label={groupLabel}
-            className="flex rounded-card border border-line overflow-hidden"
+            className="flex @max-[11rem]/rsvp:flex-col rounded-card border border-line overflow-hidden"
           >
             {['yes', 'maybe', 'no'].map((status, idx) => {
               const isActive = selectedStatus === status;
@@ -436,7 +437,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                    row V-19 and MEASURED by the phone-lane arm in `e2e/touch-targets.spec.ts` —
                    the class pin in `RsvpSection.statusOnly.test.tsx` catches a source revert,
                    the phone arm catches a rendered breach, and neither substitutes for the
-                   other (jsdom performs no layout). */
+                   other (jsdom performs no layout).
+                   AMENDED Phase 89.6-19 (rsvp-trio): the bare buttons and the inherited corners stand; the column arm repeats the corner rule top and bottom. */
                 <button
                   key={status}
                   type="button"
@@ -444,8 +446,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   aria-disabled={isLoading || undefined}
                   onClick={() => handleStatusClick(status)}
                   disabled={otherInFlight}
-                  className={`flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors first:rounded-l-[inherit] last:rounded-r-[inherit] focus:outline-hidden focus-visible:focus-ring-inset
-                    ${idx > 0 ? 'border-l border-line' : ''}
+                  className={`flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors first:rounded-l-[inherit] last:rounded-r-[inherit] focus:outline-hidden focus-visible:focus-ring-inset @max-[11rem]/rsvp:first:rounded-bl-none @max-[11rem]/rsvp:first:rounded-tr-[inherit] @max-[11rem]/rsvp:last:rounded-tr-none @max-[11rem]/rsvp:last:rounded-bl-[inherit]
+                    ${idx > 0 ? (isActive ? 'border-l border-line' : 'border-l border-line @max-[11rem]/rsvp:border-l-0 @max-[11rem]/rsvp:border-t') : ''}
                     ${isActive
                       ? `${config.activeBg} ${config.activeBorder} border-2 text-content-primary`
                       : `bg-surface-card ${config.hoverBg} text-content-secondary`
@@ -719,7 +721,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
         {/* Count banner */}
         {totalResponses > 0 && (
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex flex-wrap items-center gap-3 text-sm">
             {summary.yes > 0 && (
               <span className="text-content-status-success">{summary.yes} Yes</span>
             )}

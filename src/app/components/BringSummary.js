@@ -125,14 +125,15 @@ export default function BringSummary({ eventId, groupId, self, refreshKey, onEdi
 
   return (
     <div className="card p-edge-card md:p-edge-wide">
-      <div className="flex items-center justify-between mb-3">
+      {/* DECISION Phase 89.6-19 (bb-row): GR (owner 2026-11-22): the text keeps its words whole and the control or badge moves under it when both do not fit, chosen OVER justify-between with a shrinking text item (squeezed to one word a line at 200%). Pixel-identical at normal text. Changing this is a decision, not a cleanup. */}
+      <div className="bb-row items-center mb-3">
         {/* 88.6-33 (D-04 size-less-heading row, §4.4): this is one of the four class-less
             headings that actually migrate. It carries NO size utility, so it renders at body
             size today — `size="body"` (16) reproduces that exactly, and the LEVEL is PRESERVED
             (P4): it was an `<h3>` and it stays one. The 600 goes because §4.2 gives 600 exactly
             one home, the `Button` primitive; the 700 now comes from `Heading`'s `font-bold`
             base rather than a stated utility, and the COLOUR rides on `className`. */}
-        <Heading level={3} size="body" className="text-content-primary">Bringing</Heading>
+        <Heading level={3} size="body" className="bb-row-text text-content-primary">Bringing</Heading>
         {/* DECISION quick-261021-ffb (owner 2026-10-21, deferred/phase-91.3.md 'Games to Bring has no
             visible way back in'): one persistent control for the viewer — W1 (`Add games`) with no
             brings, Edit with brings — opening the SAME picker through onEditClick, CHOSEN over opening
@@ -149,7 +150,7 @@ export default function BringSummary({ eventId, groupId, self, refreshKey, onEdi
           <button
             type="button"
             onClick={onEditClick}
-            className="inline-flex items-center justify-end min-h-11 md:min-h-0 min-w-11 md:min-w-0 text-sm text-content-link hover:text-content-link-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring"
+            className="bb-row-end inline-flex items-center justify-end min-h-11 md:min-h-0 min-w-11 md:min-w-0 text-sm text-content-link hover:text-content-link-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring"
           >
             {currentUserHasBrings ? 'Edit' : ADD_GAMES_LABEL}
           </button>
