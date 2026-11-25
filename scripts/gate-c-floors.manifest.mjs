@@ -37,6 +37,8 @@ export const floors = [
   { spec: 'e2e/browse-games-modal.spec.ts', project: 'phone', floor: 6, why: '6 of 6 listed run in phone; the other project is skipped by an isMobile predicate (raised 4 to 5 by 88.9-52 R4 C2, the stepper size proof; 5 to 6 when its 320 / 200% read became its own expected-fail test owned by Phase 89.6)' },
   { spec: 'e2e/calendar-list-sections.spec.ts', project: 'journeys', floor: 1, why: '1 of 3 listed run in journeys; 2 skipped here by an isMobile predicate' },
   { spec: 'e2e/calendar-list-sections.spec.ts', project: 'phone', floor: 2, why: '2 of 3 listed run in phone; 1 skipped here by an isMobile predicate' },
+  { spec: 'e2e/calendar-sheet-large-text.spec.ts', project: 'journeys', floor: 4, why: '4 of 4 listed run in journeys; no conditional skip (Phase 89.6-40, the phone Calendar sheet invariants and FL-05 reads: the rows exist so a green run names this spec)' },
+  { spec: 'e2e/calendar-sheet-large-text.spec.ts', project: 'phone', floor: 4, why: '4 of 4 listed run in phone; no conditional skip (Phase 89.6-40, the phone Calendar sheet invariants and FL-05 reads: the rows exist so a green run names this spec)' },
   { spec: 'e2e/card-hover.spec.ts', project: 'journeys', floor: 3, why: '3 of 3 listed run in journeys; the other project is skipped by an isMobile predicate (a hover needs a fine pointer)' },
   { spec: 'e2e/check-ins-banner-dismiss.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/check-ins-end-focus.spec.ts', project: 'journeys', floor: 3, why: '3 of 4 listed run in journeys; 1 skipped here by an isMobile predicate (raised 2 to 3 by 88.9-52 round 4, E4)' },
