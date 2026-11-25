@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CalendarListView from './CalendarListView';
 import { bgImageProbeForTests } from '../../lib/hooks/useBgImageFailed';
 import * as guestEdges from './GuestPill';
+import { expectFocusRingInset } from '@/test-utils/focusRingAssert';
 
 const TZ = 'America/New_York';
 // Friday 2:00 PM in New York.
@@ -268,10 +269,8 @@ describe('CalendarListView — two folding sections on every arm (88.9-61, X25a 
         // The ring is drawn INSIDE the button: the scroll region clips an outside ring on the left
         // and above a stuck header. The Button primitive's default offset pair must be gone, not
         // merely joined by the inset pair.
-        expect(buttonClasses, `${arm}: the inset ring`).toEqual(
-          expect.arrayContaining(['focus-visible:ring-inset', 'focus-visible:ring-offset-0', 'focus-visible:ring-2']),
-        );
-        expect(buttonClasses, `${arm}: the default outside offset is dropped`).not.toContain('focus-visible:ring-offset-2');
+        // expectFocusRingInset also fails on any outside offset: the default one is dropped.
+        expectFocusRingInset(buttonClasses, `${arm}: the inset ring`);
       }
 
       // AMENDED 88.9-52 (W17): 5.75rem of scroll padding at the top of the region. 3.5rem as

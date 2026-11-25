@@ -18,6 +18,7 @@ import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
+import { FOCUS_RING_CLASSES } from '@/test-utils/focusRingAssert';
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({ user: { sub: 'auth0|self', name: 'Self', email: 'self@example.test' }, isLoading: false }),
@@ -249,7 +250,9 @@ describe('FeedbackButton — Phase 88.6-31 (the FAB, the capture, the timer)', (
     // A-2 ARM A (`88.6-05-SUMMARY.md:186`): the ring lives in the primitive's cva base, so the
     // byte-identical per-site string is gone rather than duplicated. The base's ring survives,
     // and it appears exactly ONCE.
-    expect(fab.className.match(/focus-visible:ring-focus-ring/g)).toHaveLength(1);
+    for (const t of FOCUS_RING_CLASSES) {
+      expect(fab.className.split(/\s+/).filter((c) => c === t), t).toHaveLength(1);
+    }
   });
 
   it('D-14b / D49-b: the FAB rests on the THEME tier with the hover PINNED — exactly one bare and one `enabled-hover:` shadow token, hover tier >= resting, and no alias spelling survives', () => {

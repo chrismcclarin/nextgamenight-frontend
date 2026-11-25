@@ -47,6 +47,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 
 import { MemberChip, MemberChipStack, chipFillIndex, CHIP_FILLS } from './MemberChipStack';
 import { FriendshipContext } from './FriendshipStatusProvider';
+import { expectRingGround } from '@/test-utils/focusRingAssert';
 
 const COMPONENT_SRC = fs.readFileSync(path.join(__dirname, 'MemberChipStack.tsx'), 'utf8');
 
@@ -842,12 +843,10 @@ describe('MemberChipStack — Phase 88.9-30 D1b fills and G halos', () => {
   it('45. R034 / R035 (88.9): both chip-stack triggers take the group-halo key', () => {
     renderStack();
     const trigger = collapsed();
-    expect(trigger).toHaveClass('focus-visible:ring-offset-surface-group-halo');
-    expect(trigger).not.toHaveClass('focus-visible:ring-offset-surface-card');
+    expectRingGround(trigger, 'group', 'the collapsed trigger');
     fireEvent.click(trigger);
     const less = screen.getByRole('button', { name: 'Show less' });
-    expect(less).toHaveClass('focus-visible:ring-offset-surface-group-halo');
-    expect(less).not.toHaveClass('focus-visible:ring-offset-surface-card');
+    expectRingGround(less, 'group', 'Show less');
     expect(COMPONENT_SRC.split('hostGround="group"').length - 1, 'the expanded name sits on the group ground').toBe(1);
   });
 });

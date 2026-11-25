@@ -18,6 +18,7 @@ import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import userEvent from '@testing-library/user-event';
+import { FOCUS_RING_SOURCE_TOKEN, expectFocusRing } from '@/test-utils/focusRingAssert';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -641,8 +642,8 @@ describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
     expect(chip!.className).not.toMatch(/(^|\s)hover:border-content-primary/);
 
     // the focus ring stays on the FOCUSABLE, not on the chip (CR-14's two affordances)
-    expect(teal.className).toContain('focus-visible:ring-focus-ring');
-    expect(chip!.className).not.toContain('focus-visible:ring-');
+    expectFocusRing(teal, 'Teal');
+    expect(chip!.className).not.toContain(FOCUS_RING_SOURCE_TOKEN);
   });
 
   it('D-06: tapping the SELECTED swatch de-selects it and the preview falls back', async () => {
@@ -1025,12 +1026,10 @@ describe('Phase 88.6.1-43 — the default-icon picker is a radio group (D-20 / D
         'border-2',
         'rounded-lg',
         'text-3xl',
-        'focus-visible:ring-2',
-        'focus-visible:ring-focus-ring',
-        'focus-visible:ring-offset-2',
       ]) {
         expect(r).toHaveClass(cls);
       }
+      expectFocusRing(r, ICONS[i].name);
       expect(r).not.toHaveClass('min-h-11');
       if (ICONS[i].name === 'Trophy') {
         expect(r).toHaveClass('border-accent', 'bg-surface-muted');

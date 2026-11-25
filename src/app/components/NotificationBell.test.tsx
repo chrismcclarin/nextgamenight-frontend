@@ -14,7 +14,8 @@ import * as React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner';
+import { expectFocusRingInset } from '@/test-utils/focusRingAssert'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
@@ -405,7 +406,7 @@ describe('Phase 88.6-31 — the SINGLE two-attribute ARIA exception (ACCEPT §9 
     // the menu role is forbidden (DECISION Phase 88.6-16).
     expect(panel).not.toHaveAttribute('role');
     // The Phase 88.3 focus-ring treatment on this trigger is byte-unchanged.
-    expect(trigger.className).toContain('focus-visible:ring-inset');
+    expectFocusRingInset(trigger, 'the bell trigger');
     expect(trigger.className).toContain('hover:text-amber-400');
   });
 });
@@ -1547,6 +1548,7 @@ describe('O07a (88.9) — the desktop bell trigger matches the theme toggle', ()
     const bell = trigger.querySelector('svg');
     expect(bell).not.toBeNull();
     expect(bell).toHaveClass('w-6', 'h-6');
-    expect(trigger).toHaveClass('focus:outline-hidden', 'focus-visible:ring-inset');
+    expect(trigger).toHaveClass('focus:outline-hidden');
+    expectFocusRingInset(trigger, 'the bell trigger');
   });
 });

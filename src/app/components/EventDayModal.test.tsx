@@ -9,6 +9,7 @@ import * as React from 'react';
 import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectRingGround } from '@/test-utils/focusRingAssert';
 
 const h = vi.hoisted(() => ({
   getEventInviteToken: vi.fn(),
@@ -525,10 +526,9 @@ describe('EventDayModal — round-2 look (88.9-39)', () => {
     expect(card.style.getPropertyValue('--group-ground'), 'the fixture is tinted').toBe('#722f37');
     expect(classesOf(card)).toContain('[--group-halo:var(--group-ground-light)]');
     expect(classesOf(card)).toContain('dark:[--group-halo:var(--group-ground)]');
-    expect(classesOf(row)).toContain('focus-visible:ring-offset-surface-group-halo');
-    expect(classesOf(row)).not.toContain('focus-visible:ring-offset-surface-card');
+    expectRingGround(classesOf(row), 'group', 'the row');
     const share = screen.getByRole('button', { name: 'Share Game QR' });
-    expect(classesOf(share)).toContain('focus-visible:ring-offset-surface-group-halo');
+    expectRingGround(classesOf(share), 'group', 'Share Game QR');
     expect(classesOf(share), 'no dark: utility on the Button').not.toContain('dark:focus-visible:ring-offset-surface-group-halo');
     cleanup();
 

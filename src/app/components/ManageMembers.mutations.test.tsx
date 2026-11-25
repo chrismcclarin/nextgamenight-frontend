@@ -10,6 +10,7 @@ import * as React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectRingGround } from '@/test-utils/focusRingAssert';
 
 const OWNER_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const TARGET_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -2292,7 +2293,7 @@ describe('Phase 88.9-30 — T boxes on the status-warning family', () => {
     expect(pendingBox.className).not.toContain('amber');
     expect(screen.getByText('Pend').closest('p')).toHaveClass('text-content-status-warning');
     for (const button of [approve, reject]) {
-      expect(button).toHaveClass('focus-visible:ring-offset-status-warning-subtle');
+      expectRingGround(button, 'warning', button.textContent ?? '');
     }
 
     const inviteBox = email.closest('div.rounded-lg') as HTMLElement;

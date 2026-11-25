@@ -60,6 +60,7 @@ import { render, screen, cleanup, fireEvent, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { addDays, format, startOfDay, startOfWeek } from 'date-fns';
+import { expectFocusRing } from '@/test-utils/focusRingAssert';
 
 // Synthetic identity only (threat T-88.1-02): no real user data in fixtures. The component
 // reads `selfUuid` to mark self-conflicts in the per-slot tooltip; mocked so the suite needs
@@ -1856,9 +1857,7 @@ describe('EventScheduler — assistive-tech affordances on the grid (88.1-21, 88
     // (focusAndMotionTreatment.test.ts:21-24, `DELIBERATELY still allowed`); do not "fix" it to outline-none.
     const cell = screen.getAllByRole('gridcell')[0];
     expect(cell.className).toContain('focus:outline-hidden');
-    expect(cell.className).toContain('focus-visible:ring-2');
-    expect(cell.className).toContain('focus-visible:ring-focus-ring');
-    expect(cell.className).toContain('focus-visible:ring-offset-2');
+    expectFocusRing(cell, 'the first gridcell');
   });
 });
 

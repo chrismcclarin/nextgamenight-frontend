@@ -18,6 +18,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import LandingPage from './LandingPage';
+import { FOCUS_RING_CLASSES, FOCUS_RING_INSET_CLASSES, expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 afterEach(cleanup);
 
@@ -135,17 +136,14 @@ describe('Phase 88.9-33 — the landing hero (O01a, L1b, B4a)', () => {
   it("X18 (88.9-57): the Google sign-in link wears Get Started's ring — a 2px offset on the hero band, no inset", () => {
     const { getStarted, google } = renderHero();
     const g = tokensOf(google);
-    expect(g).toEqual(
-      expect.arrayContaining([
-        'focus-visible:ring-2',
-        'focus-visible:ring-focus-ring',
-        'focus-visible:ring-offset-2',
-        'focus-visible:ring-offset-surface-hero',
-      ]),
-    );
-    expect(g).not.toContain('focus-visible:ring-inset');
+    expectFocusRing(g, 'Google');
+    expectRingGround(g, 'hero', 'Google');
+    // No inset: the inset form's own token(s), the ones the offset form does not share.
+    for (const t of FOCUS_RING_INSET_CLASSES.filter((x) => !FOCUS_RING_CLASSES.includes(x))) {
+      expect(g, 'Google: no inset ring').not.toContain(t);
+    }
     // The same band key Get Started carries, so the pair reads as one.
-    expect(tokensOf(getStarted)).toContain('focus-visible:ring-offset-surface-hero');
+    expectRingGround(tokensOf(getStarted), 'hero', 'Get Started');
   });
 });
 

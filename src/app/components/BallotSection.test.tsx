@@ -29,6 +29,7 @@ import * as React from 'react';
 import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectFocusRing } from '@/test-utils/focusRingAssert';
 
 // Plan 88.6.1-31 Task 3: the import-original spread, NOT a factory returning only ballotAPI. The
 // component now renders the house FetchErrorBanner through useFetchErrorState, which reads the
@@ -275,8 +276,6 @@ describe('BallotSection — the three action failures are announced and associat
 });
 
 describe('BallotSection — focus and the in-flight gate (88.6-22)', () => {
-  const HOUSE_RING = 'focus-visible:ring-2';
-
   it('every button in the file carries the house focus string', async () => {
     // Measured baseline at HEAD before this sweep: 3 `<button>` elements, 0 `focus-visible`.
     // This is a CONVERGENCE gap, not a WCAG failure — no global outline reset exists in this
@@ -287,12 +286,8 @@ describe('BallotSection — focus and the in-flight gate (88.6-22)', () => {
       const buttons = Array.from(document.querySelectorAll('button'));
       expect(buttons.length).toBeGreaterThan(0);
       for (const b of buttons) {
-        expect(b.className, `${b.textContent} carries no focus-visible ring`).toContain(
-          HOUSE_RING
-        );
+        expectFocusRing(b, `${b.textContent} carries no focus-visible ring`);
         expect(b.className).toContain('focus:outline-hidden');
-        expect(b.className).toContain('focus-visible:ring-focus-ring');
-        expect(b.className).toContain('focus-visible:ring-offset-2');
       }
       cleanup();
     }
@@ -1115,8 +1110,7 @@ describe('BallotSection — round-2 cues (88.9-35)', () => {
       for (const card of paged) {
         expect(card.className, `${card.textContent} page halo`).toContain('focus-visible:ring-offset-surface-page');
         expect(card.className, `${card.textContent} keeps the card halo on a page host`).not.toContain('focus-visible:ring-offset-surface-card');
-        expect(card.className).toContain('focus-visible:ring-2');
-        expect(card.className).toContain('focus-visible:ring-offset-2');
+        expectFocusRing(card, `${card.textContent}`);
       }
       cleanup();
     }

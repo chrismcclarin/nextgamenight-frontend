@@ -15,6 +15,7 @@ import * as Sentry from '@sentry/nextjs';
 import BrowseMoreModal from './BrowseMoreModal';
 import { ApiError } from '../../lib/api';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 // suggestionsAPI fires on open; by default it resolves to an empty result so the modal settles
 // into its (library-empty) state without touching network. Plan 88.6.1-32: the two functions are
@@ -119,8 +120,8 @@ describe('BrowseMoreModal (migrated onto <Modal size="lg">)', () => {
       expect(stepper).toHaveClass('btn');
       expect(stepper).toHaveClass('btn-secondary');
       expect(stepper).not.toHaveClass('btn-compact');
-      expect(stepper).toHaveClass('focus-visible:ring-offset-2');
-      expect(stepper).toHaveClass('focus-visible:ring-offset-surface-card');
+      expectFocusRing(stepper, String(name));
+      expectRingGround(stepper, 'card', String(name));
       expect(stepper.className).not.toMatch(/ring-inset/);
       // The house 44x44 floor, as a square at every width (a utility pair no unlayered .btn
       // declaration contests: .btn sets no width and no height).
@@ -610,7 +611,7 @@ describe('BrowseMoreModal decrement at 1 and the capture latch (88.6.1-32, AC-13
     expect(dec).not.toHaveAttribute('disabled');
     expect(dec.className).not.toMatch(/(^|\s)disabled:/);
     expect(dec).not.toHaveClass('btn-compact');
-    expect(dec).toHaveClass('focus-visible:ring-offset-2');
+    expectFocusRing(dec, 'the disabled decrement');
     expect(dec).toHaveClass('w-11');
     expect(dec).toHaveClass('h-11');
   });

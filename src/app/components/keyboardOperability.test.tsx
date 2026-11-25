@@ -54,6 +54,7 @@ import GroupList from './grouplist';
 import CalendarMonthView from './CalendarMonthView';
 import { Modal } from './Modal';
 import { FriendshipContext } from './FriendshipStatusProvider';
+import { FOCUS_RING_SOURCE_TOKEN, expectFocusRingInset } from '@/test-utils/focusRingAssert';
 
 // 88.6-21 (W42): the whole `grouplist.js` card is rendered here, so the module graph this file
 // mounts now reaches the router, the Auth0 session hook, the timezone provider and the groups
@@ -1404,7 +1405,7 @@ describe('grouplist row — the card and every control inside it are independent
       expect(
         el.className,
         `${el.getAttribute('aria-label') ?? el.textContent} carries no focus-visible ring`,
-      ).toContain('focus-visible:ring-');
+      ).toContain(FOCUS_RING_SOURCE_TOKEN);
     }
   });
 
@@ -1734,11 +1735,9 @@ describe('Phase 88.6-40 AC-5 / R5 (W39): the calendar day cell has a keyboard pa
   it('DC-8. the day target carries a VISIBLE focus ring, inset like this file\'s two tiles', () => {
     renderMonth({ events: MULTI });
     const target = screen.getByRole('button', { name: OPEN_DAY_NAME });
-    expect(target.className).toContain('focus-visible:ring-focus-ring');
-    expect(target.className).toContain('focus-visible:ring-2');
-    // `ring-inset`, NOT `ring-offset-2`: both event tiles in this file use inset for the
-    // recorded reason (a dense grid cell has no room for an offset ring).
-    expect(target.className).toContain('focus-visible:ring-inset');
+    // Inset, NOT offset: both event tiles in this file use inset for the recorded reason (a dense
+    // grid cell has no room for an offset ring); expectFocusRingInset also fails on an offset.
+    expectFocusRingInset(target, 'the day target');
   });
 
   it('DC-9. a QUOTE-BEARING group name survives into the grid, and the day label stays intact (AC-5)', () => {

@@ -12,6 +12,7 @@ import * as React from 'react';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import StarRatingPickerJs from './StarRatingPicker';
+import { expectFocusRingEdge } from '@/test-utils/focusRingAssert';
 
 // tsc type-checks every .tsx with allowJs, so the JS component's props are inferred from its
 // signature (value defaults to 0, so a number) and the wire string is exactly what that
@@ -103,8 +104,7 @@ describe('O15b (88.9) — 48px stars', () => {
     expect(radios).toHaveLength(10);
     for (const radio of radios) {
       const classes = radio.className.split(/\s+/);
-      expect(classes).toContain('focus-visible:ring-focus-ring');
-      expect(classes).toContain('focus-visible:ring-2');
+      expectFocusRingEdge(classes, undefined, 'a half-star radio');
       expect(classes.filter((c) => /ring-amber/.test(c))).toEqual([]);
     }
   });

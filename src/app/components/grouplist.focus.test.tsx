@@ -18,6 +18,7 @@
 import * as React from 'react';
 import { render, screen, cleanup, waitFor, within, act, fireEvent } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectRingGround } from '@/test-utils/focusRingAssert';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -432,8 +433,6 @@ describe('home group list: the full banner retry landing (88.6.1-41 #204)', () =
 // 88.9-PICKS-B1.json; census R047 B078 R048). Token pins: jsdom paints nothing, so each test reads
 // the tokens the picked variant ships and the ones it must not.
 describe('home group card round-2 look (88.9-31: F5b cog glyph, B2a G halos)', () => {
-  const GROUP_HALO = 'focus-visible:ring-offset-surface-group-halo';
-  const CARD_HALO = 'focus-visible:ring-offset-surface-card';
 
   it('F5b (88.9): no gear emoji in the home cog; the SVG is present and hidden, and the title still names it', async () => {
     fx.getUserGroups.mockResolvedValueOnce([ALPHA]);
@@ -457,16 +456,14 @@ describe('home group card round-2 look (88.9-31: F5b cog glyph, B2a G halos)', (
       within(tintedCard).getByRole('button', { name: 'Invite member to Alpha Crew' }),
       gearOf('Alpha Crew'),
     ]) {
-      expect(el).toHaveClass(GROUP_HALO);
-      expect(el).not.toHaveClass(CARD_HALO);
+      expectRingGround(el, 'group', el.getAttribute('aria-label') ?? el.textContent ?? '');
     }
 
     const plainCard = cardOf('Beta Crew');
     expect(plainCard.className).not.toContain('--group-halo');
     for (const el of [titleBlock('Beta Crew'), gearOf('Beta Crew')]) {
-      expect(el).toHaveClass(CARD_HALO);
-      expect(el).not.toHaveClass(GROUP_HALO);
+      expectRingGround(el, 'card', el.getAttribute('aria-label') ?? el.textContent ?? '');
     }
-    expect(within(plainCard).getByRole('button', { name: 'Invite member to Beta Crew' })).not.toHaveClass(GROUP_HALO);
+    expectRingGround(within(plainCard).getByRole('button', { name: 'Invite member to Beta Crew' }), 'card', 'Invite member to Beta Crew');
   });
 });

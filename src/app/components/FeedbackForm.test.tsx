@@ -22,6 +22,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
 import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
+import { FOCUS_RING_PEER_CLASSES } from '@/test-utils/focusRingAssert';
 
 // Logged-out: no Auth0 user. Retained for the 87.6 transport proof below even
 // though FeedbackForm no longer consumes the hook directly (Phase 88.8 plan 13
@@ -396,7 +397,7 @@ describe('FeedbackForm — post-merge fix set (round 5)', () => {
     // And the focus is VISIBLE, on the box the user can actually see (WCAG 2.4.7) —
     // trading 2.1.1 for 2.4.7 would not be a fix.
     const label = document.querySelector(`label[for="${input.id}"]`)!;
-    expect(label.className).toMatch(/peer-focus-visible:ring-2/);
+    expect(label.className.split(/\s+/)).toEqual(expect.arrayContaining([...FOCUS_RING_PEER_CLASSES]));
     expect(input).toHaveClass('peer');
   });
 
@@ -567,7 +568,7 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     expect(input).toHaveClass('sr-only');
     expect(input).toHaveClass('peer');
     const label = document.querySelector(`label[for="${input.id}"]`)!;
-    expect(label.className).toMatch(/peer-focus-visible:ring-2/);
+    expect(label.className.split(/\s+/)).toEqual(expect.arrayContaining([...FOCUS_RING_PEER_CLASSES]));
 
     await user.upload(input, goodFile('shot.png'));
     await screen.findByRole('button', { name: /remove screenshot/i });

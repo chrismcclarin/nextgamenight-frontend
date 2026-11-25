@@ -5,6 +5,7 @@ import * as React from 'react';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentType } from 'react';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 vi.mock('./TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'America/New_York' }),
@@ -50,9 +51,6 @@ describe('ScheduleList — 52-X46 Pause/Resume on the Button primitive (88.9-57)
       // The primitive's box, floor and house ring on the card halo.
       'btn',
       'min-h-11',
-      'focus-visible:ring-2',
-      'focus-visible:ring-offset-2',
-      'focus-visible:ring-offset-surface-card',
       // Its own tint, and the in-flight muted ink (A-47 / O-17), which the ghost arm carries.
       'bg-status-warning-subtle',
       'text-content-status-warning',
@@ -61,6 +59,8 @@ describe('ScheduleList — 52-X46 Pause/Resume on the Button primitive (88.9-57)
     ]) {
       expect(tokens(pause), token).toContain(token);
     }
+    expectFocusRing(pause, 'Pause');
+    expectRingGround(pause, 'card', 'Pause');
     for (const token of [
       // The hand-copied box is gone ...
       'px-3',
@@ -77,9 +77,11 @@ describe('ScheduleList — 52-X46 Pause/Resume on the Button primitive (88.9-57)
     // Its two neighbours are the same primitive: the same box and both ring-offset tokens.
     for (const name of ['Edit', 'Delete']) {
       const neighbour = screen.getByRole('button', { name });
-      for (const token of ['btn', 'min-h-11', 'focus-visible:ring-offset-2', 'focus-visible:ring-offset-surface-card']) {
+      for (const token of ['btn', 'min-h-11']) {
         expect(tokens(neighbour), `${name}: ${token}`).toContain(token);
       }
+      expectFocusRing(neighbour, name);
+      expectRingGround(neighbour, 'card', name);
     }
     // Names unchanged.
     expect(pause).toHaveTextContent(/^Pause$/);

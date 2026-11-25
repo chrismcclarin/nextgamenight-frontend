@@ -26,6 +26,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { expectFocusRingInset } from '@/test-utils/focusRingAssert';
 
 const toastSpies = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: toastSpies.error, success: toastSpies.success } }));
@@ -745,8 +746,8 @@ describe('OpenPollsList: the card body selects the poll (quick-261026-pi6, owner
     await screen.findByText('Started by Ben');
     const anaBody = cardBody(/Started by Ana/);
     const benBody = cardBody(/Started by Ben/);
-    expect(anaBody).toHaveClass('min-h-11', 'text-left', 'p-3', 'focus-visible:ring-inset');
-    expect(anaBody).not.toHaveClass('focus-visible:ring-offset-2');
+    expect(anaBody).toHaveClass('min-h-11', 'text-left', 'p-3');
+    expectFocusRingInset(anaBody, 'the Ana card body');
     // One pixel less padding when selected, so the 2px border does not grow the card.
     expect(benBody).toHaveClass('p-[11px]');
     expect(benBody.closest('li')).toHaveClass('border-2', 'border-content-link');

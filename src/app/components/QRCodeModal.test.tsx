@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { logger } from '@/lib/logger';
 import QRCodeModal from './QRCodeModal';
+import { FOCUS_RING_SOURCE_TOKEN, expectFocusRingEdge } from '@/test-utils/focusRingAssert';
 
 afterEach(() => {
   cleanup();
@@ -421,10 +422,10 @@ describe('QRCodeModal — controls (88.6.1-12, D-27, W037)', () => {
     render(dialogAt(true));
     const buttons = Array.from(screen.getByRole('dialog').querySelectorAll('button'));
     expect(buttons).toHaveLength(3);
-    const offRing = buttons.filter((b) => !b.classList.contains('focus-visible:ring-2'));
+    const offRing = buttons.filter((b) => !b.classList.contains(FOCUS_RING_SOURCE_TOKEN));
     expect(offRing).toHaveLength(0);
     expect(buttons[0]).toHaveAccessibleName('Close');
     expect(buttons[0].classList.contains('focus:outline-hidden')).toBe(true);
-    expect(buttons[0].classList.contains('focus-visible:ring-ring')).toBe(true);
+    expectFocusRingEdge(buttons[0], 'focus-visible:ring-ring', 'the corner close'); // ring-literal: the Modal close's bridge colour, the edge expect's colour argument (ignored after plan 89.6-13's flip)
   });
 });

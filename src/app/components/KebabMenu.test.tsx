@@ -35,6 +35,7 @@ import { resolve } from 'node:path';
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the appear and hold budgets
 import KebabMenu from './KebabMenu';
+import { expectFocusRing } from '@/test-utils/focusRingAssert';
 
 afterEach(() => {
   cleanup();
@@ -529,20 +530,19 @@ describe('KebabMenu trigger host halo (88.9-35)', () => {
     'text-2xl',
     'leading-none',
     'focus:outline-hidden',
-    'focus-visible:ring-2',
-    'focus-visible:ring-focus-ring',
-    'focus-visible:ring-offset-2',
   ];
   const trigger = () => screen.getByRole('button', { name: 'Member actions' });
 
   it('R033 (88.9): the trigger halo comes from hostGround — card by default, the host\'s ground when passed', () => {
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
     for (const token of SHIPPED) expect(trigger()).toHaveClass(token);
+    expectFocusRing(trigger(), 'the kebab trigger');
     expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-card');
     cleanup();
 
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround="page" />);
     for (const token of SHIPPED) expect(trigger()).toHaveClass(token);
+    expectFocusRing(trigger(), 'the kebab trigger');
     expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-page');
     expect(trigger()).not.toHaveClass('focus-visible:ring-offset-surface-card');
     cleanup();

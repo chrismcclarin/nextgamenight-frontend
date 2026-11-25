@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import GameSuggestionCardJs from './GameSuggestionCard';
+import { expectFocusRing } from '@/test-utils/focusRingAssert';
 
 // The component is JS, so its inferred props are loose. Cast to the narrow shape this suite
 // drives (the formLabels.audit.test.tsx idiom, typed rather than a record).
@@ -106,15 +107,13 @@ describe('GameSuggestionCard — keyboard operable, one name (Req 2 / AC-8, D-26
       'w-full',
       'text-left',
       'focus:outline-hidden',
-      'focus-visible:ring-2',
-      'focus-visible:ring-focus-ring',
-      'focus-visible:ring-offset-2',
       'card',
       'p-3',
       'md:p-6',
     ]) {
       expect(button.classList.contains(token), `class list lacks ${token}`).toBe(true);
     }
+    expectFocusRing(button, 'Catan');
   });
 
   // 88.9-52 R4 D2 (owner 2026-11-18: wrap, no line limit, and the name keeps its room). The card's
