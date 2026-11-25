@@ -78,7 +78,7 @@ import UserHome from './UserHomePage';
 // 88.9-PICKS-B1.json, plan 88.9-42): the opaque status-warning family in both themes, no
 // dark: fork and no amber.
 const BOX_CLASS =
-  'mb-4 px-4 py-3 rounded-card bg-status-warning-subtle border border-status-warning text-content-status-warning flex items-center justify-between gap-3';
+  'mb-4 px-edge-page py-3 rounded-card bg-status-warning-subtle border border-status-warning text-content-status-warning flex items-center justify-between gap-3';
 
 /** UserHomePage is `.js`, so its inferred prop type has every prop REQUIRED. */
 function homeElement() {

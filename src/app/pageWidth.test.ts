@@ -59,7 +59,7 @@ describe('page width — X5 (88.9-59)', () => {
     expect(count(header, 'w-full max-w-[100rem] mx-auto px-4 h-full'), 'the header nav class string').toBe(1);
     expect(count(footer, 'max-w-[100rem] mx-auto px-4 py-4'), 'the two footer strips').toBe(2);
     expect(
-      count(home, 'user-home-container max-w-[100rem] mx-auto w-full p-4 md:p-6 md:pb-6'),
+      count(home, 'user-home-container max-w-[100rem] mx-auto w-full p-edge-page md:p-edge-wide md:pb-6'),
       'the home body class string',
     ).toBe(1);
 

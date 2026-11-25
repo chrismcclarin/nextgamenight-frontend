@@ -350,7 +350,7 @@ function expectRestingShadowIsInvisibleButValid(raw: string, label: string): voi
       'stale LOCATOR rather than a token: a resting-card element that never carried a shadow ' +
       'utility at all ALSO computes exactly this value, so before suspecting `--shadow-sm`, ' +
       'check that the locator still resolves the element carrying `shadow-theme-sm` ' +
-      '(src/app/components/grouplist.js ("rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm"), handle `data-testid="group-card"`). A structural ancestor step ' +
+      '(src/app/components/grouplist.js ("rounded-card p-edge-card pl-edge-page md:p-edge-wide"), handle `data-testid="group-card"`). A structural ancestor step ' +
       're-pointed itself onto a nested block once already, and this message accused the token ' +
       'for ~25 plans.'
   ).not.toBe('none');

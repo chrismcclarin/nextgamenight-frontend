@@ -648,8 +648,12 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
            DECISION Phase 88.9-42 NAV-01 (owner by chat 2026-11-07 1:08 PM Pacific, '(a)'): the home body caps at max-w-7xl mx-auto so it shares the header's edge, chosen OVER the full-bleed body; md:pb-6 stays (comment above).
            AMENDED Phase 88.9-59 (X5a, owner at the 88.9-51 glance 2026-11-11: can we make it closer to 1600?): the cap
            moves to 1600 with the header and both footer strips; the body still shares the header's edge. Chosen OVER
-           the 1280 cap. */
-        <div className="user-home-container max-w-[100rem] mx-auto w-full p-4 md:p-6 md:pb-6">
+           the 1280 cap.
+           AMENDED Phase 89.6-15 (O-M1-sites): the shorthand the note above names is now md:p-edge-wide (the page
+           gutter is p-edge-page md:p-edge-wide, owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page
+           edge, 12px card edge)'), pixel-identical at normal text; md:pb-6 still follows it and still must never
+           be zeroed. The removed-group notice below takes the page edge token for its side padding too. */
+        <div className="user-home-container max-w-[100rem] mx-auto w-full p-edge-page md:p-edge-wide md:pb-6">
             {/* Plan 88.6.1-62 (88.6.1-70 contract C12): ONE guard for the ONE `retained`, first in the
                 container and outside every arm a withdrawal swaps; it renders nothing. Its target
                 follows the sheet — see the DECISION Phase 88.6.1-62 marker above. */}
@@ -678,7 +682,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
             <div
                 className={
                     removedNoticeShown
-                        ? "mb-4 px-4 py-3 rounded-card bg-status-warning-subtle border border-status-warning text-content-status-warning flex items-center justify-between gap-3"
+                        ? "mb-4 px-edge-page py-3 rounded-card bg-status-warning-subtle border border-status-warning text-content-status-warning flex items-center justify-between gap-3"
                         : undefined
                 }
             >

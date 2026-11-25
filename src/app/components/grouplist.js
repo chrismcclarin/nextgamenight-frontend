@@ -369,7 +369,7 @@ const GroupList = ({
   // lives in selfIdentityErrorSource.ts, so this condition reads the error state alone.
   if (selfIdentityErrorState.showError) {
     return (
-      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
+      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-edge-page flex flex-col overflow-hidden h-full">
         {/* 88.9-52 (W2 / W18): the same wrapping header row as the main return below; see its marker. */}
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4 pb-3 border-b border-line">
           <Heading level={2} size="heading" className="text-content-primary shrink-0 max-w-full">Your Groups</Heading>
@@ -399,7 +399,7 @@ const GroupList = ({
 
   if (!hasLoaded) {
     return (
-      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
+      <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-edge-page flex flex-col overflow-hidden h-full">
         <div className="text-center py-8 px-4 text-content-muted">Loading groups...</div>
       </div>
     );
@@ -419,12 +419,16 @@ const GroupList = ({
     // flatten is applied to the loading/error-state renders of this wrapper so the
     // surface does not jump 16px when it transitions states. That is a decision,
     // not a cleanup.
+    // AMENDED Phase 89.6-15 (O-M1-sites): the two wrappers' desktop 16px is now the page edge
+    // token (md:p-edge-page, owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge,
+    // 12px card edge)'), the same 16px at normal text that no longer doubles at 200% text; the
+    // phone flatten above is unchanged.
     //
     // DECISION Phase 88.9-59 (X5b, owner 2026-11-11: A, lets make the groups wider): this root and
     // the two early-return roots fill the home column, chosen OVER the 400px desktop cap (60px
     // dead). Column width: src/app/userHome/UserHomePage.js ("DECISION Phase 88.9-42 F4b"). A cap
     // back here is a decision, not a cleanup.
-    <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
+    <div className="w-full bg-surface-page rounded-card surface-flat-phone md:p-edge-page flex flex-col overflow-hidden h-full">
       {/* DECISION Phase 88.9-52 (W2 / W18, after-build look page, no objection from the owner
           2026-11-16): the header row wraps. When the heading and the Create button do not fit on one
           line with a 12px gap, the button drops under the heading, chosen OVER the one-line row,
@@ -503,7 +507,7 @@ const GroupList = ({
 
       {/* 88.9-52 (W22): max-md:pt-0.5 leaves the 2px a hovered card lifts by (hover:-translate-y-0.5);
           below md this scroll area has no padding and cut the first card's lifted top edge. */}
-      <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 max-md:pt-0.5 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
+      <div className="flex-1 overflow-y-auto surface-flat-phone md:p-edge-page max-md:pt-0.5 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
         {/* D-37 / D-50 / D-51: three mutually exclusive slots, chosen OVER the exclusive ternary
             that put the full banner in place of retained cards (see DECISION Phase 88.6.1-41
             (D-37, Req 9) above). The banner holds the list's place only while nothing loaded. */}
@@ -750,6 +754,12 @@ const GroupList = ({
                  stays for plan 89.6-38, which owns the hostGround halo key that still reads it.
                  AMENDED Phase 89.6-38 (host-ground): the key is retired with its file, so nothing reads the
                  pair any more; its removal is handed to plan 89.6-34 (found-new in the 89.6-38 SUMMARY). */
+              /* DECISION Phase 89.6-15 (O-M1-sites): the Home group card's edges are the px edge tokens
+                 (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card edge)'; HR-9,
+                 SPEC A9: every card and bar), chosen OVER rem padding that doubles at 200% text and takes a
+                 phone's width from the group name. The extra left room is the accent border's width on top
+                 of the token, kept as a calc on the token, not a new rem value. Pixel-identical at normal
+                 text. Changing this is a decision, not a cleanup. */
               <div
                 key={group.id}
                 ref={(node) => {
@@ -757,7 +767,7 @@ const GroupList = ({
                   else cardNodesRef.current.delete(group.id);
                 }}
                 data-testid="group-card"
-                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
+                className={`rounded-card p-edge-card pl-edge-page md:p-edge-wide md:pl-[calc(var(--spacing-edge-wide)_+_4px)] shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
                 style={{
                   ...(tinted && {
