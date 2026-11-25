@@ -103,7 +103,10 @@ interface CellRecord {
 const firstLine = (error: unknown): string => String(error instanceof Error ? error.message : error).split('\n')[0];
 
 /** Wait until the page's size and text stop changing from one frame to the next. */
-async function settleLayout(page: Page, root: Locator): Promise<void> {
+async function settleLayout(page: Page, root: Locator, clock: 'frames' | 'held' = 'frames'): Promise<void> {
+  if (clock === 'held') {
+    // Not built yet (plan 89.6-25 builds it in the next commit): falls through to the frame wait.
+  }
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await settleAnimations(root);
   await page.evaluate(async () => {
@@ -298,6 +301,11 @@ const EXCEPTIONS_CONTROL =
   heldBox('Saturday') +
   `<div class="fixed inset-0 z-60">${heldBox('Thursday')}</div>` +
   '</main></body></html>';
+// One page for the held-clock control: a frame callback that makes the page taller, and a
+// two-second timer that removes a line, both armed after the clock is paused.
+const CLOCK_CONTROL =
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"></head>' +
+  '<body style="margin:0"><main><p id="thanks">Thank You!</p><div id="grow" style="height:10px"></div></main></body></html>';
 const wordsOf = (entries: readonly string[]): string[] => entries.map((entry) => entry.match(/^"([^"]+)"/)?.[1] ?? entry).sort();
 
 test('sweep rows (89.6-08): every surface row is declared once, with a census id, an owner and a status', async ({ page }) => {
@@ -360,6 +368,44 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
     rows: ALL_ROWS.map((row) => ({ id: row.id, census: row.census, kind: row.kind, owner: row.owner, status: row.status, state: row.state })),
     emptyStates: EMPTY_STATES,
   });
+
+  // The held clock at work (orchestrator ruling D10, plan 89.6-25), on a page of this test's own.
+  // A paused page clock fires no animation frame, so the frame settle never returns; a row whose
+  // reach leaves the clock paused (clock: 'held') is settled by advancing the paused clock instead,
+  // which runs the page's frame callbacks and leaves a two-second timer unfired.
+  const clockPage = await page.context().newPage();
+  try {
+    await clockPage.clock.install();
+    await clockPage.setContent(CLOCK_CONTROL);
+    const pausedAt = (await clockPage.evaluate(() => Date.now())) + 500;
+    await clockPage.clock.pauseAt(pausedAt);
+    await clockPage.evaluate(() => {
+      setTimeout(() => document.getElementById('thanks')?.remove(), 2000);
+      requestAnimationFrame(() => {
+        const grow = document.getElementById('grow');
+        if (grow) grow.style.height = '900px';
+      });
+    });
+    const clockRoot = clockPage.locator('main');
+    const within = async (settle: Promise<void>, ms: number): Promise<'settled' | 'stalled'> => {
+      // The losing settle is left waiting on the page; closing the page ends it, so its rejection is dropped.
+      settle.catch(() => undefined);
+      return Promise.race([settle.then(() => 'settled' as const), new Promise<'stalled'>((resolve) => setTimeout(() => resolve('stalled'), ms))]);
+    };
+    expect(await within(settleLayout(clockPage, clockRoot), 2_000), 'the frame settle returned under a paused clock: the held settle is not needed').toBe('stalled');
+    expect(await within(settleLayout(clockPage, clockRoot, 'held'), 10_000), 'the held settle did not return under a paused clock').toBe('settled');
+    const after = await clockPage.evaluate(() => ({
+      grow: document.getElementById('grow')?.getBoundingClientRect().height,
+      thanks: document.getElementById('thanks') !== null,
+      now: Date.now(),
+    }));
+    expect(after.grow, 'the held settle did not run the page\'s frame callback').toBe(900);
+    expect(after.thanks, 'the held settle let the two-second timer run').toBe(true);
+    // Two steps of 32ms: the first sees the frame callback's change, the second sees none.
+    expect(after.now - pausedAt, 'the held settle advanced the paused clock by other than two steps').toBe(64);
+  } finally {
+    await clockPage.close();
+  }
 });
 
 for (const row of ALL_ROWS) {
