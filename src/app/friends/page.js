@@ -1397,9 +1397,12 @@ function FriendsPage() {
                             <button
                                 ref={tabRefs[key]}
                                 // 89.6-21 (strip-cue): a tab reached by keyboard is brought clear of the edge
-                                // cues (each w-8, 2rem) when it fits between them; a wider one is brought
-                                // wholly inside the strip, as a pressed one is below. At normal text nothing
-                                // overflows, so nothing scrolls.
+                                // cues (each w-8, 2rem) when it fits between them; a wider one is centred in the strip,
+                                // chosen OVER scrollIntoView nearest, which left it flush with one edge and a whole
+                                // cue over it (64px of Requests at 320 / 200%, CI run 45706391242); centred, each cue
+                                // covers half the overflow, the least the geometry allows, and a tab no wider than the
+                                // strip stays wholly inside it, so the pressed-tab scroll below moves nothing. At normal text
+                                // nothing overflows, so nothing scrolls.
                                 onFocus={(e) => {
                                     const focused = e.currentTarget;
                                     const strip = tabStripRef.current;
@@ -1410,8 +1413,8 @@ function FriendsPage() {
                                     if (tab.width <= box.width - 2 * cue) {
                                         if (tab.left < box.left + cue) strip.scrollLeft -= box.left + cue - tab.left;
                                         else if (tab.right > box.right - cue) strip.scrollLeft += tab.right - (box.right - cue);
-                                    } else if (typeof focused.scrollIntoView === 'function') {
-                                        focused.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                                    } else {
+                                        strip.scrollLeft += tab.left + tab.width / 2 - (box.left + box.width / 2);
                                     }
                                 }}
                                 onClick={() => {
