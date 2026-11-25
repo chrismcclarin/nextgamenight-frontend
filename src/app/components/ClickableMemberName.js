@@ -962,9 +962,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
           // judges each ring chunk and would red).
           // AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 
           // ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key is retired, so this site passes or reads no ground.
-          // DECISION Phase 89.6-21 (friends-row, ring): the name's focus ring is concentric at 4px with 4px side room (rule 10 G1 + G2, owner pick O-1 B), chosen OVER the 2px radius flush to the letters (register 'rings are drawn several ways', 2px on names). The side room is paid back by an equal negative margin (px-1 with -mx-1), so the name's advance in its line is unchanged and running layout does not move. Changing this is a decision, not a cleanup.
+          // DECISION Phase 89.6-21 (friends-row, ring): the name's focus ring takes the 4px radius rung (rule 10 G1, owner pick O-1 B), chosen OVER the 2px radius flush to the letters (register 'rings are drawn several ways', 2px on names). G2 (4px side room paid back by an equal negative margin) is NOT applied here: in CI run 45680024965 it grew the name's box 4px each side, which the 87.8 D-13 tap-isolation specs measure (e2e/touch-targets.spec.ts: chip gaps 12px read 4px and 8px, and the add-friend plus's extension reached the name's box), so G2 at this site waits for plan 89.6-31 with that conflict named. Changing this is a decision, not a cleanup.
           className: cn(
-            'cursor-pointer hover:underline rounded-sm px-1 -mx-1 focus:outline-hidden focus-visible:focus-ring',
+            'cursor-pointer hover:underline rounded-sm focus:outline-hidden focus-visible:focus-ring',
           ),
           onClick: (e) => {
             e.stopPropagation();
