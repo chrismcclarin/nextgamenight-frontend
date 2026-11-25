@@ -1152,12 +1152,21 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       const textCrosses = (p: Part, q: Part) => crosses(p, q) && Math.min(p.bottom, q.bottom) - Math.max(p.top, q.top) > Math.min(p.bottom - p.top, q.bottom - q.top) / 3;
       const apart = (p: Element, q: Element) => !p.contains(q) && !q.contains(p);
       const overlapping: Array<[Element, Element]> = [];
-      const controlParts = controls.map((control) => ({ control, part: drawnPart(control.parentElement, control.getBoundingClientRect()) }));
+      // An inline control (a link in running text) is compared by its line fragments, one per line
+      // it sits on; any other control by its one box. See the A8 marker below, amendment 89.6-19.
+      const boxesOf = (control: Element): DOMRect[] =>
+        getComputedStyle(control).display === 'inline' ? Array.from(control.getClientRects()).filter((r) => r.width > 0 && r.height > 0) : [control.getBoundingClientRect()];
+      const controlParts = controls.map((control) => ({
+        control,
+        parts: boxesOf(control)
+          .map((r) => drawnPart(control.parentElement, r))
+          .filter((part): part is Part => part !== null),
+      }));
       for (let i = 0; i < controlParts.length; i += 1) {
         for (let j = i + 1; j < controlParts.length; j += 1) {
           const p = controlParts[i];
           const q = controlParts[j];
-          if (!p.part || !q.part || !apart(p.control, q.control) || !crosses(p.part, q.part)) continue;
+          if (!apart(p.control, q.control) || !p.parts.some((r) => q.parts.some((s) => crosses(r, s)))) continue;
           overlapping.push([p.control, q.control]);
           lost.push(`overlap: ${named(p.control)} and ${named(q.control)}`);
         }
@@ -1247,6 +1256,17 @@ export function expectLargeTextCell(read: LargeTextCellRead, tag: string): void 
 // or a page it did not put back (NOT RESTORED). Chosen OVER recording those like any split: a
 // read that could not measure has no finding to record, and one that left the page changed has
 // spoiled every read after it. A split or held word that WAS measured is still only recorded.
+//
+// AMENDED Phase 89.6-19 (orchestrator ruling D17, 2026-11-25): the overlap of two controls compares
+// an INLINE control's line fragments (its client rects, each cut to its drawn part), chosen OVER its
+// one bounding box, which for a link wrapping over two lines spans both full lines and so covered a
+// neighbour none of its letters touch. Measured in the checks harness, twin zoom-links, at 215 wide:
+// the wrapped link's box ran 16 to 162 by 19 to 60 and held the Home link (16 to 59 by 19 to 36),
+// while its two fragments ran 72 to 139 on the first line and 16 to 162 on the second; the old read
+// listed that pair as lost, as it did three times on the night page (the breadcrumb, the Bringing
+// links, a name beside its add-friend button). Two controls overlap when any fragment of one crosses
+// any fragment of the other; a control that is not inline keeps its one box. Restoring the one box
+// is a decision, not a cleanup: it fails a page for wrapping a link.
 // ---------------------------------------------------------------------------------------------
 
 export interface PageZoomRead {

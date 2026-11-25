@@ -1500,6 +1500,38 @@ test('check: A8 (89.6-02): reports its bad twin and passes its good twin', async
   expect(lost, 'the line of text pulled up over another is not in lost').toContain('overlap: the text of p "Hosted by Bob" and p "Sunday at noon"');
   expect(good.lost, 'the good twin (text below the fold of a scrolling body, a panel wider than the page, two tight lines whose letters do not meet) reads as lost').toEqual([]);
   expect(good.recorded.join(' | '), 'the panel wider than the page was not recorded as page sideways scroll').toContain('the page scrolls sideways by');
+  // 89.6-19 (orchestrator ruling D17): an inline link that wraps over two lines is two line
+  // fragments, not one box. Its one bounding box spans both full lines and covers the link beside
+  // it although no letter of either is under the other; that is not an overlap. Two inline links
+  // where the second is shifted back over the first still are. Each fragment counts only where it
+  // is drawn: a link scrolled out of a scrolling body lies over the button under it and draws nothing there.
+  const linksFrame = await renderTwin(page, 'zoom-links', ZOOM_CHECK_CELL);
+  const links = await readPageZoomCell(linksFrame);
+  const scrolledUnder = await linksFrame.evaluate((frame) => {
+    const link = frame.querySelector('.lt-links-scroll a')!.getBoundingClientRect();
+    const below = Array.from(frame.querySelectorAll('button')).find((b) => b.textContent === 'Below')!.getBoundingClientRect();
+    return link.bottom > below.top + 1 && link.top < below.bottom - 1;
+  });
+  expect(scrolledUnder, 'the staging is off: the scrolled link was to lie over the button under its scrolling body').toBe(true);
+  const fragments = await linksFrame.locator('a').evaluateAll((anchors) =>
+    anchors.map((a) => ({
+      text: a.textContent,
+      box: (({ left, top, right, bottom }) => ({ left, top, right, bottom }))(a.getBoundingClientRect()),
+      lines: Array.from(a.getClientRects()).map(({ left, top, right, bottom }) => ({ left, top, right, bottom })),
+    })),
+  );
+  await testInfo.attach('twin-read-links', { body: JSON.stringify({ links, fragments }, null, 2), contentType: 'application/json' });
+  expect(fragments[1].lines.length, 'the staging is off: the second breadcrumb link was to wrap over two lines').toBe(2);
+  expect(links.lost.join(' | '), 'the two links shifted over each other are not in lost').toContain('overlap: a "Ticket" and a "Azul"');
+  expect(
+    links.lost.filter((entry) => entry.includes('Weekend Warriors')),
+    'a link that wraps over two lines reads as overlapping the link beside it although no letter of either is under the other',
+  ).toEqual([]);
+  expect(
+    links.lost.filter((entry) => entry.includes('Scrolled link')),
+    'a link scrolled out of its scrolling body reads as overlapping the button under that body, where it draws nothing',
+  ).toEqual([]);
+  expect(links.lost, 'the inline-links twin lost something other than the shifted pair').toEqual(['overlap: a "Ticket" and a "Azul"']);
   expect(requests, 'the page made a request').toEqual([]);
 });
 

@@ -1218,6 +1218,21 @@
   </main>
 </section>
 
+<!-- page zoom, inline links (89.6-19, orchestrator ruling D17): a link that wraps over two lines beside another link on the same lines, no letter of one under the other (NOT an overlap), two inline links where the second is shifted back over the first (an overlap), and a link scrolled out of a scrolling body, laid out over the button under that body (NOT an overlap: it draws nothing there). -->
+<section data-case="zoom-links">
+  <main data-frame class="lt-frame px-4 py-4">
+    <p class="lt-crumb w-40 text-base text-content-primary"><a href="#" class="underline">Home</a> / <a href="#" class="underline">Weekend Warriors of the Night</a></p>
+    <p class="lt-shifted mt-3 text-base text-content-primary"><a href="#" class="underline">Ticket</a> <a href="#" class="relative -left-6 underline">Azul</a></p>
+    <div class="lt-links-scroll mt-3 h-12 overflow-y-auto text-base text-content-primary">
+      <p>Line one</p>
+      <p>Line two</p>
+      <p>Line three</p>
+      <p><a href="#" class="underline">Scrolled link</a></p>
+    </div>
+    <button type="button" class="btn btn-secondary min-h-11"><span class="bb-label">Below</span></button>
+  </main>
+</section>
+
 <!-- page zoom, good: text below the fold of a scrolling body, a panel wider than the page, and two tight lines that touch without their letters meeting. -->
 <section data-case="zoom-good">
   <main data-frame class="lt-frame px-4 py-4">
