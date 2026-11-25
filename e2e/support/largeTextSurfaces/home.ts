@@ -441,7 +441,8 @@ function listReachProblems(read: ListReach, tag: string): string[] {
   return problems;
 }
 
-// The owner's phone width, where the 12rem switch does not engage (430px is about 13.4rem at 200%).
+// The owner's phone width (430px is about 13.4rem at 200%), the reason the sheet's one-scroll switch
+// is 14rem and not 12rem (orchestrator D26): read here so the switch is proven to engage there.
 const OWNER_PHONE = { width: 430, height: 932 };
 
 // D04 extras, in every cell: the close first, then the list can be reached. In the 375 x 667 dark

@@ -306,8 +306,11 @@ const BottomSheet = React.forwardRef<
               and its title and close strings, the same tokens, not imported: merging the two
               shells is Phase 92's per D-08), chosen OVER a title that cannot shrink and pushes the
               close off screen (27px past the edge at 375 / 200%); the sheet is the container named
-              sheet so its consumer can switch to one scroll below 12rem, chosen OVER a phone media
-              query (blind to text size). The side padding is the page edge token, 16px at every
+              sheet so its consumer can switch to one scroll below 14rem, chosen OVER a phone media
+              query (blind to text size). AMENDED Phase 89.6-40 (CAL, orchestrator D26): the switch
+              is 14rem, not the 12rem of the Modal's O-8 C rule: at 12rem the sheet was not one
+              scroll at 430 x 932 / 200% (the owner's phone) or at the 215 page-zoom width, both
+              13.44rem; every phone at normal text is at least 20rem, so normal text is unchanged. The side padding is the page edge token, 16px at every
               text size (pick O-M1 D, HR-9; pixel-identical at normal text), so "Calendar" fits at
               320 / 200%. The close holds the 52 x 44 box and its icon follows text to 32px (pick
               O-M4 Fixed+). Changing this is a decision, not a cleanup. */}

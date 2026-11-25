@@ -995,11 +995,11 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 height="full"
                 /* The list view manages its own scroll region; the sheet body only
                    needs to hand it the full height to flex into.
-                   AMENDED Phase 89.6-40 (CAL, pick S2): below a 12rem sheet width the body is the
+                   AMENDED Phase 89.6-40 (CAL, pick S2): below a 14rem sheet width (D26) the body is the
                    one scroll (the Next game night card and the list together); its 5.75rem scroll
                    padding is the list region's W17 value, so a focused row's day heading stays
                    clear of the stuck section header. src/components/ui/BottomSheet.tsx ("DECISION Phase 89.6-40 (CAL)"). */
-                bodyClassName="flex min-h-0 flex-col overflow-hidden @max-[12rem]/sheet:overflow-y-auto @max-[12rem]/sheet:scroll-pt-23"
+                bodyClassName="flex min-h-0 flex-col overflow-hidden @max-[14rem]/sheet:overflow-y-auto @max-[14rem]/sheet:scroll-pt-23"
             >
                 {selfIdentityErrorState.showError && selfIdentityErrorState.code !== 'unauthorized' ? (
                     <FetchErrorBanner state={selfIdentityErrorState} compact />

@@ -211,7 +211,7 @@ describe('FetchErrorBanner — R073 mount grounds (88.9-50)', () => {
     { file: 'src/app/userHome/UserHomePage.js', anchor: '{pageSessionState ? null : selfIdentityErrorState.showError ? (' },
     // the phone BottomSheet panel paints bg-surface-card
     // AMENDED Phase 89.6-40 (CAL): the sheet body gained its below-12rem one-scroll classes, so the anchor is the new string.
-    { file: 'src/app/userHome/UserHomePage.js', anchor: 'bodyClassName="flex min-h-0 flex-col overflow-hidden @max-[12rem]/sheet:overflow-y-auto @max-[12rem]/sheet:scroll-pt-23"' },
+    { file: 'src/app/userHome/UserHomePage.js', anchor: 'bodyClassName="flex min-h-0 flex-col overflow-hidden @max-[14rem]/sheet:overflow-y-auto @max-[14rem]/sheet:scroll-pt-23"' },
     // the four profile mounts sit inside card p-edge-card md:p-edge-wide sections
     { file: 'src/app/userProfile/page.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact />' },
     { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={schedulesHeadingRef}' },
