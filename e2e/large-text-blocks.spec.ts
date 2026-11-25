@@ -1210,22 +1210,35 @@ test('check: split, a full-bleed row inside a plain wrapper (89.6-02, R9): repor
   const spill = await splitCase(page, 'split-full-bleed-spill');
   const spillShape = await page.locator('.lt-row').evaluate((el) => {
     const card = el.closest('.lt-card');
-    return { rowLeft: el.getBoundingClientRect().left, cardLeft: card ? card.getBoundingClientRect().left : 0 };
+    const cs = card ? getComputedStyle(card) : null;
+    return { rowLeft: el.getBoundingClientRect().left, cardLeft: card ? card.getBoundingClientRect().left : 0, cardPadding: cs ? Number.parseFloat(cs.paddingLeft) : 0, cardBorder: cs ? Number.parseFloat(cs.borderLeftWidth) : -1 };
   });
-  await testInfo.attach('twin-read', { body: JSON.stringify({ wrapped, wrappedShape, spill, spillShape }, null, 2), contentType: 'application/json' });
+  const bordered = await splitCase(page, 'split-full-bleed-bordered-wrapper');
+  const borderedShape = await page.locator('.lt-bordered').evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { padding: Number.parseFloat(cs.paddingLeft), border: Number.parseFloat(cs.borderLeftWidth), rowLeft: el.firstElementChild ? el.firstElementChild.getBoundingClientRect().left : 0, left: el.getBoundingClientRect().left };
+  });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ wrapped, wrappedShape, spill, spillShape, bordered, borderedShape }, null, 2), contentType: 'application/json' });
   expect(wrappedShape.edge, 'the wrapper has padding or a border of its own: the harness is not the shape it says').toBe(0);
   expect(wrappedShape.rowMargin, 'the row has no negative side margin: the harness is not the shape it says').toBeLessThan(0);
   expectReported(wrapped, 'a name squeezed in a full-bleed row that sits in a plain wrapper inside its card');
   expect(entriesFor(wrapped.read.split, 'Weekend').join(' | '), 'the name in the wrapped full-bleed row was not measured as whole when stacked').toContain('whole on one line');
+  // An edge stops the carried widening: padding alone (the card), and a border alone (a wrapper).
   expect(spillShape.rowLeft, 'the row does not start left of its card: the harness is not the shape it says').toBeLessThan(spillShape.cardLeft);
+  expect(spillShape.cardPadding, 'the card has no side padding: the harness is not the shape it says').toBeGreaterThan(0);
+  expect(spillShape.cardBorder, 'the card has a side border: the case does not show padding alone stopping the widening').toBe(0);
   expectWide(spill, 'a name in a row pulled out of its card by a margin twice the card padding');
+  expect(borderedShape.border, 'the wrapper has no side border: the harness is not the shape it says').toBeGreaterThan(0);
+  expect(borderedShape.padding, 'the wrapper has side padding: the case does not show a border alone stopping the widening').toBe(0);
+  expect(borderedShape.rowLeft, 'the row does not start left of its bordered wrapper: the harness is not the shape it says').toBeLessThan(borderedShape.left);
+  expectWide(bordered, 'a name in a row pulled out of a wrapper that has a border of its own');
   expect(requests, 'the page made a request').toEqual([]);
 });
 
 test('check: split, a forced break that leaves the line count as it was (89.6-02, R9): a hyphenated or dashed name broken inside its first part is reported when stacking leaves only the wrap at its hyphen, and is held by a box of its own width, whether or not it is on more lines than its natural wrap', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
-  const HYPHEN = 'Weekend-Gogo';
-  const DASH = 'Weekend–Gogo';
+  const HYPHEN = 'Weekend-Go';
+  const DASH = 'Weekend\u2013Go';
   const same = await splitCase(page, 'split-hyphen-forced-same-count');
   const sameLines = await linesOf(page.locator('.lt-name'));
   const sameSizer = await brokenWordsOf(page.locator('.lt-sizer'));
@@ -1251,9 +1264,25 @@ test('check: split, a forced break that leaves the line count as it was (89.6-02
   const underBodyWrapping = await readLargeTextCell(frameOf(page));
   const SHY = 'Week\u00ADend';
   const refused = await splitCase(page, 'split-soft-hyphen-refused');
-  const refusedShape = await page.locator('.lt-name').evaluate((el) => ({ hyphens: getComputedStyle(el).hyphens, text: el.textContent }));
+  const refusedShape = await page.locator('.lt-name').evaluate((el) => {
+    // Where the name breaks: the letters drawn before the first one on another line.
+    const node = el.firstChild as Text;
+    const tops: Array<{ letter: string; top: number }> = [];
+    for (let at = 0; at < node.length; at += 1) {
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, at + 1);
+      const drawn = Array.from(range.getClientRects()).find((r) => r.width > 0 && r.height > 0);
+      if (drawn) tops.push({ letter: node.data[at], top: Math.round(drawn.top) });
+    }
+    return { hyphens: getComputedStyle(el).hyphens, text: el.textContent, firstLine: tops.filter((t) => t.top === tops[0].top).map((t) => t.letter).join('') };
+  });
+  const SHY_HYPHEN = 'Week\u00ADend-Go';
+  const notTaken = await splitCase(page, 'split-soft-hyphen-not-taken');
+  const notTakenSizer = await brokenWordsOf(page.locator('.lt-sizer'));
+  const notTakenLines = await linesOf(page.locator('.lt-name'));
   await testInfo.attach('twin-read', {
-    body: JSON.stringify({ same, sameLines, sameSizer, more, moreLines, dash, dashLines, dashSizer, held, heldLines, bodyWraps, underBodyWrapping, refused, refusedShape }, null, 2),
+    body: JSON.stringify({ same, sameLines, sameSizer, more, moreLines, dash, dashLines, dashSizer, held, heldLines, bodyWraps, underBodyWrapping, refused, refusedShape, notTaken, notTakenSizer, notTakenLines }, null, 2),
     contentType: 'application/json',
   });
   // Squeezed beside a box: on two lines as drawn (broken inside "Weekend") and on two lines once stacked (at the hyphen).
@@ -1263,6 +1292,7 @@ test('check: split, a forced break that leaves the line count as it was (89.6-02
   expect(entriesFor(same.read.split, HYPHEN).join(' | '), 'the name is not reported as losing its forced breaks when its row stacks').toContain('its forced breaks go');
   expect(moreLines[HYPHEN], 'the hyphenated name beside the wider box is not on more than two lines: the harness is not the shape it says').toBeGreaterThan(2);
   expectReported(more, 'the same name beside a wider box, on more lines than its natural wrap', HYPHEN);
+  expect(entriesFor(more.read.split, HYPHEN).join(' | '), 'the name beside the wider box is not reported as losing its forced breaks when its row stacks').toContain('its forced breaks go');
   expect(dashSizer, 'the sizing line of the dashed name breaks its word: the row is not as wide as that line').toEqual([]);
   expect(dashLines[DASH], 'the dashed name is not on two lines as drawn: the case does not show a forced break that leaves the line count as it was').toBe(2);
   expectReported(dash, 'a name with an en dash broken inside its first part by a box beside it', DASH);
@@ -1281,8 +1311,13 @@ test('check: split, a forced break that leaves the line count as it was (89.6-02
   expect(bodyWraps, 'body does not wrap anywhere: the harness is not the shape it says').toEqual({ wordBreak: 'break-all', lineBreak: 'anywhere' });
   expect(underBodyWrapping, 'the read differs when body, where the measuring span sits, has wrapping of its own').toEqual(held.read);
   // A soft hyphen the page refuses is no place the browser breaks at anyway.
-  expect(refusedShape, 'the name does not hold a soft hyphen under hyphens: none: the harness is not the shape it says').toEqual({ hyphens: 'none', text: SHY });
-  expectHeld(refused, 'a name broken by force at a soft hyphen that hyphens: none refuses', 'held narrow by div.lt-fit', SHY);
+  expect(refusedShape, 'the name is not broken one letter after a soft hyphen that hyphens: none refuses, with no hyphen drawn: the harness is not the shape it says').toEqual({ hyphens: 'none', text: SHY, firstLine: 'Weeke' });
+  expectHeld(refused, 'a name broken by force one letter after a soft hyphen that hyphens: none refuses', 'held narrow by div.lt-fit', SHY);
+  // A soft hyphen the line did not break at draws nothing, and is on no line.
+  expect(notTakenSizer, 'the sizing line of the name with a soft hyphen and a hyphen breaks its word: the box is not as wide as that line').toEqual([]);
+  expect(notTakenLines[SHY_HYPHEN], 'the name with a soft hyphen and a hyphen is not on two lines: the harness is not the shape it says').toBe(2);
+  expectWide(notTaken, 'a name that wraps at its hyphen and leaves its soft hyphen unused', SHY_HYPHEN);
+  expect(entriesFor(notTaken.read.wide, SHY_HYPHEN).join(' | '), 'the name is not written down as ordinary wrapping').toContain('ordinary wrapping');
   expect(requests, 'the page made a request').toEqual([]);
 });
 
@@ -1332,9 +1367,9 @@ test('check: split, a read that failed under the page-zoom read (89.6-02, R9): a
   expect(requests, 'the page made a request').toEqual([]);
 });
 
-test('check: split, the glued test needs the word on one line (89.6-02, R9): a hyphenated name under break-all that is still on two lines with its forced breaks off, each of them fitting its box, is held by the box and not called glued', async ({ page }, testInfo) => {
+test('check: split, the glued test needs the word on one line (89.6-02, R9): a hyphenated name under break-all that is still on two lines with its forced breaks off, each of them fitting its box, is held by the box and not called glued, and a break-all word that a line of its block would hold is reported', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
-  const WORD = 'Weekend-Gogo';
+  const WORD = 'Weekend-Go';
   const found = await splitCase(page, 'split-break-all-two-lines-free');
   const sizer = await brokenWordsOf(page.locator('.lt-sizer'));
   // The same word with word-break put back to normal, as the read's own second look does: where it sits then.
@@ -1353,6 +1388,15 @@ test('check: split, the glued test needs the word on one line (89.6-02, R9): a h
   expect(free.lines, 'with word-break normal the name is not on two lines: the case does not show a word still wrapped with its forced breaks off').toBe(2);
   expect(free.width, 'with word-break normal the name is wider than its box: the case does not show a measured width that fits').toBeLessThanOrEqual(free.room + 0.5);
   expectHeld(found, 'a hyphenated name under break-all in a box as wide as its sizing line', 'held narrow by div.lt-fit', WORD);
+  // The other side of the same test: a break-all word that IS on one line with its forced breaks off, on a line that holds it.
+  const fits = await splitCase(page, 'split-break-all-fits');
+  const fitsSizer = await brokenWordsOf(page.locator('.lt-sizer'));
+  const fitsStyle = await page.locator('.lt-name').evaluate((el) => getComputedStyle(el).wordBreak);
+  await testInfo.attach('twin-read-fits', { body: JSON.stringify({ fits, fitsSizer, fitsStyle }, null, 2), contentType: 'application/json' });
+  expect(fitsStyle, 'the name does not compute to word-break: break-all: the harness is not the shape it says').toBe('break-all');
+  expect(fitsSizer, 'the sizing line breaks a word: the box is not as wide as that line').toEqual([]);
+  expectReported(fits, 'a word under break-all whose last letter drops alone although a line of its block would hold the word');
+  expect(entriesFor(fits.read.split, 'Weekend').join(' | '), 'the word is not reported as one a line of its own block would hold').toContain('a line of its own block would hold it');
   expect(requests, 'the page made a request').toEqual([]);
 });
 

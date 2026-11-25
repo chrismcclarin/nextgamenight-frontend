@@ -537,7 +537,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     //      (measured here: after a hyphen, a soft hyphen and an en dash; not after a slash
     //      between two words). A break of the word in the page that falls anywhere else is
     //      FORCED. Counting lines with forced breaks off, as this step did before R9, missed a
-    //      forced break that left the count as it was ("Weekend-Gogo" broken inside "Weekend" is
+    //      forced break that left the count as it was ("Weekend-Go" broken inside "Weekend" is
     //      on two lines, and so is its wrap at the hyphen). The word is also read in place with
     //      the same three properties switched off, on the word's OWN element only, through one
     //      more temporary sheet (step 8 uses that read); a declaration that did not take is said
@@ -851,22 +851,18 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
 
     /** Where a new line starts inside a run of text: the offset, counted from `start`, of every character drawn on another line than the character drawn before it. */
     const lineStartsIn = (node: Node, start: number, end: number): number[] => {
-      const content = node.textContent ?? '';
       const range = document.createRange();
       const starts: number[] = [];
       let line: number | null = null;
-      for (let at = start; at < end; ) {
-        const size = (content.codePointAt(at) ?? 0) > 0xffff ? 2 : 1;
+      for (let at = start; at < end; at += 1) {
         range.setStart(node, at);
-        range.setEnd(node, Math.min(at + size, end));
+        range.setEnd(node, at + 1);
         // A character that draws nothing (a soft hyphen the line did not break at) is on no line.
         const drawn = drawnRects(range)[0];
-        if (drawn) {
-          const top = Math.round(drawn.top);
-          if (line !== null && top !== line) starts.push(at - start);
-          line = top;
-        }
-        at += size;
+        if (!drawn) continue;
+        const top = Math.round(drawn.top);
+        if (line !== null && top !== line) starts.push(at - start);
+        line = top;
       }
       return starts;
     };

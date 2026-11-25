@@ -955,10 +955,10 @@
   </main>
 </section>
 
-<!-- the same with a margin twice the card's padding and one word: the row leaves the card's border box. A box with padding or a border of its own stops the widening, so the name, whole once stacked at the row's start, is outside the frame's content box: it is whole only by spilling out of its card. WIDE, as before R9. -->
+<!-- the same with a margin twice the card's padding and one word, the card with padding and no border: the row leaves the card's box. A box with padding of its own stops the widening, so the name, whole once stacked at the row's start, is outside the frame's content box: it is whole only by spilling out of its card. WIDE, as before R9. -->
 <section data-case="split-full-bleed-spill">
   <main data-frame class="lt-frame px-4 py-4">
-    <div class="lt-card rounded-card border border-line bg-surface-card p-3">
+    <div class="lt-card rounded-card bg-surface-card p-3">
       <div class="lt-plain">
         <div class="lt-row -mx-6 flex gap-2">
           <div class="lt-wrap min-w-0 flex-1">
@@ -971,10 +971,26 @@
   </main>
 </section>
 
+<!-- a full-bleed row pulled out of a wrapper that has a border and no padding, inside a card with padding: the border is an edge of the wrapper's own, so the row has left a box and the widening stops there. WIDE, as before R9. -->
+<section data-case="split-full-bleed-bordered-wrapper">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card rounded-card bg-surface-card p-3">
+      <div class="lt-bordered border border-line">
+        <div class="lt-row -mx-3 flex gap-2">
+          <div class="lt-wrap min-w-0 flex-1">
+            <p class="lt-name font-semibold text-base text-content-primary">Weekend</p>
+          </div>
+          <div aria-hidden="true" class="lt-fixed h-11 w-24 flex-none rounded-btn bg-surface-sunken"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
 <!--
   a hyphenated name broken inside "Weekend" by a box beside it, bad form only. The first line sizes
-  the row: stacked, the name has room for "Weekend-Go", so it wraps at its hyphen and nowhere else.
-  The box beside it is as wide as "Goo" (text that draws nothing, so the case holds in any font):
+  the row: stacked, the name has room for "Weekend-G", so it wraps at its hyphen and nowhere else.
+  The box beside it is as wide as "Go" (text that draws nothing, so the case holds in any font):
   the name has one letter less room than "Weekend-" needs, and the break falls inside "Weekend".
   The name is on two lines either way, so a count of lines sees no difference; the PLACE of the
   break does. SPLIT; before R9 this read wide (ordinary wrapping).
@@ -982,23 +998,23 @@
 <section data-case="split-hyphen-forced-same-count">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-fit w-fit max-w-full">
-      <p class="lt-sizer font-semibold text-base text-content-primary">Weekend-Go</p>
+      <p class="lt-sizer font-semibold text-base text-content-primary">Weekend-G</p>
       <div class="lt-pill-row flex w-0 min-w-full">
-        <p class="lt-name min-w-0 font-semibold text-base text-content-primary">Weekend-Gogo</p>
-        <span aria-hidden="true" class="lt-fixed invisible flex-none font-semibold text-base">Goo</span>
+        <p class="lt-name min-w-0 font-semibold text-base text-content-primary">Weekend-Go</p>
+        <span aria-hidden="true" class="lt-fixed invisible flex-none font-semibold text-base">Go</span>
       </div>
     </div>
   </main>
 </section>
 
-<!-- the same beside a 90px box, bad form only: the name is on more lines than it is once stacked. SPLIT, before R9 too. -->
+<!-- the same beside a box as wide as "Weeken", bad form only: the name has room for two or three letters a line, so it is on more lines than it is once stacked. SPLIT, before R9 too. -->
 <section data-case="split-hyphen-forced-more-lines">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-fit w-fit max-w-full">
-      <p class="lt-sizer font-semibold text-base text-content-primary">Weekend-Go</p>
+      <p class="lt-sizer font-semibold text-base text-content-primary">Weekend-G</p>
       <div class="lt-pill-row flex w-0 min-w-full">
-        <p class="lt-name min-w-0 font-semibold text-base text-content-primary">Weekend-Gogo</p>
-        <span aria-hidden="true" class="lt-fixed h-2 w-[90px] flex-none"></span>
+        <p class="lt-name min-w-0 font-semibold text-base text-content-primary">Weekend-Go</p>
+        <span aria-hidden="true" class="lt-fixed invisible flex-none font-semibold text-base">Weeken</span>
       </div>
     </div>
   </main>
@@ -1008,10 +1024,10 @@
 <section data-case="split-dash-forced-same-count">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-fit w-fit max-w-full">
-      <p class="lt-sizer font-semibold text-base text-content-primary">Weekend&ndash;Go</p>
+      <p class="lt-sizer font-semibold text-base text-content-primary">Weekend&ndash;G</p>
       <div class="lt-pill-row flex w-0 min-w-full">
-        <p class="lt-name min-w-0 font-semibold text-base text-content-primary">Weekend&ndash;Gogo</p>
-        <span aria-hidden="true" class="lt-fixed invisible flex-none font-semibold text-base">Goo</span>
+        <p class="lt-name min-w-0 font-semibold text-base text-content-primary">Weekend&ndash;Go</p>
+        <span aria-hidden="true" class="lt-fixed invisible flex-none font-semibold text-base">Go</span>
       </div>
     </div>
   </main>
@@ -1039,12 +1055,28 @@
   </main>
 </section>
 
-<!-- a soft hyphen the page refuses (hyphens: none), in a box as wide as "Week" (the first line sizes it): the name breaks after "Week" all the same, by force, and shows no hyphen. The measuring span takes the word's own hyphens value, so that place is not one the browser breaks at anyway. HELD by the box, before R9 too. -->
+<!--
+  a soft hyphen the page refuses (hyphens: none), in a box 4px wider than "Weeke" (the first line
+  sizes it): the name breaks by force one letter after the soft hyphen and shows no hyphen. The
+  measuring span takes the word's own hyphens value, so the soft hyphen is no place the browser
+  breaks this word at anyway; measured without that value, the forced break would read as the wrap
+  at the soft hyphen. HELD by the box, before R9 too.
+-->
 <section data-case="split-soft-hyphen-refused">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-fit w-fit max-w-full">
-      <p class="lt-sizer font-semibold text-base text-content-primary">Week</p>
+      <p class="lt-sizer pr-[4px] font-semibold text-base text-content-primary">Weeke</p>
       <p class="lt-name w-0 min-w-full hyphens-none font-semibold text-base text-content-primary">Week&shy;end</p>
+    </div>
+  </main>
+</section>
+
+<!-- a name with a soft hyphen AND a hyphen, in a box as wide as "Weekend-G" (the first line sizes it): it wraps at its hyphen, and the soft hyphen is not used, so that character draws nothing. A character that draws nothing is on no line: it must not read as the start of one. WIDE (ordinary wrapping), before R9 too. -->
+<section data-case="split-soft-hyphen-not-taken">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-fit w-fit max-w-full">
+      <p class="lt-sizer font-semibold text-base text-content-primary">Weekend-G</p>
+      <p class="lt-name w-0 min-w-full font-semibold text-base text-content-primary">Week&shy;end-Go</p>
     </div>
   </main>
 </section>
@@ -1083,7 +1115,7 @@
 
 <!--
   a hyphenated name that breaks between any two letters (break-all), in a box as wide as
-  "Weekend-Go" (the first line sizes it): the break falls after "Go", which is forced. With forced
+  "Weekend-G" (the first line sizes it): the break falls after "G", which is forced. With forced
   breaks off the name wraps at its hyphen, so it is STILL on two lines, and each of the two fits
   the box. That is not a word a line of its block would hold: the whole name is wider than the box.
   HELD by the box. A read that asked only whether the measured width fits would call it glued.
@@ -1091,8 +1123,18 @@
 <section data-case="split-break-all-two-lines-free">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-fit w-fit max-w-full">
-      <p class="lt-sizer font-semibold text-base text-content-primary">Weekend-Go</p>
-      <p class="lt-name w-0 min-w-full break-all font-semibold text-base text-content-primary">Weekend-Gogo</p>
+      <p class="lt-sizer font-semibold text-base text-content-primary">Weekend-G</p>
+      <p class="lt-name w-0 min-w-full break-all font-semibold text-base text-content-primary">Weekend-Go</p>
+    </div>
+  </main>
+</section>
+
+<!-- a word that breaks between any two letters (break-all) on a line that would hold it, bad form only. The first line sizes the box: "Go Weeken" fills a line, so the last letter drops alone, and a line of its own would hold "Weekend". With word-break switched off the word is whole. SPLIT, before R9 too. -->
+<section data-case="split-break-all-fits">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-fit w-fit max-w-full">
+      <p class="lt-sizer font-semibold text-base text-content-primary">Go Weeken</p>
+      <p class="lt-name w-0 min-w-full break-all font-semibold text-base text-content-primary">Go Weekend</p>
     </div>
   </main>
 </section>
