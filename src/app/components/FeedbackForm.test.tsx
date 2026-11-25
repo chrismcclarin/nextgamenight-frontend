@@ -615,7 +615,9 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     // empty region is out of flow, so its unconditional mt-1 costs no idle layout.
     expect(before).toHaveClass('sr-only');
     expect(before).toHaveClass('mt-1');
-    expect(before).toHaveClass('truncate');
+    // AMENDED Phase 89.6-25 (file-name): the line wraps (a file name may break anywhere), never cut
+    expect(before).toHaveClass('bb-breakable');
+    expect(before).not.toHaveClass('truncate');
     expect(before.className).not.toMatch(/\bmin-h-/);
 
     await user.upload(fileInput(), goodFile('evidence.png'));
@@ -626,9 +628,28 @@ describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
     expect(after).toBe(before);
     // Copy row F1 (D-30), exact bytes.
     expect(after.textContent).toBe('Screenshot attached: evidence.png');
-    // Visible when set (V-18 kept); bounded visually, unbounded in text content.
+    // Visible when set (V-18 kept); AMENDED Phase 89.6-25 (file-name): wrapped, never cut.
     expect(after).not.toHaveClass('sr-only');
-    expect(after.className).toContain('truncate');
+    expect(after).toHaveClass('bb-breakable');
+    expect(after).not.toHaveClass('truncate');
+  });
+
+  // Phase 89.6-25: GR (nothing cut) and owner pick F4 reach the report form: the attached file's
+  // row lets a long name wrap with its size and Remove moving under it, and Cancel and Submit wrap,
+  // then stack full width below the 12rem dialog container
+  it('89.6-25 file-name and F4: the file row is a bb-row whose name wraps anywhere, and the Cancel / Submit row stacks below the 12rem dialog container', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await user.upload(fileInput(), goodFile('evidence.png'));
+
+    const name = screen.getByText('evidence.png', { exact: true });
+    expect(name).toHaveClass('bb-row-text', 'bb-breakable');
+    expect(name).not.toHaveClass('truncate');
+    const row = name.parentElement as HTMLElement;
+    expect(row).toHaveClass('bb-row', 'items-center', 'gap-3');
+
+    const actions = screen.getByRole('button', { name: 'Cancel' }).parentElement as HTMLElement;
+    expect(actions).toHaveClass('flex-wrap', '@max-[12rem]/dialog:flex-col', '@max-[12rem]/dialog:items-stretch');
   });
 
   it('T-88.6.1-681 encoding — a file name that looks like markup is rendered as TEXT in the attach line (F1), never as an element', async () => {

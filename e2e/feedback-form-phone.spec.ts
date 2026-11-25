@@ -5,7 +5,7 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 //
 // WHAT EACH TEST MEASURES, in a real engine, that jsdom cannot:
 //   Test A (task 1) — copy row F1: after an attach the polite attach line reads
-//     "Screenshot attached: {name}", stays on ONE line (truncate) and inside the dialog; before
+//     "Screenshot attached: {name}", stays on ONE line (truncate) and inside the dialog (AMENDED 89.6-25: wraps, never cut); before
 //     the attach the empty region is out of flow (computed position absolute, the D-22
 //     srOnlyWhenEmpty house shape).
 //   Test B (task 2) — the idle form: the gap from the screenshot block to the button row equals
@@ -70,7 +70,7 @@ async function openReportBug(page: Page): Promise<Locator> {
 test.describe('Report Bug form at 375px (Phase 88.6.1-34)', () => {
   test.skip(({ isMobile }) => !isMobile, 'phone-tenet geometry — phone project only');
 
-  test("F1 at 375 — the attach line reads 'Screenshot attached: {name}', on one line, inside the dialog", async ({
+  test("F1 at 375 — the attach line reads 'Screenshot attached: {name}' in full, wrapped inside the dialog (89.6-25: never cut)", async ({
     page,
   }) => {
     const dialog = await openReportBug(page);
@@ -107,6 +107,9 @@ test.describe('Report Bug form at 375px (Phase 88.6.1-34)', () => {
         height: r.height,
         dialogRight: d ? d.right : Number.NaN,
         lineHeight,
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        textOverflow: cs.textOverflow,
       };
     });
     expect(
@@ -117,10 +120,13 @@ test.describe('Report Bug form at 375px (Phase 88.6.1-34)', () => {
       m.right,
       `attach line right edge ${m.right}px exceeds the dialog's right edge ${m.dialogRight}px (+0.5) — the long name overflowed the dialog at 375px`,
     ).toBeLessThanOrEqual(m.dialogRight + 0.5);
+    // Phase 89.6-25 (file-name): the line wraps instead of ending in an ellipsis, so nothing is cut
+    // (the one-line height assertion it replaces held the cut in place; height is recorded only).
     expect(
-      m.height,
-      `attach line height ${m.height}px exceeds one line (${m.lineHeight}px + 1) — truncate should hold the long name to a single line`,
-    ).toBeLessThanOrEqual(m.lineHeight + 1);
+      m.scrollWidth,
+      `attach line scrollWidth ${m.scrollWidth}px exceeds its clientWidth ${m.clientWidth}px (+1) — the long name is cut, not wrapped (height ${m.height}px, line ${m.lineHeight}px)`,
+    ).toBeLessThanOrEqual(m.clientWidth + 1);
+    expect(m.textOverflow, 'the attach line must not end in an ellipsis (Phase 89.6-25 file-name)').not.toBe('ellipsis');
   });
 
   test("idle form at 375 — no band under the screenshot block; the field is named 'Screenshot (optional)'; the stars are silent; a rejected file's line sits 4px below the drop zone", async ({

@@ -8,6 +8,7 @@ import { isSyntheticAddress } from '../../lib/syntheticAddress';
 import { DialogTitle } from '../../components/ui/dialog';
 import { Modal } from './Modal';
 import { Button } from '../../components/ui/Button';
+import { iconTextSize } from '../../components/ui/Icon';
 import { Input, Textarea, SelectControl } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
@@ -627,7 +628,13 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 padding that doubles at 200% text. Pixel-identical at normal text. Changing this is a
                 decision, not a cleanup. */}
             {screenshot ? (
-              <div className="flex items-center gap-3 p-edge-card bg-surface-page border border-line rounded-md">
+              /* DECISION Phase 89.6-25 (file-name): the attached file's row is a bb-row whose name
+                 wraps anywhere, so the size and Remove move under a long name instead of cutting it,
+                 chosen OVER the one-line ellipsis (cut text, against GR) and OVER a shrinking name
+                 column (the letters would stack). At 375 with normal text a short name stays on one
+                 line beside them; a long one wraps (shown at look 2). Changing this is a decision,
+                 not a cleanup. */
+              <div className="bb-row items-center gap-3 p-edge-card bg-surface-page border border-line rounded-md">
                 {/* Round-7 residual #29, closed Phase 88.6-31: STANDALONE decoration, a SIBLING of
                     the named Remove control below rather than a child of it, so `aria-hidden`
                     here is about not announcing an unlabelled graphic beside the filename. Its
@@ -635,56 +642,66 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 <svg aria-hidden="true" focusable="false" className="w-5 h-5 text-content-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span className="text-sm text-content-secondary flex-1 truncate">{screenshot.name}</span>
-                <span className="text-xs text-content-muted shrink-0">
-                  {(screenshot.size / 1024 / 1024).toFixed(1)} MB
-                </span>
-                {/* DECISION Phase 88.6-31 (D48 / UI-SPEC §3.2's bare-button row): this Remove
-                    control is a `<Button variant="ghost" size="icon">` with the mark in a CHILD —
-                    the shipped `BottomSheet.tsx` / `PendingMemberBanner.js` glyph idiom.
-
-                    THE `variant` IS EXPLICIT AND IT IS `ghost`. `Button.tsx`'s `defaultVariants`
-                    is `{ variant: 'primary', size: 'default' }`, so a `<Button size="icon">` with
-                    no variant would paint `btn-primary` — a PURPLE close button, the exact
-                    mapping UI-SPEC §3.2 forbids ("A bare `.btn` NEVER maps to variant=primary").
-
-                    WHY IT MIGRATES AT ALL: it was a bare `<button>` with no `.btn` and no size,
-                    so it had NO touch floor at any width — on the phone-primary surface.
-                    `size="icon"` supplies `min-h-11 min-w-11`.
-
-                    THE GLYPH IS A CHILD, never a `text-*` on the button: `.btn`'s UNLAYERED
-                    `font-size` beats any `text-*` utility placed on the button element, so a size
-                    authored there silently does not size. No unlayered CSS rule is added to
-                    re-assert it — UI-SPEC §3.2 rejects call-site unlayered overrides and plan 06
-                    already rejected a `.btn-icon` for this.
-
-                    THE `.btn` LOOK IS ACCEPTED, DELIBERATELY AND VISIBLY: migrating hands this
-                    control 14px/600 type, the lozenge padding, and a hover wash plus elevation it
-                    does not have today. Already disclosed — UI-SPEC §1.2's EXISTING **V-15** row
-                    names `FeedbackForm.js:355` (remove-screenshot) by file and line — the V-15
-                    row's own words, kept as a quote; the control it means is the
-                    `Remove screenshot` Button below, whose line has since moved. NO new
-                    V-number is minted and no second V-15 row is written; minting one would put a
-                    second row in a CLOSED list for a delta already rowed.
-
-                    CLASS DISPOSITION, exhaustive: `transition-colors` is DEAD (`.btn` declares
-                    `transition` unlayered) and is deleted; `text-content-muted` and its
-                    `hover:text-content-status-error` are ALIVE (`.btn` declares no `color`) and
-                    stay, so the ink behaviour is byte-identical; `shrink-0` is ALIVE (`.btn`
-                    declares no `flex-shrink`) and stays — it is live layout inside the
-                    `flex items-center gap-3` row. */}
-                <Button
-                  ref={removeScreenshotButtonRef}
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleRemoveClick}
-                  className="text-content-muted hover:text-content-status-error shrink-0"
-                  aria-label="Remove screenshot"
-                >
-                  <span aria-hidden="true" className="text-lg leading-none">
-                    ×
+                <span className="bb-row-text bb-breakable text-sm text-content-secondary">{screenshot.name}</span>
+                <div className="bb-row-end items-center gap-3">
+                  <span className="text-xs text-content-muted shrink-0">
+                    {(screenshot.size / 1024 / 1024).toFixed(1)} MB
                   </span>
-                </Button>
+                  {/* DECISION Phase 88.6-31 (D48 / UI-SPEC §3.2's bare-button row): this Remove
+                      control is a `<Button variant="ghost" size="icon">` with the mark in a CHILD —
+                      the shipped `BottomSheet.tsx` / `PendingMemberBanner.js` glyph idiom.
+
+                      THE `variant` IS EXPLICIT AND IT IS `ghost`. `Button.tsx`'s `defaultVariants`
+                      is `{ variant: 'primary', size: 'default' }`, so a `<Button size="icon">` with
+                      no variant would paint `btn-primary` — a PURPLE close button, the exact
+                      mapping UI-SPEC §3.2 forbids ("A bare `.btn` NEVER maps to variant=primary").
+
+                      WHY IT MIGRATES AT ALL: it was a bare `<button>` with no `.btn` and no size,
+                      so it had NO touch floor at any width — on the phone-primary surface.
+                      `size="icon"` supplies `min-h-11 min-w-11`.
+
+                      THE GLYPH IS A CHILD, never a `text-*` on the button: `.btn`'s UNLAYERED
+                      `font-size` beats any `text-*` utility placed on the button element, so a size
+                      authored there silently does not size. No unlayered CSS rule is added to
+                      re-assert it — UI-SPEC §3.2 rejects call-site unlayered overrides and plan 06
+                      already rejected a `.btn-icon` for this.
+
+                      THE `.btn` LOOK IS ACCEPTED, DELIBERATELY AND VISIBLY: migrating hands this
+                      control 14px/600 type, the lozenge padding, and a hover wash plus elevation it
+                      does not have today. Already disclosed — UI-SPEC §1.2's EXISTING **V-15** row
+                      names `FeedbackForm.js:355` (remove-screenshot) by file and line — the V-15
+                      row's own words, kept as a quote; the control it means is the
+                      `Remove screenshot` Button below, whose line has since moved. NO new
+                      V-number is minted and no second V-15 row is written; minting one would put a
+                      second row in a CLOSED list for a delta already rowed.
+
+                      CLASS DISPOSITION, exhaustive: `transition-colors` is DEAD (`.btn` declares
+                      `transition` unlayered) and is deleted; `text-content-muted` and its
+                      `hover:text-content-status-error` are ALIVE (`.btn` declares no `color`) and
+                      stay, so the ink behaviour is byte-identical; `shrink-0` is ALIVE (`.btn`
+                      declares no `flex-shrink`) and stays — it is live layout inside the
+                      `flex items-center gap-3` row.
+
+                      AMENDED Phase 89.6-25 (glyph-cap): the glyph follows text up to 32px through
+                      iconTextSize (owner pick O-M4 = Fixed+, 2026-11-22: 'The box stays 44px, and the
+                      icon inside grows with the text up to 32px'), chosen OVER an Icon in place of the
+                      text glyph (a normal-text look change) and OVER the uncapped text-lg that grew the
+                      box to 48px at 200%. Still a child; the class list above is unchanged. The row is
+                      now a bb-row and this button sits with the size in its end group (see the
+                      file-name DECISION above). */}
+                  <Button
+                    ref={removeScreenshotButtonRef}
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleRemoveClick}
+                    className="text-content-muted hover:text-content-status-error shrink-0"
+                    aria-label="Remove screenshot"
+                  >
+                    <span aria-hidden="true" className="text-lg leading-none" style={{ fontSize: iconTextSize(18) }}>
+                      ×
+                    </span>
+                  </Button>
+                </div>
               </div>
             ) : (
               /* KEYBOARD-REACHABLE SINCE 2026-09-07 (round 6 #30, WCAG 2.1.1). The input
@@ -781,6 +798,11 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 single-line idiom already applied to this very string at the filename `<span>`
                 above. It is visual only — the region's textContent keeps the FULL name, which is
                 what makes a second attach a real text CHANGE rather than silence.
+                AMENDED Phase 89.6-25 (file-name): the visible arm is no longer bounded; the line
+                wraps (a file name may break anywhere, SPEC Edge R4 encoding), because GR (owner,
+                2026-11-22: 'Nothing is squeezed, shrunk, cut or broken to avoid stacking') forbids
+                the cut and at 200% text almost every file name was cut. The 2026-09-14
+                visible-when-set ruling above is unchanged; the announced string never changed.
 
                 COPY: UI-SPEC §6.3's ratified register held NO attach-success entry (measured
                 2026-09-16), so this region carried the FILENAME ALONE and no prose was authored —
@@ -799,7 +821,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             <StatusRegion
               id={attachStatusId}
               srOnlyWhenEmpty
-              className="text-sm text-content-secondary mt-1 truncate"
+              className="text-sm text-content-secondary mt-1 bb-breakable"
             >
               {attachStatus}
             </StatusRegion>
@@ -862,8 +884,19 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
               instead of the disabled wash — the same pair it
               already shows while the self row loads. The latch also refuses an Enter in a field:
               implicit submission is possible now that Submit is not natively disabled in flight.
+              Changing this is a decision, not a cleanup.
+              AMENDED Phase 89.6-25 (F4-in-body): the row wraps and stacks full width in DOM order
+              below the 12rem dialog container, Cancel first; the latch and Cancel's native
+              disabling are unchanged. */}
+          {/* DECISION Phase 89.6-25 (F4-in-body): owner pick F1-F3 = F4, 2026-11-22 ('At large text
+              on a phone the buttons stack full width, Cancel on top, the action below: the order you
+              see is the order a keyboard or screen reader moves through'): this form's Cancel and
+              Submit sit in the Body, so the row takes the Modal footer's container variant itself
+              and stacks full width below the 12rem dialog container, chosen OVER moving them into
+              Modal.Footer (a restructure across this form's DECISION Phase 88-17 two returns and its
+              focus hand-off markers) and OVER natural-width stacking (a second look for one footer).
               Changing this is a decision, not a cleanup. */}
-          <div className="flex gap-3 justify-end">
+          <div className="flex flex-wrap gap-3 justify-end @max-[12rem]/dialog:flex-col @max-[12rem]/dialog:items-stretch">
             <Button
               variant="secondary"
               onClick={onClose}
