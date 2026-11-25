@@ -236,7 +236,11 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                     Create a new Group
                 </Modal.Header>
                 <Modal.Body className="p-0 md:p-0">
-                    <form onSubmit={onSubmit} autoComplete="off" className="p-6" aria-busy={submitting || undefined}>
+                    {/* DECISION Phase 89.6-16 (create-group): the form's padding is the 24px wide edge token,
+                        chosen OVER the rem padding that doubled at 200% and took a third of a 320 dialog (pick
+                        O-M1 D, thin edges). The centred in-body button row of DECISION Phase 88-16 stands.
+                        Changing this is a decision, not a cleanup. */}
+                    <form onSubmit={onSubmit} autoComplete="off" className="p-edge-wide" aria-busy={submitting || undefined}>
                         <div className="mb-3 pt-0">
                             <div className="relative">
                                 {/* DECISION Phase 88.6-33 (D49-b, owner ruling 2026-09-09
