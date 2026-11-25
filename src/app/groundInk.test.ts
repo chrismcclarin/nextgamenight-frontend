@@ -379,11 +379,14 @@ const FP_CMV_TODAY_GROUND = anchorKey(
 );
 const FP_FIP_USERNAME_INK = anchorKey(
   'app/components/FriendInvitePanel.js',
-  "<p className={`truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>",
+  "<p className={`wrap-break-word ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>",
 );
+// RE-POINTED by plan 89.6-21 (friends-row): the friend name wraps (truncate became wrap-break-word)
+// and In group is the row end of a bb-row (bb-row-end in place of shrink-0); the ink ternary and the
+// mechanism below are unchanged.
 const FP_FIP_IN_GROUP_INK = anchorKey(
   'app/components/FriendInvitePanel.js',
-  '<span className="text-xs text-content-muted italic shrink-0">',
+  '<span className="bb-row-end text-xs text-content-muted italic">',
 );
 const FP_FIP_SELECTED_GROUND = anchorKey(
   'app/components/FriendInvitePanel.js',
