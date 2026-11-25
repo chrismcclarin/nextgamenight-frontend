@@ -1551,13 +1551,12 @@ function FriendsPage() {
                                                     <label htmlFor="group-invite-select" className="text-sm text-content-secondary">
                                                         Invite to Group:
                                                     </label>
-                                                    {/* DECISION Phase 89.6-21 (invite-select): the group select's floor is 180px or 8rem, whichever is wider, never wider than the row, chosen OVER the fixed min-w-[180px] (at 200% text its placeholder Select a group... needs 246px and was cut to 178px at 320 and 375: CI run 45676181366, R04) and OVER the select's own content width as the floor (a long group name would then push it under the label at normal text). At normal text 180px governs, so nothing moves; at 200% 8rem (256px) holds the placeholder whole and the select wraps under its label. Changing this is a decision, not a cleanup. */}
                                                     <SelectControl
                                                         id="group-invite-select"
                                                         aria-label="Invite to group"
                                                         value={selectedGroupId}
                                                         onChange={(e) => setSelectedGroupId(e.target.value)}
-                                                        className="flex-1 min-w-[min(100%,max(180px,8rem))] max-w-xs"
+                                                        className="flex-1 min-w-[180px] max-w-xs"
                                                     >
                                                         <option value="" disabled>Select a group...</option>
                                                         {userGroups.map(group => (
