@@ -892,13 +892,20 @@ describe('Modal padding scale (fork 6)', () => {
 
   it('header, body and footer share the SAME horizontal padding at both breakpoints', () => {
     renderModal();
-    // Body is the reference scale (88-32 ruling 6: `p-3 md:p-6`).
-    expect(bodyEl().className).toContain('p-3');
-    expect(bodyEl().className).toContain('md:p-6');
+    // Body is the reference scale (88-32 ruling 6).
+    // AMENDED Phase 89.6-15 (O-M1-sites): header, Body and footer all read the edge tokens, 12px and
+    // 24px at a 16px root, so the three parts share one side edge at every text size.
+    const body = bodyEl().className.split(/\s+/);
+    expect(body).toContain('p-edge-card');
+    expect(body).toContain('md:p-edge-wide');
+    expect(body).not.toContain('p-3');
 
     for (const el of [headerEl(), footerEl()]) {
-      expect(el.className).toContain('px-3');
-      expect(el.className).toContain('md:px-6');
+      const tokens = el.className.split(/\s+/);
+      expect(tokens).toContain('px-edge-card');
+      expect(tokens).toContain('md:px-edge-wide');
+      expect(tokens).not.toContain('px-3');
+      expect(tokens).not.toContain('md:px-6');
       // The old flat scale is what indented the title past the body content.
       expect(el.className).not.toMatch(/(^|\s)px-6(\s|$)/);
     }

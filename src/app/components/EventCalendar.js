@@ -552,7 +552,7 @@ export default function EventCalendar({
   if (externalEvents === null && selfIdentityErrorState.showError) {
     return (
       <>
-        <div className="card p-3 md:p-6">
+        <div className="card p-edge-card md:p-edge-wide">
           <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
           <FetchErrorBanner
             state={selfIdentityErrorState}
@@ -600,7 +600,7 @@ export default function EventCalendar({
     if (fetchErrorState.showError) {
       return (
         <>
-          <div className="card p-3 md:p-6">
+          <div className="card p-edge-card md:p-edge-wide">
             <Heading ref={calendarHeadingRef} level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
             <FetchErrorBanner
               state={fetchErrorState}
@@ -633,7 +633,7 @@ export default function EventCalendar({
 
   return (
     <>
-    <div className="card p-3 md:p-6">
+    <div className="card p-edge-card md:p-edge-wide">
       {/* DECISION Phase 88.9-39 CS-01: the loaded calendar's heading is sr-only, chosen OVER removing
           it — it stays the calendarHeadingRef focus target and the region's name (WCAG 2.4.6 /
           1.3.1); the error-branch headings stay visible; shown while it holds keyboard focus

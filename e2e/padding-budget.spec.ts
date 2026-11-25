@@ -222,7 +222,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
 
     // Anchor: the calendar body, NOT the identity header (the header is
     // already compliant and UI-SPEC-exempt — RESEARCH C-3). EventCalendar
-    // renders its title as an <h2> inside the `card p-3 md:p-6` box
+    // renders its title as an <h2> inside the `card p-edge-card md:p-edge-wide` box
     // (src/app/components/EventCalendar.js ("const viewSwitch = showListView ?") sits in that same card
     // branch); since 88.9-39 (CS-01) the h2 is sr-only — still in the DOM, still inside the card box,
     // and the measured chain walks its ancestors, so the anchor holds. groupHomePage passes title="Calendar"
@@ -416,7 +416,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
      the next plan that touches one of these files silently re-loses it.
 
      ANCHOR POLICY, and it is load-bearing: each anchors on a heading INSIDE a converged
-     `.card p-3 md:p-6`, so the card's own padding is genuinely in the measured chain. An
+     `.card p-edge-card md:p-edge-wide`, so the card's own padding is genuinely in the measured chain. An
      anchor above the card (a page title, a breadcrumb) would still pass the 75px budget
      and would assert nothing about the padding this plan changed — a vacuous gate. Moving
      any of these anchors out of its card is a regression to that vacuity, not a cleanup.
@@ -466,7 +466,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
      It would have swapped one guaranteed timeout for another.
 
      Why THIS anchor holds: the `<h1>` sits in the event-only branch's first
-     `card p-3 md:p-6`, unconditionally — no scope, role or count gate above it — so the
+     `card p-edge-card md:p-edge-wide`, unconditionally — no scope, role or count gate above it — so the
      anchor policy (a heading INSIDE the card under test) is kept. Its text is
      fixture-independent because `models/Event.js` has NO `title` column, so
      `singleEvent.title` is always undefined and the `|| 'Game Night'` fallback always
@@ -488,7 +488,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
   test('userProfile theme card: padding chain stays within budget', async ({ page }) => {
     await page.goto('/userProfile');
 
-    // Anchor: the "Theme" <h2> inside its `card p-3 md:p-6`. Unconditional — it
+    // Anchor: the "Theme" <h2> inside its `card p-edge-card md:p-edge-wide`. Unconditional — it
     // renders for every authenticated user, unlike the SMS block
     // (entitlement-gated) or the Google Calendar block (connection-state
     // dependent), either of which would make this test fixture-fragile.
@@ -511,8 +511,8 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
   test('friends add-friend card: padding chain stays within budget', async ({ page }) => {
     await page.goto('/friends');
 
-    // Anchor: the "Add Friend" <h2> (src/app/friends/page.js ("Add Friend</Heading>")) inside the `card p-3 md:p-6`
-    // at src/app/friends/page.js ("card p-3 md:p-6"), converged from bare `p-6` by this plan. Chosen OVER any of the friend-row
+    // Anchor: the "Add Friend" <h2> (src/app/friends/page.js ("Add Friend</Heading>")) inside the `card p-edge-card md:p-edge-wide`
+    // at src/app/friends/page.js ("card p-edge-card md:p-edge-wide"), converged from bare `p-6` by this plan. Chosen OVER any of the friend-row
     // cards below it, which render only when the seeded user actually has friends /
     // pending requests — this card renders on the empty state too.
     const anchor = page.getByRole('heading', { name: 'Add Friend', exact: true });

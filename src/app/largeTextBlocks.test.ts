@@ -139,11 +139,12 @@ describe('Phase 89.6-05 — the large-text building blocks keep their structure 
     expect(media.some((b) => /container-type\s*:\s*inline-size\s*;/.test(b.body)), 'the .bb-media rule does not declare container-type inline-size, so the call-site picture drops have nothing to query').toBe(true);
   });
 
-  it('4. the theme block declares the three edge tokens, each in px', () => {
+  // AMENDED Phase 89.6-15 (O-M1-sites): a fourth token, edge-roomy 32px, holds the link pages' 32px card edge.
+  it('4. the theme block declares the four edge tokens, each in px', () => {
     const theme = blocks.filter((b) => b.header === '@theme inline');
     expect(theme.length, 'there is not exactly one @theme inline block').toBe(1);
     const declared = [...theme[0].body.matchAll(/--spacing-edge-([a-z]+)\s*:\s*([^;]+);/g)].map((m) => `${m[1]}: ${m[2].trim()}`);
-    expect(declared.sort(), 'the edge tokens are not exactly edge-card 12px, edge-page 16px and edge-wide 24px; a rem value here doubles every page and card edge at 200% text').toEqual(['card: 12px', 'page: 16px', 'wide: 24px']);
+    expect(declared.sort(), 'the edge tokens are not exactly edge-card 12px, edge-page 16px, edge-roomy 32px and edge-wide 24px; a rem value here doubles every page and card edge at 200% text').toEqual(['card: 12px', 'page: 16px', 'roomy: 32px', 'wide: 24px']);
   });
 
   it('5. the card utility falls back to the edge-wide token and declares no rem padding', () => {

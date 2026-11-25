@@ -70,7 +70,7 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
         // Changing 15rem, or the picture's size or the gap without it, is a decision, not a cleanup.
         <Link
             href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
-            className="@container block card p-3 md:p-6 hover:bg-surface-hover hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:focus-ring"
+            className="@container block card p-edge-card md:p-edge-wide hover:bg-surface-hover hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:focus-ring"
         >
             <div className="flex items-start gap-4">
                 <SafeImage
@@ -455,7 +455,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
 
             {/* Sorting Controls */}
             {/* DECISION Phase 88.9-52 (W10): the row, its left group and the label all wrap and may shrink (flex-wrap, min-w-0), and the select is capped at its row (max-w-full), chosen OVER the one unbreakable line this was: at 375px with doubled text that line was wider than the screen and the whole group page scrolled sideways (measured 643px). At ordinary text size everything fits on one line and nothing here bites; the 88-21 w-auto below stands. gap-2 is the space between wrapped lines and between the left group and Filter. Taking the wraps off is a decision, not a cleanup. */}
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-2 bg-surface-page p-3 md:p-4 rounded-card">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-2 bg-surface-page p-edge-card md:p-edge-page rounded-card">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <label className="flex min-w-0 flex-wrap items-center gap-2">
                         <span className="text-sm text-content-secondary whitespace-nowrap">Sort by:</span>
@@ -544,7 +544,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
             </div>
 
             {filterOpen && (
-                <div id={filterPanelId} className="mb-6 bg-surface-page p-3 md:p-4 rounded-card border border-line -mt-3 rounded-t-none">
+                <div id={filterPanelId} className="mb-6 bg-surface-page p-edge-card md:p-edge-page rounded-card border border-line -mt-3 rounded-t-none">
                     <div className="flex flex-col sm:flex-row gap-3">
                         <label className="flex-1">
                             <span className="text-sm text-content-secondary block mb-1">Winner</span>

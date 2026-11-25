@@ -2768,8 +2768,9 @@ export default function GameDetailPage() {
                depend on whether the URL carried a game_id, which nobody would read as
                intentional. This is also the branch `/gameDetail?event_id=…&group_id=…`
                actually renders, so it is the one the padding-budget e2e loads.
-               NAV-01 (88.9-36): capped together with the game view — see this file ("DECISION Phase 88.9-36 NAV-01"). */
-            <div className="p-3 md:p-6 max-w-7xl mx-auto">
+               NAV-01 (88.9-36): capped together with the game view — see this file ("DECISION Phase 88.9-36 NAV-01").
+               AMENDED Phase 89.6-15 (O-M1-sites): the pair is now the px edge tokens, p-edge-card md:p-edge-wide (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card edge)'), the same 12px / 24px at normal text that no longer doubles at 200% text. */
+            <div className="p-edge-card md:p-edge-wide max-w-7xl mx-auto">
                 {/* DECISION Phase 88.6.1-52 (D-46 / R7-M7): this breadcrumb and the game view's below
                     reach the house standard. CHOSEN (a): the house focus ring on both links, per
                     site (`DECISION Phase 88.3-17`, which chose per-site OVER a global
@@ -2872,8 +2873,9 @@ export default function GameDetailPage() {
 
                     Removing this utility is a DECISION (it changes rendered padding), not a
                     cleanup. `padding-budget.spec.ts` now covers this surface so the regression
-                    fails CI rather than shipping. */}
-                <div className="card p-3 md:p-6 mb-6">
+                    fails CI rather than shipping.
+                    AMENDED Phase 89.6-15 (O-M1-sites): the pair is now the px edge tokens, p-edge-card md:p-edge-wide (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card edge)'), the same 12px / 24px at normal text that no longer doubles at 200% text. The trap above still stands. */}
+                <div className="card p-edge-card md:p-edge-wide mb-6">
                     {/* Phase 65-02 EVT-01 + Phase 71.1 GAMP-10: header row with
                         title + scope-aware kebab actions menu. Single-click
                         commits inside the dropdown — kebab placement IS the
@@ -3010,7 +3012,7 @@ export default function GameDetailPage() {
                     surfaced to game-only callers).
                     AMENDED Phase 88.9-65 (X42, orchestrator decision, veto open): Share Game QR only before the night starts (hasStarted, as the calendar popup and RSVP controls), chosen OVER an ungated button reachable from an old link; a started night shows heading and chips. */}
                 {(userScope === 'group-member' || userScope === 'game-only') && userRole !== 'pending' && participants.length > 0 && (
-                    <div className="card p-3 md:p-6 mb-6">
+                    <div className="card p-edge-card md:p-edge-wide mb-6">
                         <div className="flex items-center justify-between gap-3 mb-3">
                             <Heading level={2} size="heading" className="text-content-primary">
                                 Participants ({participants.length})
@@ -3193,7 +3195,7 @@ export default function GameDetailPage() {
 
                 {/* Recommended Games Section */}
                 {eventSuggestions.length > 0 && (
-                    <div className="card p-3 md:p-6 mt-6">
+                    <div className="card p-edge-card md:p-edge-wide mt-6">
                         <Heading level={2} size="heading" className="text-content-primary mb-1">Recommended Games</Heading>
                         {suggestionsPlayerCount && (
                             <p className="text-sm text-content-muted mb-4">
@@ -3775,6 +3777,7 @@ export default function GameDetailPage() {
 
            Restoring `p-6` is a DECISION (it re-tightens the budget to ~72/75 and re-splits the
            two branches), not a cleanup.
+           AMENDED Phase 89.6-15 (O-M1-sites): the pair is now the px edge tokens, p-edge-card md:p-edge-wide (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card edge)'), the same 12px / 24px at normal text that no longer doubles at 200% text.
 
            DECISION Phase 88.9-36 NAV-01 (owner ruling (a), chat 2026-11-07 1:08 PM Pacific): this
            root and the event-view root cap at 7xl (1280px), centred, which WAS the same box as the header nav
@@ -3785,7 +3788,7 @@ export default function GameDetailPage() {
            fine if the header is at 1600 and the page is 1280): this body stays max-w-7xl (1280) under the 1600 header and
            footer, chosen OVER matching the header's 1600: a single-column page reads better at 1280. Widening it is a
            decision, not a cleanup. Orchestrator default; the owner may overrule from the 1600 picture. */
-        <div className="p-3 md:p-6 max-w-7xl mx-auto">
+        <div className="p-edge-card md:p-edge-wide max-w-7xl mx-auto">
             {/* DECISION Phase 88.6.1-74 (C12, focus when a view is withdrawn): the group-content guard. */}
             <RetainedContentFocusGuard retained={groupContentRetained} focusTarget={gameTitleRef} />
             {/* Breadcrumbs */}
@@ -3837,7 +3840,7 @@ export default function GameDetailPage() {
             <RefreshFailedNotice state={gameErrorState} retained={gameRetained} focusTarget={gameTitleRef} className="mb-4" />
 
             {/* Game Details */}
-            <div className="card p-3 md:p-6 mb-6">
+            <div className="card p-edge-card md:p-edge-wide mb-6">
                 {game.is_custom ? (
                     /* Custom game: show available details */
                     <div>
@@ -4025,7 +4028,7 @@ export default function GameDetailPage() {
                 (worst at phone width). The section appearing IS the signal. Adding an
                 always-on empty state here is a decision, not a completeness fix. */}
             {upcomingEvents.length > 0 && (
-                <div className="card p-3 md:p-6 mb-6">
+                <div className="card p-edge-card md:p-edge-wide mb-6">
                     <Heading ref={upcomingHeadingRef} level={2} size="heading" className="w-full text-content-primary mb-4">
                         Upcoming ({upcomingEvents.length})
                     </Heading>
@@ -4038,7 +4041,7 @@ export default function GameDetailPage() {
             )}
 
             {/* Game Sessions */}
-            <div className="card p-3 md:p-6 mb-6">
+            <div className="card p-edge-card md:p-edge-wide mb-6">
                 {/* DECISION Phase 88-11 (D-39, F-6b): the count is CONDITIONAL — "(7)" at rest,
                     "(3 of 7)" only while a filter is actually hiding sessions. Chosen OVER the
                     shipped unconditional "N of M", which rendered "1 of 1" with no filter active
@@ -4377,7 +4380,7 @@ export default function GameDetailPage() {
             </div>
 
             {/* Reviews Section */}
-            <div className="card p-3 md:p-6">
+            <div className="card p-edge-card md:p-edge-wide">
                 {/* D-08 (Phase 87.3-04): non-blocking degrade notice on PERMANENT
                     identity-resolution failure — own-review edit/delete gate on
                     selfUuid, so surface (never silently hide) when it can't resolve. */}

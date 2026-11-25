@@ -204,14 +204,14 @@ describe('FetchErrorBanner — R073 mount grounds (88.9-50)', () => {
     // the event view's unpainted wrapper, so the body's page ground
     { file: 'src/app/gameDetail/page.js', anchor: '<TimezoneNudgeBanner />' },
     // the reviews card
-    { file: 'src/app/gameDetail/page.js', anchor: '<div className="card p-3 md:p-6">' },
+    { file: 'src/app/gameDetail/page.js', anchor: '<div className="card p-edge-card md:p-edge-wide">' },
     // the unpainted page wrapper, so the body's page ground
     { file: 'src/app/groupPlanning/page.js', anchor: '<FetchErrorBanner state={personalControlsErrorState} compact' },
     // the desktop-only column (hidden below md), unpainted to the body
     { file: 'src/app/userHome/UserHomePage.js', anchor: '{pageSessionState ? null : selfIdentityErrorState.showError ? (' },
     // the phone BottomSheet panel paints bg-surface-card
     { file: 'src/app/userHome/UserHomePage.js', anchor: 'bodyClassName="flex min-h-0 flex-col overflow-hidden"' },
-    // the four profile mounts sit inside card p-3 md:p-6 sections
+    // the four profile mounts sit inside card p-edge-card md:p-edge-wide sections
     { file: 'src/app/userProfile/page.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact />' },
     { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={schedulesHeadingRef}' },
     { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={overridesHeadingRef}' },

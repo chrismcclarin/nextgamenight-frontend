@@ -414,7 +414,7 @@ function GameInvitePage() {
     const label = status === 'joining' ? 'Joining game night...' : LOADING_LABEL;
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
-        <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4 text-center">
+        <div className="bg-surface-card rounded-card shadow-theme-md p-edge-roomy max-w-md w-full mx-4 text-center">
           <div className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4" />
           <p ref={pendingLineRef} className="text-content-primary">{label}</p>
         </div>
@@ -423,7 +423,7 @@ function GameInvitePage() {
   } else {
     body = (
     <div className="min-h-screen bg-surface-page flex items-center justify-center">
-      <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4">
+      <div className="bg-surface-card rounded-card shadow-theme-md p-edge-roomy max-w-md w-full mx-4">
 
         {/* Preview state (unauthenticated) */}
         {status === 'preview' && eventInfo && (

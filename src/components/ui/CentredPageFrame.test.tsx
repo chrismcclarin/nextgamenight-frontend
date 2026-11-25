@@ -26,9 +26,10 @@ describe('CentredPageFrame (88.9-66: X64 / X70)', () => {
     for (const token of ['flex', 'flex-col', 'min-h-screen', 'items-center', 'justify-center']) {
       expect(classesOf(outer), `the outer box lacks ${token}`).toContain(token);
     }
-    // The gutter: 16px on a phone (p-4), 24px from md (md:p-6), and no other padding utility.
+    // The gutter: 16px on a phone, 24px from md, and no other padding utility.
+    // AMENDED Phase 89.6-15 (O-M1-sites): the pair is the px edge tokens (p-edge-page md:p-edge-wide).
     const padding = classesOf(outer).filter((t) => /^(?:[a-z0-9]+:)*p[xytrbl]?-/.test(t));
-    expect(padding.sort()).toEqual(['md:p-6', 'p-4']);
+    expect(padding.sort()).toEqual(['md:p-edge-wide', 'p-edge-page']);
     // The inner box: full width up to the cap.
     expect(classesOf(inner)).toContain('w-full');
     expect(classesOf(inner)).toContain('max-w-xl');

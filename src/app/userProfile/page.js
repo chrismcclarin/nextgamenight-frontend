@@ -2490,7 +2490,7 @@ function Profile(){
 
     return (
         user && (
-            <div className="p-3 md:p-6 max-w-4xl mx-auto">
+            <div className="p-edge-card md:p-edge-wide max-w-4xl mx-auto">
                 {/* DECISION Phase 88.9-32 NAV-01 (R2-82, owner ruling 2026-11-07 1:08 PM): the profile body KEEPS
                     its own max-w-4xl mx-auto cap, chosen OVER the 7xl chrome cap the ruling gave the home and
                     group bodies (and gameDetail, 6xl to 7xl). NAV-01 fixed bodies that stretched PAST the 1280px
@@ -2611,7 +2611,7 @@ function Profile(){
                 </nav>
 
                 {/* Profile Header */}
-                <div className="card p-3 md:p-6 mb-6">
+                <div className="card p-edge-card md:p-edge-wide mb-6">
                     {/* AC-29 / D-51 (88.6.1-79): the shared RF1 notice, mounted unconditionally
                         (88.6.1-70 contract C6), reading the RAW identity state; then the card's ONE
                         focus guard, outside the swapped arm and with no target (C12). See
@@ -3349,7 +3349,7 @@ function Profile(){
                 <EmailAddressSection identityWithdrawn={identityWithdrawn} />
 
                 {/* Theme Setting */}
-                <div className="card p-3 md:p-6 mb-6">
+                <div className="card p-edge-card md:p-edge-wide mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-1">Theme</Heading>
                     <p className="text-sm text-content-muted mb-3">Choose your preferred appearance</p>
                     {/* DECISION Phase 88-10 (Req 5 / F-357): the two theme buttons carry
@@ -3477,7 +3477,7 @@ function Profile(){
                 </div>
 
                 {/* Timezone Setting */}
-                <div ref={timezoneCardRef} className="card p-3 md:p-6 mb-6">
+                <div ref={timezoneCardRef} className="card p-edge-card md:p-edge-wide mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-1">Timezone</Heading>
                     <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
                     {/* F-359: the picker is the `Combobox` primitive (88-08). Keyboard
@@ -3557,7 +3557,7 @@ function Profile(){
                 {/* Notification Preferences Section — absent while identity has no row, on purpose:
                     see `DECISION Phase 88.6.1-61 (Req 11, identity init)`. */}
                 {preferences && !identityWithdrawn && (
-                <div className="card p-3 md:p-6 mb-6">
+                <div className="card p-edge-card md:p-edge-wide mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-1">Notification Preferences</Heading>
                     <p className="text-sm text-content-secondary mb-4">Choose how you receive notifications</p>
 
@@ -3784,7 +3784,7 @@ function Profile(){
                 {/* id="availability-settings" — scroll target for the invited-branch
                     tutorial handoff (ONBD-04, Phase 73). Read by the
                     ?section=availability useEffect above. */}
-                <div id="availability-settings" className="card p-3 md:p-6 mb-6">
+                <div id="availability-settings" className="card p-edge-card md:p-edge-wide mb-6">
                     <Heading ref={availabilityHeadingRef} level={2} size="heading" className="text-content-primary mb-4">Availability Settings</Heading>
                     <p className="text-base text-content-secondary mb-4">
                         Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 
@@ -4349,7 +4349,7 @@ function Profile(){
                 </div>
 
                 {/* Tutorial Section */}
-                <div className="card p-3 md:p-6 mb-6">
+                <div className="card p-edge-card md:p-edge-wide mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-2">Tutorial</Heading>
                     <p className="text-base text-content-secondary mb-4">
                         Need a refresher on how to use Next Game Night? Replay the onboarding tutorial to walk through the key features.
@@ -4392,7 +4392,7 @@ function Profile(){
                 </div>
 
                 {/* Owned Games Section */}
-                <div className="card p-3 md:p-6">
+                <div className="card p-edge-card md:p-edge-wide">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                         {/* 88-33 Task 7 step 2 (UAT row 272): the count renders only after the
                             owned-games fetch resolves — "(0)" mid-fetch is an empty-vs-loading
@@ -4437,7 +4437,7 @@ function Profile(){
                     <p data-testid="add-game-receipt" className="mt-1 mb-3 min-h-4 text-xs text-content-status-success sm:text-right">{addGameReceipt}</p>
 
                     {/* BGG Collection Import */}
-                    <div className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
+                    <div className="mb-6 p-edge-card md:p-edge-page border border-line rounded-lg bg-surface-page">
                         <Heading level={3} size="body" className="mb-2 text-content-primary">Import Your Entire BGG Collection</Heading>
                         <p className="text-sm text-content-secondary mb-3">
                             Enter your BoardGameGeek username to import all games from your BGG collection at once.
@@ -4560,7 +4560,7 @@ function Profile(){
 
                     {/* BGG Search */}
                     {showBggSearch && (
-                        <div id={bggSearchPanelId} className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
+                        <div id={bggSearchPanelId} className="mb-6 p-edge-card md:p-edge-page border border-line rounded-lg bg-surface-page">
                             {/* DECISION Phase 88.9-68 (X58, owner R2: It has no title … bottom heavy): the search
                                 panel takes a title, the import box's radius and no trailing gap; title Search
                                 BoardGameGeek ruled by the owner 2026-11-14 (yes). The title is the field's own

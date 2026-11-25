@@ -1355,7 +1355,10 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
           fleet's. The explicit className here was removed as redundant, NOT as
           a rejection of DEC-3 — the rendered padding is byte-identical. If the
           primitive default ever changes again, this modal must re-assert
-          `p-3 md:p-6` or the R2 75px budget arithmetic above breaks. */}
+          `p-3 md:p-6` or the R2 75px budget arithmetic above breaks.
+          AMENDED Phase 89.6-15 (O-M1-sites): the primitive default is now
+          p-edge-card md:p-edge-wide, the same 12px / 24px at normal text, so the
+          arithmetic above still holds and nothing needs re-asserting here. */}
       <Modal.Body>
         {/* Plan 88.6.1-68 (#233): a layout-neutral region this component owns (Modal.Body forwards
             className only), marked busy while the gate is closed.

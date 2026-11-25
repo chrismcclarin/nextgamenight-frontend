@@ -124,7 +124,7 @@ export default function BringSummary({ eventId, groupId, self, refreshKey, onEdi
   );
 
   return (
-    <div className="card p-3 md:p-6">
+    <div className="card p-edge-card md:p-edge-wide">
       <div className="flex items-center justify-between mb-3">
         {/* 88.6-33 (D-04 size-less-heading row, §4.4): this is one of the four class-less
             headings that actually migrate. It carries NO size utility, so it renders at body

@@ -1498,9 +1498,12 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     // AMENDED Phase 89.6-10: the row renders the Modal header string, so it wraps reversed (the
     // close moves to its own row above when the longest word cannot sit beside it); gap-3 wins
     // over that string's gap-2.
-    for (const cls of ['px-3', 'py-2', 'md:px-6', 'md:py-3', 'items-center', 'gap-3', 'flex-wrap-reverse']) {
+    // AMENDED Phase 89.6-15 (O-M1-sites): the header renders MODAL_HEADER_CLASS, whose side edge is
+    // now the card edge token.
+    for (const cls of ['px-edge-card', 'py-2', 'md:px-edge-wide', 'md:py-3', 'items-center', 'gap-3', 'flex-wrap-reverse']) {
       expect(tokens).toContain(cls);
     }
+    expect(tokens).not.toContain('px-3');
     expect(tokens).not.toContain('gap-2');
     expect(tokens).not.toContain('items-start');
     expect(tokens).not.toContain('px-6');

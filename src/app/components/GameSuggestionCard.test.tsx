@@ -108,8 +108,8 @@ describe('GameSuggestionCard — keyboard operable, one name (Req 2 / AC-8, D-26
       'text-left',
       'focus:outline-hidden',
       'card',
-      'p-3',
-      'md:p-6',
+      'p-edge-card',
+      'md:p-edge-wide',
     ]) {
       expect(button.classList.contains(token), `class list lacks ${token}`).toBe(true);
     }

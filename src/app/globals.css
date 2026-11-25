@@ -626,10 +626,16 @@
      Not the fixed-spacing bug of the phone-forward rule, which is padding that does not adapt to a
      small screen: these keep their phone value at every text size. HR-9: every page edge, card and
      bar uses them (a bar takes edge-card, then edge-page on desktop); plan 89.6-15 applies them at
-     every site. Changing this is a decision, not a cleanup. */
+     every site. Changing this is a decision, not a cleanup.
+     AMENDED Phase 89.6-15 (O-M1-sites): a fourth token, edge-roomy 32px, holds the link pages' and
+     the not-found and error cards' 32px edge so normal text is pixel-identical and the edge stops at
+     32px at 200% text instead of 64px, chosen OVER moving those cards to the 12px card edge now (a
+     look change at normal text that was not on the pick page; offered at look 2 as owner item
+     L-15a) and OVER leaving them on rem padding (HR-9 reaches every card). */
   --spacing-edge-card: 12px;
   --spacing-edge-page: 16px;
   --spacing-edge-wide: 24px;
+  --spacing-edge-roomy: 32px;
 
   /* shadows   -- no collision with v4 built-ins.
      NOTE the asymmetry with the three project shadow properties these reference: those STAY in
@@ -2995,15 +3001,15 @@ body {
    Intended visual diff (CORRECTED 2026-08-02, round-3 review — the earlier claim that
    the diff was phone-only was WRONG), review against this:
    (i)   `p-4` sites that ALSO author `md:p-6` change at phone only;
-   (ii)  the five BARE-`p-4` sites (src/app/components/BringSummary.js ("card p-3 md:p-6"), src/app/components/UpcomingEventsCard.js ("card p-3 md:p-6 mb-4"),
-         src/app/components/GroupGamesList.js ("block card p-3 md:p-6"), src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 hover:bg-surface-hover flex gap-4"), src/app/friends/page.js ("mb-4 p-3 md:p-6 card")) would
+   (ii)  the five BARE-`p-4` sites (src/app/components/BringSummary.js ("card p-edge-card md:p-edge-wide"), src/app/components/UpcomingEventsCard.js ("card p-edge-card md:p-edge-wide mb-4"),
+         src/app/components/GroupGamesList.js ("block card p-edge-card md:p-edge-wide"), src/app/components/GameSuggestionCard.js ("card p-edge-card md:p-edge-wide hover:bg-surface-hover flex gap-4"), src/app/friends/page.js ("mb-4 p-edge-card md:p-edge-wide card")) would
          have silently dropped desktop padding 24px -> 16px — Task 1b of plan 87.8-01
          adds `md:p-6` to each so desktop is preserved;
    (iii) the 13 sites authoring `p-6` are a no-op;
    (iv)  previously-inert `hover:shadow-theme-*` comes alive on DESKTOP ONLY, because
          Tailwind v4 wraps `hover:` in `@media (hover: hover)` which is false on the
-         phone lane — src/app/components/LandingPage.js ("Track Sessions"), src/app/components/LandingPage.js ("Gather Your Crew"), src/app/components/LandingPage.js ("Rate &amp; Remember"), src/app/components/GroupGamesList.js ("block card p-3 md:p-6"),
-         src/app/components/GameSuggestionCard.js ("card p-3 md:p-6 hover:bg-surface-hover flex gap-4");
+         phone lane — src/app/components/LandingPage.js ("Track Sessions"), src/app/components/LandingPage.js ("Gather Your Crew"), src/app/components/LandingPage.js ("Rate &amp; Remember"), src/app/components/GroupGamesList.js ("block card p-edge-card md:p-edge-wide"),
+         src/app/components/GameSuggestionCard.js ("card p-edge-card md:p-edge-wide hover:bg-surface-hover flex gap-4");
    (v)   the `transition-*` utilities at those same sites stop losing to `.card`'s own
          `transition` now that `.card` is layered — a second un-inert flip; do not
          mistake it for a regression.
@@ -3032,7 +3038,11 @@ body {
    marker there for why the layer NAME is load-bearing). D-30 draws that line deliberately: layering
    the class would make every size/padding/font utility on every `.btn` element live at once;
    layering the one reset makes only `border-*` live, which is the whole point. Read this sentence
-   as "the classes stay unlayered", not "no declaration of theirs may ever be layered". */
+   as "the classes stay unlayered", not "no declaration of theirs may ever be layered".
+   AMENDED Phase 89.6-15 (O-M1-sites): the call sites' padding utilities the emission-order note
+   names (p-4, p-6, md:p-6) are now the edge tokens (p-edge-card md:p-edge-wide, owner pick
+   O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card edge)'); they are utilities in
+   the same layer, so the consumer still wins the cascade exactly as measured above. */
 @utility card {
   background-color: var(--color-bg-card);
   border-radius: var(--radius-card);
@@ -3060,7 +3070,10 @@ body {
      OVER 1.5rem, which a site that lost its padding utility would draw at 48px with 200% text.
      Identical at normal text. Every call site still authors its own padding (the trap above
      stands; src/app/cardPaddingIdiom.test.ts ("site with NO padding utility") guards it); plan
-     89.6-15 moves the call sites onto the edge tokens. */
+     89.6-15 moves the call sites onto the edge tokens.
+     AMENDED Phase 89.6-15 (O-M1-sites): done; every card call site now authors p-edge-card
+     md:p-edge-wide (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card
+     edge)'), the same 12px / 24px at normal text, and the trap above still stands. */
   padding: --theme(--spacing-edge-wide);
   transition: var(--theme-transition);
 

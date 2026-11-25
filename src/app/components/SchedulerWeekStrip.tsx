@@ -279,7 +279,8 @@ export default function SchedulerWeekStrip({
       aria-label="Choose a day"
       // HARD GEOMETRY CONSTRAINT (UI-SPEC spacing exception 2, pitfall P9). At 375px the modal
       // leaves 327px of content width (375 - 24 modal gutter src/app/components/Modal.tsx ("DECISION Phase 88-16 (DEF-88-17-01)") - 24 body padding
-      // src/app/components/Modal.tsx ("flex-1 overflow-y-auto p-3 md:p-6") `p-3`), so seven cells are 46.7px against a 44px touch floor — 2.7px of
+      // src/app/components/Modal.tsx ("flex-1 overflow-y-auto p-edge-card md:p-edge-wide") `p-edge-card`, 12px a side; AMENDED Phase 89.6-15
+      // (O-M1-sites): the Body edge is the px card token, so this sum no longer moves at 200% text), so seven cells are 46.7px against a 44px touch floor — 2.7px of
       // margin, total. `gap-px` is a grid hairline, copied from src/app/components/EventHeatmapBackground.js ("aria-label={HEATMAP_GRID_LABEL}"),
       // and it is the ONLY separation this strip may carry. Container padding, a larger gap, or a
       // per-cell border each drop the cells below the floor and fail the phone gate

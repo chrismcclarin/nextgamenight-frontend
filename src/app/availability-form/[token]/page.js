@@ -420,7 +420,7 @@ export default function AvailabilityFormPage() {
     // Render error state
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
+        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-edge-roomy text-center">
           {/* DECISION Phase 88.9-52 (Q69, owner 2026-11-16 "approve all"): the X colour follows
               the cause, keyed on the linkInvalid state the heading below already reads, chosen
               OVER one red X for both. Red when the link is dead (no token, the resolved 400
@@ -487,7 +487,7 @@ export default function AvailabilityFormPage() {
     // Render submitted/confirmation state
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
+        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-edge-roomy text-center">
           <div className="w-16 h-16 bg-status-success-subtle rounded-full flex items-center justify-center mx-auto mb-4">
             {/* Decorative — see the error branch. Hiding it is why the announcement above must
                 carry the success STATEMENT and not only the detail sentence. */}
@@ -527,10 +527,10 @@ export default function AvailabilityFormPage() {
   } else {
     // Render ready state (form)
     body = (
-      <div className="min-h-screen bg-surface-page py-8 px-4 md:px-6">
+      <div className="min-h-screen bg-surface-page py-8 px-edge-page md:px-edge-wide">
         <div className="max-w-3xl mx-auto">
           {/* Header */}
-          <div className="bg-surface-card rounded-card shadow-theme-lg p-3 md:p-6 mb-6">
+          <div className="bg-surface-card rounded-card shadow-theme-lg p-edge-card md:p-edge-wide mb-6">
             <Heading level={1} size="display" className="text-content-primary mb-2" ref={settledHeadingRef}>
               Submit Your Availability
             </Heading>
@@ -554,7 +554,7 @@ export default function AvailabilityFormPage() {
           </div>
 
           {/* Form Container */}
-          <div className="bg-surface-card rounded-card shadow-theme-lg p-3 md:p-6">
+          <div className="bg-surface-card rounded-card shadow-theme-lg p-edge-card md:p-edge-wide">
             <AvailabilityForm
               magicToken={token}
               userName={tokenData?.userName}
@@ -596,6 +596,9 @@ export default function AvailabilityFormPage() {
      py-8 px-4 md:px-6` with NO centering. One shared root would vertically-centre the READY form
      at the wrong horizontal padding on this phase's most phone-primary surface. All four root
      className strings above are therefore byte-unchanged, and a FRAGMENT adds no box at all.
+     AMENDED Phase 89.6-15 (O-M1-sites): READY's side gutter is now px-edge-page md:px-edge-wide
+     (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card edge)'), the same
+     16px / 24px at normal text; the four roots are still not interchangeable.
 
      REJECTED (3) — a route `layout.js` hosting the region. It would have perfect node identity
      and would PASS an identity assertion while never being FILLED, because a server-rendered

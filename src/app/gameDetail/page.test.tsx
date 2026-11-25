@@ -2949,7 +2949,7 @@ describe('gameDetail page width — NAV-01 (88.9-36)', () => {
     const expectBodyCap = (container: HTMLElement) => {
       const root = screen.getByRole('navigation', { name: 'Breadcrumb' }).parentElement as HTMLElement;
       expect(root).toBe(container.firstElementChild);
-      for (const cls of ['max-w-7xl', 'mx-auto', 'p-3', 'md:p-6']) {
+      for (const cls of ['max-w-7xl', 'mx-auto', 'p-edge-card', 'md:p-edge-wide']) { // AMENDED Phase 89.6-15 (O-M1-sites): the root's padding is the px edge-token pair
         expect(root.classList.contains(cls), `root class ${cls}`).toBe(true);
       }
       expect(root.classList.contains('max-w-6xl'), 'root keeps the 6xl cap').toBe(false);

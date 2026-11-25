@@ -180,7 +180,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
   };
 
   return (
-    <div className="card p-3 md:p-6 mb-4" data-upcoming-events-card="">
+    <div className="card p-edge-card md:p-edge-wide mb-4" data-upcoming-events-card="">
       {/* DECISION Phase 88.6-28 (D-04/§4.4 size-less-headings row, §4.5): this card title moves
           onto the `Heading` primitive at `level={3} size="body"` — 16px, the size-less-heading
           rung — and takes its 700 from the primitive's cva base.

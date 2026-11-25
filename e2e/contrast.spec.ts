@@ -2261,7 +2261,7 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     await test.step('card ground — the Danger Zone trigger (opaque-fill arm)', async () => {
       await page.goto('/userProfile');
       await assertTheme(page, 'dark');
-      // Card ground: src/app/components/DangerZoneDeleteAccount.tsx ("card p-3 md:p-6 border border-status-error") hosts the trigger.
+      // Card ground: src/app/components/DangerZoneDeleteAccount.tsx ("card p-edge-card md:p-edge-wide border border-status-error") hosts the trigger.
       const trigger = page.getByRole('button', { name: 'Delete My Account', exact: true });
       await expect(trigger, 'halo card (dark): the Delete My Account trigger is not visible.').toBeVisible({ timeout: 15_000 });
       const label = 'halo on the CARD ground — Danger Zone trigger (dark)';

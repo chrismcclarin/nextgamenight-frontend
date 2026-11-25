@@ -33,7 +33,7 @@ export interface CentredPageFrameProps extends React.HTMLAttributes<HTMLDivEleme
 
 const CentredPageFrame = React.forwardRef<HTMLDivElement, CentredPageFrameProps>(
   ({ className, children, srHeading, ...props }, ref) => (
-    <div className="flex min-h-screen flex-col items-center justify-center p-4 md:p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center p-edge-page md:p-edge-wide">
       {srHeading ? (
         <Heading level={1} className="sr-only">
           {srHeading}

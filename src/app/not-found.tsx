@@ -36,7 +36,7 @@ export default function NotFound() {
           one (`DECISION Phase 87.7` in `globals.css`; full before/after at the twin site in
           `ErrorFallback.tsx`, which this page's frame deliberately mirrors). This is the ONLY
           change plan 88.6-36 makes in this file. */}
-      <div className="w-full max-w-md rounded-card border border-line-strong bg-surface-card p-8 shadow-theme-lg">
+      <div className="w-full max-w-md rounded-card border border-line-strong bg-surface-card p-edge-roomy shadow-theme-lg">
         <EmptyState
           icon="Compass"
           heading="This page took a wrong turn"

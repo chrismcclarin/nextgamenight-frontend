@@ -58,6 +58,9 @@
  * `DECISION Phase 88.6-01 (W33)` above is UNCHANGED by this pass: the literals stay transcribed,
  * because importing the live symbols would turn this gate into a tautology.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { HEIGHT_CLASS } from '@/components/ui/BottomSheet';
 import { controlClass } from '@/components/ui/Input';
 import { cn } from '@/lib/cn';
@@ -373,5 +376,34 @@ describe('bracketed variant prefixes', () => {
     expect(
       cn('data-[state=open]:text-muted-foreground', 'text-content-primary')
     ).toBe('data-[state=open]:text-muted-foreground text-content-primary');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. The edge spacing keys (Phase 89.6-15, O-M1 D)
+// ---------------------------------------------------------------------------
+// The px edge tokens (--spacing-edge-* in the theme block of globals.css) are padding like any
+// spacing value, so a caller's p-0 must remove them: four Modal Bodies (createGroup,
+// FriendInvitePanel, BrowseMoreModal, BringGamePicker) pass p-0 md:p-0 over the Body's edge
+// padding, and the dialog shell's bg-card p-0 reset follows (plan 89.6-39). The lockstep case
+// reads every --spacing-edge- key declared in globals.css, so a new edge token cannot be added
+// without registering it in cn.
+
+describe('edge tokens', () => {
+  it('edge tokens (89.6-15): cn reads the edge spacing keys as spacing', () => {
+    expect(cn('relative flex-1 overflow-y-auto p-edge-card md:p-edge-wide', 'p-0 md:p-0')).toBe('relative flex-1 overflow-y-auto p-0 md:p-0');
+    expect(cn('px-edge-card', 'px-4')).toBe('px-4');
+    expect(cn('bg-background p-edge-wide shadow-theme-lg', 'bg-card p-0')).toBe('shadow-theme-lg bg-card p-0');
+    expect(cn('p-edge-wide sm:p-edge-roomy', 'p-0 sm:p-0')).toBe('p-0 sm:p-0');
+    expect(cn('p-edge-card pl-edge-page md:p-edge-wide md:pl-[calc(var(--spacing-edge-wide)_+_4px)]')).toBe(
+      'p-edge-card pl-edge-page md:p-edge-wide md:pl-[calc(var(--spacing-edge-wide)_+_4px)]',
+    );
+
+    const css = fs.readFileSync(path.resolve(__dirname, '../app/globals.css'), 'utf8');
+    const keys = [...new Set([...css.matchAll(/--spacing-edge-([a-z]+)\s*:/g)].map((m) => m[1]))];
+    expect(keys.length, 'globals.css declares no --spacing-edge- key, so the lockstep case reads nothing').toBeGreaterThan(0);
+    for (const key of keys) {
+      expect(cn(`p-edge-${key}`, 'p-0'), `cn does not read p-edge-${key} as padding; add ${key} to the spacing keys in src/lib/cn.ts`).toBe('p-0');
+    }
   });
 });

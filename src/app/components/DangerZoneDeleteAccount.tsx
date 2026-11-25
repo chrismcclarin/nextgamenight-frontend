@@ -464,7 +464,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
   }, [deleting, open, isBlocked]);
 
   return (
-    <section className="card p-3 md:p-6 border border-status-error">
+    <section className="card p-edge-card md:p-edge-wide border border-status-error">
       {/* D-04 / UI-SPEC §4.4: h2 @ 18 -> Heading 20. This is the ONLY h2@18 in the tree
           (RESEARCH §B.3), so it is a ONE-SITE row of D-04's table. The LEVEL is preserved
           (P4); the 700 weight now comes from the primitive's `font-bold` base, and the

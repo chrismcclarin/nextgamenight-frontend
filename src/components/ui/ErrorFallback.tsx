@@ -122,7 +122,7 @@ const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
             in dark. The dark value is NOT `none` — only the `sm` rung is — so re-spelling this
             back to `shadow-lg` on the grounds that "the dark shadow disappears" is a decision
             made on a wrong reading. This is a surface, not a `.btn`: there is no hover pin. */}
-        <div className="w-full max-w-md rounded-card border border-line-strong bg-surface-card p-8 text-center shadow-theme-lg">
+        <div className="w-full max-w-md rounded-card border border-line-strong bg-surface-card p-edge-roomy text-center shadow-theme-lg">
           {/* DECISION Phase 88-29 (DEF-88-19-03, §4.2): `font-bold` (700), chosen OVER
               leaving the shipped `font-semibold` (600). §4.2 scopes 600 to the Button
               primitive and states it appears nowhere else in this phase's work, so a

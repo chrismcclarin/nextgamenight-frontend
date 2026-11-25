@@ -669,7 +669,7 @@ export default function GroupPlanningPage() {
         (heatmapPrompt.deadline && new Date(heatmapPrompt.deadline) < new Date());
 
     return (
-        <div className="p-4 md:p-6 max-w-7xl mx-auto">
+        <div className="p-edge-page md:p-edge-wide max-w-7xl mx-auto">
             {/* DECISION Phase 88.9-59 (X5c, owner at the 88.9-51 glance 2026-11-11: it looks better at 1280; it should look
                 fine if the header is at 1600 and the page is 1280): this body stays max-w-7xl (1280) under the 1600 header and
                 footer, chosen OVER matching the header's 1600: a single-column page reads better at 1280. Widening it is a
@@ -747,7 +747,7 @@ export default function GroupPlanningPage() {
             </nav>
 
             {/* Header */}
-            <div className="card p-3 md:p-6 mb-6">
+            <div className="card p-edge-card md:p-edge-wide mb-6">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div className="min-w-0">
                         {/* DECISION Phase 88.6-53 (D-04 §4.4 row 1; A1): the page title is Display 30
@@ -827,7 +827,7 @@ export default function GroupPlanningPage() {
             )}
 
             {/* Availability Polls + Response Dashboard in one card */}
-            <div className="card p-3 md:p-6 mb-6">
+            <div className="card p-edge-card md:p-edge-wide mb-6">
                 <Heading
                     ref={availabilityPollsHeadingRef}
                     tabIndex={-1}

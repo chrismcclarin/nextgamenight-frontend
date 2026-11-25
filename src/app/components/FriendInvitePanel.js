@@ -1195,7 +1195,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
             {/* Freeform header (the QRCodeModal idiom): the Modal header renders a
                 single-line DialogTitle, and this panel's header is a two-line
                 stack. The chrome mirrors the Modal header's phone-first scale
-                (src/app/components/Modal.tsx ("function ModalHeader("), the class string carrying px-3 py-2 md:px-6 md:py-3)
+                (src/app/components/Modal.tsx ("function ModalHeader("), the class string carrying px-edge-card py-2 md:px-edge-wide md:py-3 since 89.6-15)
                 and its bottom border, except two things kept on purpose for the
                 two-line title stack beside the 44px close: items-start (the close
                 stays on the first line instead of centring on two) and gap-3 (the

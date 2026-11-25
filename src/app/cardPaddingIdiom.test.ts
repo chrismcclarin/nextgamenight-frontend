@@ -44,6 +44,11 @@
  * is real — but it is outside the `.card` census the owner ruled on, it is logged in
  * this phase's deferred-items.md, and folding it in here would smuggle an unratified
  * visual change past the ruling.
+ *
+ * AMENDED Phase 89.6-15 (O-M1-sites): the ratified idiom is the token pair (owner pick O-M1 = D,
+ * 2026-11-22); pixel-identical at normal text; the trap this guard exists for still stands. The
+ * pair is p-edge-card md:p-edge-wide, 12px and 24px at every text size, so the padding scan below
+ * reads an edge-token padding utility as padding too.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -54,8 +59,8 @@ import { sourceFiles } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
-/** The one ratified idiom: 12px at phone, 24px from `md` up (87.8 D-04 ladder). */
-const RATIFIED_IDIOM = 'p-3 md:p-6';
+/** The one ratified idiom: 12px at phone, 24px from `md` up (87.8 D-04 ladder), as px edge tokens (89.6-15). */
+const RATIFIED_IDIOM = 'p-edge-card md:p-edge-wide';
 
 /**
  * `className="…"` | ``className={`…`}`` | `className={'…'}`.
@@ -65,7 +70,7 @@ const RATIFIED_IDIOM = 'p-3 md:p-6';
 const CLASSNAME_RE = /className=\s*(?:"([^"]*)"|\{\s*`([\s\S]*?)`|\{\s*'([^']*)')/g;
 
 /** Any padding utility, breakpoint-prefixed or not. */
-const PADDING_TOKEN = /^(?:sm:|md:|lg:|xl:|2xl:|max-sm:|max-md:)?p-[0-9]/;
+const PADDING_TOKEN = /^(?:sm:|md:|lg:|xl:|2xl:|max-sm:|max-md:)?p-(?:[0-9]|edge-)/;
 
 interface CardSite {
   file: string;
@@ -196,7 +201,7 @@ describe('Req 2 (DES-02): the `.card` padding idiom, repo-wide', () => {
     const naked = sites.filter((s) => s.padding.length === 0).map((s) => `${s.file}:${s.line}`);
     expect(
       naked,
-      'these `.card` sites author no padding utility, so `@utility card`\'s own `padding: 1.5rem` ' +
+      'these `.card` sites author no padding utility, so `@utility card`\'s own padding (the edge-wide token, 24px at every text size, plan 89.6-05) ' +
         'applies and they render 24px at phone — double the ratified 12px rung. Restore ' +
         `\`${RATIFIED_IDIOM}\` at each; do NOT "fix" this by editing the @utility block.`,
     ).toEqual([]);
@@ -209,7 +214,7 @@ describe('Req 2 (DES-02): the `.card` padding idiom, repo-wide', () => {
     expect(
       offenders,
       `every top-level card renders \`${RATIFIED_IDIOM}\` (12px phone / 24px desktop) per the ` +
-        'owner ruling of 2026-08-05 (88-24 Task 1, option-a). `p-4 md:p-6` is 4px over the ' +
+        'owner ruling of 2026-08-05 (88-24 Task 1, option-a), as edge tokens since 89.6-15. `p-4 md:p-6` is 4px over the ' +
         'phone rung and bare `p-6` is double it.',
     ).toEqual([]);
   });

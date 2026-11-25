@@ -55,7 +55,7 @@ export default function Goodbye({
   const signedOutFromDeletedAccount = searchParams?.reason === ACCOUNT_DELETED;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-16">
+    <div className="max-w-3xl mx-auto px-edge-page py-16">
       {signedOutFromDeletedAccount ? (
         <>
           <Heading level={1} size="display" className="text-content-primary mb-2">

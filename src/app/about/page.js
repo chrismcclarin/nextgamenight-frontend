@@ -6,7 +6,11 @@ export const metadata = {
 
 export default function About() {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-16">
+    /* DECISION Phase 89.6-15 (O-M1-sites): the static prose column's side gutter is the page edge
+       token; its 4rem top and bottom room stays rem, chosen OVER tokenising it, because vertical room
+       scrolls (GR: scrolling down is fine) and HR-9 is about reading width. Changing this is a
+       decision, not a cleanup. */
+    <div className="max-w-3xl mx-auto px-edge-page py-16">
       <Heading level={1} size="display" className="text-content-primary mb-2">About Next Game Night</Heading>
       <p className="text-sm text-content-muted mb-10">A project by Chris McClarin</p>
 

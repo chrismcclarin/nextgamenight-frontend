@@ -603,7 +603,7 @@ function RestoreGroupPage() {
     // visible line and the first-load region below it; see the two amendments at the fragment.
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
-        <div className="bg-surface-card rounded-card shadow-theme-md p-6 sm:p-8 max-w-md w-full mx-4 text-center">
+        <div className="bg-surface-card rounded-card shadow-theme-md p-edge-wide sm:p-edge-roomy max-w-md w-full mx-4 text-center">
           <div
             aria-hidden="true"
             className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4"
@@ -623,7 +623,7 @@ function RestoreGroupPage() {
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         {/* Phone-forward: one column, the shared Card at max-w-md with a 375px-safe
             gutter, every control full-width and at least 44px tall. */}
-        <Card className="p-6 sm:p-8 max-w-md w-full mx-4 shadow-theme-md">
+        <Card className="p-edge-wide sm:p-edge-roomy max-w-md w-full mx-4 shadow-theme-md">
 
           {/* Public preview (logged out). D-02: the group name and the deadline,
               and nothing else. */}

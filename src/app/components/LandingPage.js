@@ -274,7 +274,7 @@ export default function LandingPage() {
                 (`×`, `⋮`, `+`, emoji) OUT of the type scale explicitly, so they are left
                 alone by this sweep on purpose rather than by omission. Folding them to a type
                 rung is a decision, not a cleanup. */}
-            <div className="card p-3 md:p-6 transition-all border border-line">
+            <div className="card p-edge-card md:p-edge-wide transition-all border border-line">
               <div className="text-4xl mb-4">🎲</div>
               <Heading level={3} size="heading" className="mb-2 text-content-primary">Track Sessions</Heading>
               <p className="text-content-secondary">
@@ -282,7 +282,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="card p-3 md:p-6 transition-all border border-line">
+            <div className="card p-edge-card md:p-edge-wide transition-all border border-line">
               <div className="text-4xl mb-4">👥</div>
               <Heading level={3} size="heading" className="mb-2 text-content-primary">Gather Your Crew</Heading>
               <p className="text-content-secondary">
@@ -290,7 +290,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="card p-3 md:p-6 transition-all border border-line">
+            <div className="card p-edge-card md:p-edge-wide transition-all border border-line">
               <div className="text-4xl mb-4">⭐</div>
               <Heading level={3} size="heading" className="mb-2 text-content-primary">Rate &amp; Remember</Heading>
               <p className="text-content-secondary">

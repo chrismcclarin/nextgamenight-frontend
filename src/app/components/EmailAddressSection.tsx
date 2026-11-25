@@ -1891,7 +1891,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
   }, [showUnavailable]);
   if (showUnavailable) {
     return (
-      <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
+      <section className="card p-edge-card md:p-edge-wide mb-6" aria-labelledby={`${reactId}-title`}>
         {/* DECISION Phase 88.6-38 (R3 / UI-SPEC §4.4): all THREE of this section's headings are
             `<Heading level={2} size="heading">` carrying the `id` — the level is PRESERVED (P4)
             and the rung is the one they already rendered at (`text-xl`, 20). The `id` is
@@ -1939,7 +1939,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
 
   if (showUnresolved) {
     return (
-      <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`} aria-busy="true">
+      <section className="card p-edge-card md:p-edge-wide mb-6" aria-labelledby={`${reactId}-title`} aria-busy="true">
         <Heading level={2} size="heading" id={`${reactId}-title`} className="text-content-primary mb-1">
           {SECTION_TITLE}
         </Heading>
@@ -1977,7 +1977,7 @@ export function EmailAddressSection({ identityWithdrawn = false }: EmailAddressS
   const verifyGated = mutating || checkCode(codeInput) !== 'ok' || selfRowMissing;
 
   return (
-    <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
+    <section className="card p-edge-card md:p-edge-wide mb-6" aria-labelledby={`${reactId}-title`}>
       <Heading level={2} size="heading" id={`${reactId}-title`} className="text-content-primary mb-1">
         {SECTION_TITLE}
       </Heading>

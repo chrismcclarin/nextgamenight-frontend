@@ -492,7 +492,7 @@ export default function RsvpPage() {
             OVER the shipped stripe (it repeated icon and heading). Pick page 10b, 2026-11-14; the
             status config's line colour and its unread accent pair left with it. */}
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg overflow-hidden">
-          <div className="p-8 text-center">
+          <div className="p-edge-roomy text-center">
             {/* Icon — r2 #180: all three status glyphs are decorative duplicates of the heading
                 beside them and carry `aria-hidden="true" focusable="false"`, the live house idiom
                 (the sibling magic-link pages this phase swept, and `Icon`'s own default). The
@@ -577,7 +577,7 @@ export default function RsvpPage() {
     // ---- EVENT PASSED STATE ----
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
+        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-edge-roomy text-center">
           <div className="w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center mx-auto mb-4">
             {/* Decorative — see the success branch. */}
             <svg className="w-8 h-8 text-content-status-warning" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -626,7 +626,7 @@ export default function RsvpPage() {
     const leadsToEvent = pageState === PAGE_STATES.EXPIRED_LINK && eventHref;
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
+        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-edge-roomy text-center">
           <div className="w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center mx-auto mb-4">
             {/* Decorative — see the success branch. */}
             {/* DECISION Phase 88.9-69 (X59a, owner pick Ga): link-2-off on the used-link card,
@@ -673,7 +673,7 @@ export default function RsvpPage() {
     // ---- ERROR / UNCONFIRMED STATES ----
     body = (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
+        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-edge-roomy text-center">
           {/* Q69 (88.9-52): the X, amber or red by cause. See AMBER_ERROR_STATES. One literal
               class string per arm (a class built from pieces emits nothing). */}
           <div

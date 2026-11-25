@@ -1071,7 +1071,7 @@ function FriendsPage() {
                 {removeFriendGate.statusNode}
 
                 {/* Search Section */}
-                <div className="card p-3 md:p-6 mb-6">
+                <div className="card p-edge-card md:p-edge-wide mb-6">
                     <Heading ref={addFriendHeadingRef} level={2} size="heading" className="text-content-primary mb-3">Add Friend</Heading>
                     {/* DECISION Phase 88.9-52 (R4 B1b, the round-4 re-shoot: at 375 with text at 200% the
                         field was squeezed to about 80px beside the Search button and showed three
@@ -1516,7 +1516,7 @@ function FriendsPage() {
                                     <div>
                                         {/* Group Invite Bulk Action Bar */}
                                         {userGroups.length > 0 && (
-                                            <div className="mb-4 p-3 md:p-6 card">
+                                            <div className="mb-4 p-edge-card md:p-edge-wide card">
                                                 <div className="flex flex-wrap items-center gap-3">
                                                     <label htmlFor="group-invite-select" className="text-sm text-content-secondary">
                                                         Invite to Group:

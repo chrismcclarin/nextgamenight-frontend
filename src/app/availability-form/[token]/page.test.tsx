@@ -448,7 +448,7 @@ describe('availability-form/[token] — the branch roots and the second region',
     expect(container.children).toHaveLength(2);
     expect(container.children[0]).toBe(pageRegion());
     expect(container.children[1].className).toBe(
-      'min-h-screen bg-surface-page py-8 px-4 md:px-6'
+      'min-h-screen bg-surface-page py-8 px-edge-page md:px-edge-wide'
     );
   });
 

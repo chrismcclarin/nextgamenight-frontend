@@ -1,5 +1,5 @@
 import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
 
 /**
  * Merge conditional class names (clsx) and de-dupe conflicting Tailwind
@@ -29,7 +29,17 @@ import { twMerge } from 'tailwind-merge';
  * `cn()`'s body is deliberately config-less — bare `twMerge(clsx(inputs))` —
  * which is why v3 breaking changes 3-8 (custom `isLength`, prefixes, custom
  * separators, `createTailwindMerge`, `DefaultThemeGroupIds`) do not apply.
+ *
+ * AMENDED Phase 89.6-15 (O-M1-sites): cn extends the default config with the four edge spacing
+ * keys, chosen OVER staying config-less: bare twMerge cannot see p-edge-* as padding, so
+ * Modal.Body's p-0 md:p-0 override (createGroup, FriendInvitePanel, BrowseMoreModal,
+ * BringGamePicker) and Modal's p-0 shell reset would stop working and add 12px / 24px at normal
+ * text. Only the theme spacing scale is extended; breaking changes 3-8 still do not apply. The 14
+ * baseline expectations re-ran unchanged. The key list must match the --spacing-edge-* keys in
+ * globals.css (the lockstep test). Changing this is a decision, not a cleanup.
  */
+const twMerge = extendTailwindMerge({ extend: { theme: { spacing: ['edge-card', 'edge-page', 'edge-wide', 'edge-roomy'] } } });
+
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }

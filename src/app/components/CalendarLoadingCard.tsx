@@ -7,7 +7,7 @@ export const CALENDAR_LOADING_LABEL = 'Loading calendar...';
 
 export function CalendarLoadingCard() {
   return (
-    <div className="card p-3 md:p-6">
+    <div className="card p-edge-card md:p-edge-wide">
       <p className="text-content-secondary">{CALENDAR_LOADING_LABEL}</p>
     </div>
   );

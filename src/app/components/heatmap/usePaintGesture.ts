@@ -21,7 +21,7 @@
 //   2. Both scroll axes (RESEARCH C10 — a correctness fix, not a generalization). The shipped
 //      copy scrolls the WINDOW vertically because the check-in grid is a full-page surface. The
 //      scheduler lives inside a Radix dialog whose content clips (overflow-y-auto; it scrolls as one only below the 12rem dialog container, 89.6-11)
-//      (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]")) with the body `overflow-y-auto` (src/app/components/Modal.tsx ("flex-1 overflow-y-auto p-3 md:p-6")), where a window
+//      (src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]")) with the body `overflow-y-auto` (src/app/components/Modal.tsx ("flex-1 overflow-y-auto p-edge-card md:p-edge-wide")), where a window
 //      scroll does nothing or scrolls the page BEHIND the modal (pitfall P4). The vertical
 //      default is the window, so the Phase 92 re-point of AvailabilityGrid is a
 //      no-behavior-change swap.

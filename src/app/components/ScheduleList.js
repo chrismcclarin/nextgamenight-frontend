@@ -299,7 +299,7 @@ export default function ScheduleList({
 
             {/* Delete Confirmation Dialog */}
             {deleteConfirm === schedule.id && (
-              <div className="mt-4 p-3 md:p-4 bg-status-error-subtle border border-status-error rounded-card">
+              <div className="mt-4 p-edge-card md:p-edge-page bg-status-error-subtle border border-status-error rounded-card">
                 {/* §4.5 emphasis outcome: 400 + a colour token. `font-medium` (500) is deleted
                     rather than promoted to 700 — this is body prose inside an already-tinted
                     error box, not hierarchy, and it already carries its colour token. */}

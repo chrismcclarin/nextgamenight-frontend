@@ -17,9 +17,9 @@
  * a 1:1 reproduction of them: the padding was retuned for phone width (fork 6,
  * Phase 88-32 / 88-33). The shipped classes:
  *   - Content: radius 12px, max-h 90dvh, scroll contained to the Body
- *   - Header:  `px-3 py-2 md:px-6 md:py-3`, 1px bottom border, title 20px/700
- *   - Body:    `p-3 md:p-6`, flex:1, scroll-y
- *   - Footer:  `px-3 py-4 md:px-6`, 1px top border, justify-end, gap 0.75rem (12); wraps, and
+ *   - Header:  `px-edge-card py-2 md:px-edge-wide md:py-3`, 1px bottom border, title 20px/700
+ *   - Body:    `p-edge-card md:p-edge-wide`, flex:1, scroll-y
+ *   - Footer:  `px-edge-card py-4 md:px-edge-wide`, 1px top border, justify-end, gap 0.75rem (12); wraps, and
  *              stacks full width in DOM order below the 12rem dialog container (89.6-10 F4)
  *
  * Copy-agnostic: every title/label/CTA is supplied by the consumer; nothing is
@@ -71,11 +71,19 @@ export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-
    the title, then the close, which is the dialog's own name first, as on open; putting the close
    first in the DOM would make every dialog read Close before its title. Checked on VoiceOver at
    plan 89.6-32. Changing this is a decision, not a cleanup. */
-export const MODAL_HEADER_CLASS = 'flex flex-wrap-reverse items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-6 md:py-3';
+/* DECISION Phase 89.6-15 (modal-header-edge): every Modal header's and footer's side edge is the
+   card edge token (12px, 24px from md; owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page
+   edge, 12px card edge)'; HR-9, SPEC A9: every card and bar), chosen OVER leaving the header and
+   footer on fixed px-3 / md:px-6 while every card and the Body moved to edge tokens: that rem pair
+   doubles at 200% text, takes a phone's width from the title and the footer buttons, and puts both
+   out of line with the Body under them. Vertical padding and the footer's F4 stacking are
+   unchanged. Pixel-identical at normal text. FriendInvitePanel's header renders this string and
+   follows it. Changing this is a decision, not a cleanup. */
+export const MODAL_HEADER_CLASS = 'flex flex-wrap-reverse items-center justify-between gap-2 border-b border-border px-edge-card py-2 md:px-edge-wide md:py-3';
 export const MODAL_TITLE_CLASS = 'grow basis-[min-content] max-w-full wrap-break-word text-content-primary';
 export const MODAL_CLOSE_CLASS = 'ml-auto inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-btn text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:focus-ring';
-export const MODAL_BODY_CLASS = 'relative flex-1 overflow-y-auto p-3 md:p-6 @max-[12rem]/dialog:overflow-visible @max-[12rem]/dialog:flex-none scroll-p-2';
-export const MODAL_FOOTER_CLASS = 'flex flex-wrap justify-end gap-3 border-t border-border px-3 py-4 md:px-6 @max-[12rem]/dialog:flex-col @max-[12rem]/dialog:items-stretch';
+export const MODAL_BODY_CLASS = 'relative flex-1 overflow-y-auto p-edge-card md:p-edge-wide @max-[12rem]/dialog:overflow-visible @max-[12rem]/dialog:flex-none scroll-p-2';
+export const MODAL_FOOTER_CLASS = 'flex flex-wrap justify-end gap-3 border-t border-border px-edge-card py-4 md:px-edge-wide @max-[12rem]/dialog:flex-col @max-[12rem]/dialog:items-stretch';
 
 /**
  * Outside-dismiss guard (D-09). When the modal is NOT dismissable, cancel the
@@ -507,7 +515,7 @@ export interface ModalHeaderProps {
 }
 
 /**
- * Header: `px-3 py-2 md:px-6 md:py-3` (the Body's horizontal scale), 1px bottom border,
+ * Header: `px-edge-card py-2 md:px-edge-wide md:py-3` (the Body's horizontal scale), 1px bottom border,
  * title 20px/700, 44px Close.
  */
 function ModalHeader({ children, className, closeDisabled = false, closeClassName }: ModalHeaderProps) {
@@ -558,7 +566,10 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
          e2e/large-text-blocks.spec.ts ("DECISION Phase 89.6-10 (dialog-shell-block)").
 
          Phase 89.6-10: the header, title and close strings these markers describe are
-         MODAL_HEADER_CLASS, MODAL_TITLE_CLASS and MODAL_CLOSE_CLASS, at the top of this file. */
+         MODAL_HEADER_CLASS, MODAL_TITLE_CLASS and MODAL_CLOSE_CLASS, at the top of this file.
+
+         AMENDED Phase 89.6-15 (modal-header-edge): the BODY's horizontal scale is now the edge-token
+         pair, and the header follows it. */
       className={cn(MODAL_HEADER_CLASS, className)}
     >
       <DialogTitle className={MODAL_TITLE_CLASS}>
@@ -609,7 +620,7 @@ export interface ModalBodyProps {
   className?: string;
 }
 
-/** Body: `p-3 md:p-6`, flex:1, scroll-y (the only scrolling region), positioned (R4 L3). */
+/** Body: `p-edge-card md:p-edge-wide`, flex:1, scroll-y (the only scrolling region), positioned (R4 L3). */
 function ModalBody({ children, className }: ModalBodyProps) {
   return (
     /* DECISION Phase 88-32 ruling 6 (DEF-88-30-03): Body defaults to `p-3 md:p-6` —
@@ -621,7 +632,10 @@ function ModalBody({ children, className }: ModalBodyProps) {
        COMPOSITION RULE (delta review 2026-08-06, HIGH): a two-breakpoint default means
        padding overrides must cover BOTH buckets — twMerge collapses per-modifier, so a
        bare `p-0` removes `p-3` but leaves `md:p-6` winning at desktop. Zero-padding
-       consumers write `p-0 md:p-0`; longhand overrides write both too (`pt-4 md:pt-4`). */
+       consumers write `p-0 md:p-0`; longhand overrides write both too (`pt-4 md:pt-4`).
+       AMENDED Phase 89.6-15 (O-M1-sites): the default is now p-edge-card md:p-edge-wide (owner pick
+       O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card edge)'), the same 12px / 24px
+       at normal text; cn registers the edge keys (src/lib/cn.ts), so the composition rule above holds. */
     /* DECISION Phase 88.9-52 (R4 L3, round 4, 2026-11-18): the Body is POSITIONED (`relative`),
        chosen OVER `overflow-clip` on the shell and OVER one `relative` per consumer.
        THE DEFECT (the fleet form of G5): a screen-reader-only box is position absolute, and an
@@ -667,7 +681,7 @@ export interface ModalFooterProps {
   className?: string;
 }
 
-/** Footer: `px-3 py-4 md:px-6`, 1px top border, justify-end, gap 0.75rem (12). */
+/** Footer: `px-edge-card py-4 md:px-edge-wide`, 1px top border, justify-end, gap 0.75rem (12). */
 function ModalFooter({ children, className }: ModalFooterProps) {
   return (
     <div
@@ -675,6 +689,8 @@ function ModalFooter({ children, className }: ModalFooterProps) {
          body — otherwise the footer's actions sit on a third, different left/right edge at
          phone width. Vertical padding is unchanged; the footer has no 44px box driving it.
          Phase 89.6-10: the string this note describes is MODAL_FOOTER_CLASS, at the top of this file.
+         AMENDED Phase 89.6-15 (modal-header-edge): the footer's side edge is the edge-token pair, the
+         same as the header and Body.
          DECISION Phase 89.6-10 (F4): owner pick F1-F3 = F4, 2026-11-22 ('At large text on a phone
          the buttons stack full width, Cancel on top, the action below: the order you see is the
          order a keyboard or screen reader moves through'): below the 12rem dialog container the

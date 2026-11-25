@@ -1081,7 +1081,7 @@ function GroupHomePage(){
         // (the C12 DECISION block at `membersFocusGuard`); the page's markup is not re-indented.
         // The group focus guard is its THIRD child, in every return (88.6.1-89).
         <>
-        <div className="p-4 md:p-6 max-w-7xl mx-auto">
+        <div className="p-edge-page md:p-edge-wide max-w-7xl mx-auto">
             {/* DECISION Phase 88.9-59 (X5c, owner at the 88.9-51 glance 2026-11-11: it looks better at 1280; it should look
                 fine if the header is at 1600 and the page is 1280): this body stays max-w-7xl (1280) under the 1600 header and
                 footer, chosen OVER matching the header's 1600: a single-column page reads better at 1280. Widening it is a
@@ -1169,7 +1169,7 @@ function GroupHomePage(){
                 light mode, where a hardcoded near-black header was not. */}
             <div
                 className={cn(
-                    'mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible',
+                    'mb-6 flex flex-col gap-4 p-edge-card md:p-edge-wide rounded-lg relative overflow-visible',
                     // MUTUALLY EXCLUSIVE, never stacked — `bg-surface-elevated`
                     // lives ONLY in the null branch. Compile-verified against
                     // this tree's tailwindcss@4.3.3: `.bg-[var(--group-ground-light)]`
