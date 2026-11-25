@@ -1,8 +1,9 @@
 // Phase 88.9-26 pins for FetchErrorBanner (round 2):
 //   BANNER-01 — the optional thing prop composes the title Couldn't load {thing}
 //               (straight apostrophe, no We, no trailing period); a passed title still wins.
-//   R073      — the compact Retry's halo is its HOST's ground through the typed hostGround key
-//               (src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO")), card by default.
+//   R073      — the compact Retry wears the two-tone ring and no halo token: owner pick O-1 = B
+//               (2026-11-22) made the halo inert and plan 89.6-38 retired the host-ground key and
+//               its file, so no host passes a ground to the compact notice any more.
 //   O22d      — for code unauthorized the FULL banner's action is a Sign in link to
 //               /api/auth/login?returnTo=<path + search + hash> IN PLACE OF Try again, 44px at every
 //               width; every other code keeps Try again; the compact notice keeps its Retry. The link
@@ -16,7 +17,7 @@ import { join, relative, resolve } from 'node:path';
 import { act, render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { expectRingGround } from '@/test-utils/focusRingAssert';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 // 88.9-66 (X68): the report hook is replaced by a holder that is null unless a test sets it, so
 // every other test in this file still renders a banner with no report host.
 const reportHost = vi.hoisted(() => ({ open: null as null | ((request: { subject: string; description: string }) => void) }));
@@ -26,7 +27,6 @@ vi.mock('@/app/components/FeedbackModalProvider', async (importOriginal) => {
 });
 
 import { FetchErrorBanner } from './FetchErrorBanner';
-import { HOST_GROUND_HALO } from './hostGround';
 import { getFetchErrorMessage } from './useFetchErrorState';
 import type { FetchErrorCode, FetchErrorState } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
@@ -118,28 +118,14 @@ describe('FetchErrorBanner — 88.9-26 title, halo and sign-in pins', () => {
     expect(titleText(), 'an empty thing reads as no thing').toBe('Something went wrong');
   });
 
-  it("R073 (88.9): the compact Retry halo comes from hostGround — card by default, the host's ground when passed", () => {
-    let utils = render(<FetchErrorBanner compact state={failed()} />);
-    const byDefault = screen.getByRole('button', { name: 'Retry' }).className;
-    expect(byDefault, 'no prop: the card halo').toContain('focus-visible:ring-offset-surface-card');
-    utils.unmount();
-
-    utils = render(<FetchErrorBanner compact state={failed()} hostGround="page" />);
-    const onPage = screen.getByRole('button', { name: 'Retry' }).className;
-    expect(onPage, 'hostGround page: the page halo').toContain('focus-visible:ring-offset-surface-page');
-    expect(onPage, 'hostGround page: the card halo is merged away').not.toContain('ring-offset-surface-card');
-    utils.unmount();
-
-    // AMENDED Phase 88.9-30 (owner picks B3a + B1a): the map grows from four keys to six (warning,
-    // the T box ground; group, the G host variable), each still one whole focus-visible literal.
-    expect(HOST_GROUND_HALO, 'exactly the six host grounds, each one whole literal').toEqual({
-      card: 'focus-visible:ring-offset-surface-card',
-      page: 'focus-visible:ring-offset-surface-page',
-      elevated: 'focus-visible:ring-offset-surface-elevated',
-      muted: 'focus-visible:ring-offset-surface-muted',
-      warning: 'focus-visible:ring-offset-status-warning-subtle',
-      group: 'focus-visible:ring-offset-surface-group-halo',
-    });
+  // 89.6-38 (O-1 B): the halo this it once selected per host (card by default, the page when the
+  // host passed it, from a six-key map) is retired with the host-ground key, so the it now guards
+  // the same control for the ring and for the absence of any halo token.
+  it('89.6-38 (O-1 B): the compact Retry carries the two-tone ring and no halo token, whatever host mounts it', () => {
+    render(<FetchErrorBanner compact state={failed()} />);
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    expectFocusRing(retry, 'the compact Retry');
+    expectRingGround(retry, 'card', 'the compact Retry carries no halo token');
   });
 
   it('O22d (88.9): an unauthorized banner shows Sign in to /api/auth/login?returnTo=<this path>, 44px tall, in place of Try again, and no other code does', () => {
@@ -200,33 +186,36 @@ describe('FetchErrorBanner — 88.9-26 title, halo and sign-in pins', () => {
 describe('FetchErrorBanner — R073 mount grounds (88.9-50)', () => {
   // DECISION Phase 88.9-50 R073: MOUNT_GROUNDS reads the mount files with fs and a local comment strip, chosen OVER the sourceScan import and a drift-registry row — registration would turn this unit file into a registered gate with a min count to keep in lockstep for a one-test table pin; plan 88.9-35 keeps KebabMenu.test, BallotSection.test and RsvpSection.statusOnly unregistered the same way. Changing it is a decision, not a cleanup.
   //
-  // One row per compact mount, walked by hand at the branch head to the nearest painting ancestor.
-  // anchor: a snippet that occurs once in the comment-stripped file; the mount is the tag that
-  // contains it, else the first FetchErrorBanner tag after it. key card = the mount passes no
-  // hostGround (the default). No mount changes ground at 768px, so no row names a fromMd.
-  type MountRow = { file: string; anchor: string; key: 'card' | 'page'; fromMd?: 'page' };
+  // One row per compact mount, walked by hand to the nearest painting ancestor (the ground notes
+  // are kept as the walk recorded them). anchor: a snippet that occurs once in the comment-stripped
+  // file; the mount is the tag that contains it, else the first FetchErrorBanner tag after it.
+  // AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 made the halo inert and the
+  // host-ground key is retired, so the census now holds that no mount passes a ground at all; the
+  // per-row key and the desktop companion went with it. Population floor: 12 compact mounts.
+  type MountRow = { file: string; anchor: string };
+  const MOUNT_FLOOR = 12;
   const MOUNT_GROUNDS: MountRow[] = [
     // the Modal panel paints bg-card
-    { file: 'src/app/components/ManageMembers.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact', key: 'card' },
+    { file: 'src/app/components/ManageMembers.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact' },
     // bg-surface-page from md; surface-flat-phone below it, and the UserHomePage host is unpainted to the body
-    { file: 'src/app/components/grouplist.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact', key: 'page' },
+    { file: 'src/app/components/grouplist.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact' },
     // the min-h-screen bg-surface-page page root
-    { file: 'src/app/friends/page.js', anchor: '<FetchErrorBanner state={groupsErrorState} compact', key: 'page' },
+    { file: 'src/app/friends/page.js', anchor: '<FetchErrorBanner state={groupsErrorState} compact' },
     // the event view's unpainted wrapper, so the body's page ground
-    { file: 'src/app/gameDetail/page.js', anchor: '<TimezoneNudgeBanner />', key: 'page' },
+    { file: 'src/app/gameDetail/page.js', anchor: '<TimezoneNudgeBanner />' },
     // the reviews card
-    { file: 'src/app/gameDetail/page.js', anchor: '<div className="card p-3 md:p-6">', key: 'card' },
+    { file: 'src/app/gameDetail/page.js', anchor: '<div className="card p-3 md:p-6">' },
     // the unpainted page wrapper, so the body's page ground
-    { file: 'src/app/groupPlanning/page.js', anchor: '<FetchErrorBanner state={personalControlsErrorState} compact', key: 'page' },
+    { file: 'src/app/groupPlanning/page.js', anchor: '<FetchErrorBanner state={personalControlsErrorState} compact' },
     // the desktop-only column (hidden below md), unpainted to the body
-    { file: 'src/app/userHome/UserHomePage.js', anchor: '{pageSessionState ? null : selfIdentityErrorState.showError ? (', key: 'page' },
+    { file: 'src/app/userHome/UserHomePage.js', anchor: '{pageSessionState ? null : selfIdentityErrorState.showError ? (' },
     // the phone BottomSheet panel paints bg-surface-card
-    { file: 'src/app/userHome/UserHomePage.js', anchor: 'bodyClassName="flex min-h-0 flex-col overflow-hidden"', key: 'card' },
+    { file: 'src/app/userHome/UserHomePage.js', anchor: 'bodyClassName="flex min-h-0 flex-col overflow-hidden"' },
     // the four profile mounts sit inside card p-3 md:p-6 sections
-    { file: 'src/app/userProfile/page.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact />', key: 'card' },
-    { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={schedulesHeadingRef}', key: 'card' },
-    { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={overridesHeadingRef}', key: 'card' },
-    { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={collectionHeadingRef}', key: 'card' },
+    { file: 'src/app/userProfile/page.js', anchor: '<FetchErrorBanner state={selfIdentityErrorState} compact />' },
+    { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={schedulesHeadingRef}' },
+    { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={overridesHeadingRef}' },
+    { file: 'src/app/userProfile/page.js', anchor: 'compact focusTarget={collectionHeadingRef}' },
   ];
 
   const stripComments = (src: string) =>
@@ -240,7 +229,8 @@ describe('FetchErrorBanner — R073 mount grounds (88.9-50)', () => {
   };
   const COMPACT = /\scompact(?=[\s/>])/;
 
-  it('R073 mounts (88.9-50): every compact mount on a page ground passes its host', () => {
+  it('89.6-38 (O-1 B): no compact mount passes a host ground', () => {
+    expect(MOUNT_GROUNDS.length, 'the census still lists every compact mount (floor 12)').toBeGreaterThanOrEqual(MOUNT_FLOOR);
     for (const row of MOUNT_GROUNDS) {
       const src = fromRoot(row.file);
       const where = `${row.file} (${row.anchor})`;
@@ -254,13 +244,8 @@ describe('FetchErrorBanner — R073 mount grounds (88.9-50)', () => {
       expect(start, `${where}: a FetchErrorBanner tag at the anchor`).toBeGreaterThan(-1);
       const tag = tagFrom(src, start);
       expect(tag, `${where}: the tag is a compact mount`).toMatch(COMPACT);
-      if (row.key === 'card') {
-        expect(tag, `${where}: a card mount keeps the default`).not.toMatch(/\bhostGround=/);
-      } else {
-        expect(tag, `${where}: passes its ${row.key} ground`).toContain(`hostGround="${row.key}"`);
-      }
-      if (row.fromMd) expect(tag, `${where}: passes its desktop ground`).toContain(`hostGroundFromMd="${row.fromMd}"`);
-      else expect(tag, `${where}: no desktop companion`).not.toMatch(/\bhostGroundFromMd=/);
+      expect(tag, `${where}: passes no host ground`).not.toMatch(/\bhostGround=/);
+      expect(tag, `${where}: no desktop companion`).not.toMatch(/\bhostGroundFromMd=/);
     }
 
     // Completeness: every compact FetchErrorBanner tag in src is a table row, file by file.

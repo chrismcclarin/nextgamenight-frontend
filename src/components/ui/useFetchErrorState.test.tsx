@@ -468,10 +468,10 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
     // AMENDED Phase 88.9-14 (Task 3, halo census R073-R075): the small-notice Retry sits outside
     // Banner and takes its host-majority card halo; Try again and Report this sit in Banner's
     // actions slot, which paints bg-surface-elevated for every tone, so they take the elevated one.
-    const retryClass = screen.getByRole('button', { name: 'Retry' }).className;
-    // The compact Retry's halo comes from hostGroundHalo: raw until plan 89.6-38.
-    expect(retryClass, 'Retry: card halo').toContain('focus-visible:ring-offset-surface-card');
-    expect(retryClass, 'Retry: never the elevated halo').not.toContain('ring-offset-surface-elevated');
+    // AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 made the halo inert and
+    // the host-ground key is retired, so the compact Retry carries no halo token at all (it used to
+    // carry the card halo from hostGroundHalo, never the elevated one).
+    expectRingGround(screen.getByRole('button', { name: 'Retry' }), 'card', 'Retry: no halo token');
     unmount();
 
     // Under the owner's 2026-10-05 ruling the report link exists only after a failed retry, and
