@@ -193,7 +193,10 @@ test.describe('groupPlanning — a failed role read on a phone (88.6.1-16, D-25 
     // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
     // the large-text method and owns this read. When the screen is fixed this test reports an
     // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
-    test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
+    // AMENDED Phase 89.6-39 (O-M1-bare): the screen is fixed and the line is removed. CI runs
+    // 45561514680 and 45562275271 (FE be1bca1 and bf74366) reported the unexpected pass on the first
+    // try and on the retry, once the planning breadcrumb box moved to px-edge-card (12px a side at
+    // 200% text, was 24): the two-word group name gained the room it needs. This read is a plain test now.
     await breadcrumbProof(page, true);
   });
 });
