@@ -746,7 +746,7 @@ describe('OpenPollsList: the card body selects the poll (quick-261026-pi6, owner
     await screen.findByText('Started by Ben');
     const anaBody = cardBody(/Started by Ana/);
     const benBody = cardBody(/Started by Ben/);
-    expect(anaBody).toHaveClass('min-h-11', 'text-left', 'p-3');
+    expect(anaBody).toHaveClass('min-h-11', 'text-left', 'p-edge-card'); // AMENDED Phase 89.6-15 (O-M1-sites): the body pads on the card edge token
     expectFocusRingInset(anaBody, 'the Ana card body');
     // One pixel less padding when selected, so the 2px border does not grow the card.
     expect(benBody).toHaveClass('p-[11px]');

@@ -256,8 +256,12 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
           Send a check-in to your group asking when they&apos;re free — they tap, paint their availability, you find the night.
         </p>
 
+        {/* DECISION Phase 89.6-15 (O-M1-sites): the Start a check-in error box takes the card edge token
+            (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card edge)'; HR-9,
+            SPEC A9: every card and bar), chosen OVER rem padding that doubles at 200% text; it is a box,
+            not a button, whatever its radius. Pixel-identical at normal text. */}
         {error && (
-          <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
+          <div className="mb-4 p-edge-card bg-status-error-subtle border border-status-error rounded-btn">
             {/* Req 8 / D-42: an alert inserted WITH its text is announced, so the conditional mount
                 stays, the sibling ScheduleForm.js error box's shape; the key inserts a NEW node per
                 failure (#184), so a repeat of the same failure is announced again. */}

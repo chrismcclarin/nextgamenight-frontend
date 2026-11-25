@@ -296,9 +296,13 @@ export default function BrowseMoreModal({
       <Modal.Header>Browse games</Modal.Header>
       <Modal.Body className="p-0 md:p-0">
         {/* Filter / sort row — pinned over the scrolling grid */}
+        {/* DECISION Phase 89.6-15 (O-M1-sites): the Browse games sort bar's side edge is the page edge
+            token (owner pick O-M3 = A+, the sort bar takes the thin edge; register X-03), chosen OVER
+            rem side padding that doubles at 200% text in a phone dialog. Its wrap and its static
+            position are plan 89.6-18's. Changing this is a decision, not a cleanup. */}
         <div
           data-testid="browse-more-controls"
-          className="sticky top-0 z-10 bg-card px-4 pt-3 pb-3 border-b border-line"
+          className="sticky top-0 z-10 bg-card px-edge-page pt-3 pb-3 border-b border-line"
         >
           <div className="flex flex-wrap items-center gap-3">
             {/* Player-count stepper.

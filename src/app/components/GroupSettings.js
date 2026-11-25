@@ -733,7 +733,12 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           <Heading level={3} size="heading" className="text-content-primary mb-3">Profile Picture</Heading>
           
           {/* Current Selection Preview */}
-          <div className="mb-4 p-4 border border-line rounded-lg bg-surface-page">
+          {/* DECISION Phase 89.6-15 (O-M1-sites): the two preview boxes on this tab take the page edge
+              token, 16px at every text size (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px
+              page edge, 12px card edge)'; HR-9, SPEC A9: every card and bar), chosen OVER rem padding
+              that doubles at 200% text. The emoji tiles keep their own padding: a control's padding is
+              not an edge (plan 89.6-25 owns their size). Pixel-identical at normal text. */}
+          <div className="mb-4 p-edge-page border border-line rounded-lg bg-surface-page">
             <div className="text-center">
               {/* 87.8-13 walkthrough F-4: inline-flex (was inline-block + flex — two
                   competing display utilities; the centering never applied) and
@@ -923,7 +928,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
               stacked shape renders white in light mode. ALSO REJECTED: gating
               the ground on `backgroundColor` alone (T-88.3-43). A decision, not
               a cleanup. */}
-          <div className={`mb-4 p-4 border border-line rounded-lg ${previewGround ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`} style={{
+          <div className={`mb-4 p-edge-page border border-line rounded-lg ${previewGround ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`} style={{
             ...(previewGround && {
               '--group-ground': previewGround.dark,
               '--group-ground-light': previewGround.light,

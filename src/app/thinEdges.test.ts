@@ -107,22 +107,17 @@ const PENDING: Record<string, { count: number; owner: '89.6-15' | '89.6-39' }> =
   'app/components/AvailabilityGrid.js': { count: 2, owner: '89.6-39' },
   'app/components/BallotOptionsEditor.js': { count: 1, owner: '89.6-39' },
   'app/components/BallotSection.js': { count: 4, owner: '89.6-39' },
-  'app/components/BrowseMoreModal.js': { count: 1, owner: '89.6-15' },
   'app/components/CalendarListView.js': { count: 1, owner: '89.6-39' },
   'app/components/ClickableMemberName.js': { count: 2, owner: '89.6-39' },
   'app/components/EventScheduler.tsx': { count: 1, owner: '89.6-39' },
-  'app/components/FeedbackForm.js': { count: 2, owner: '89.6-15' },
   'app/components/FriendInvitePanel.js': { count: 3, owner: '89.6-39' },
   'app/components/GroupLibrary.js': { count: 1, owner: '89.6-39' },
-  'app/components/GroupSettings.js': { count: 2, owner: '89.6-15' },
   'app/components/HeatmapTooltip.js': { count: 2, owner: '89.6-39' },
   'app/components/ManageMembers.js': { count: 4, owner: '89.6-39' },
   'app/components/MemberSelector.js': { count: 1, owner: '89.6-39' },
-  'app/components/OpenPollsList.js': { count: 3, owner: '89.6-15' },
   'app/components/PendingMemberBanner.js': { count: 1, owner: '89.6-39' },
   'app/components/ResponseDashboard.js': { count: 3, owner: '89.6-39' },
   'app/components/ScheduleList.js': { count: 1, owner: '89.6-39' },
-  'app/components/StartPollModal.js': { count: 1, owner: '89.6-15' },
   'app/components/TimezoneNudgeBanner.js': { count: 1, owner: '89.6-39' },
   'app/components/createEvent.js': { count: 1, owner: '89.6-39' },
   'app/components/heatmap/WeekGrid.tsx': { count: 1, owner: '89.6-39' },
@@ -133,8 +128,8 @@ const PENDING: Record<string, { count: number; owner: '89.6-15' | '89.6-39' }> =
   'components/ui/dialog.tsx': { count: 1, owner: '89.6-39' },
 };
 
-/** The number of PENDING entries owned by 89.6-15 may only fall; Task 3 of the plan sets it to 0. */
-const PENDING_OWNED_BY_15_CEILING = 5;
+/** The number of PENDING entries owned by 89.6-15 may only fall; it reached 0 when plan 89.6-15 closed, so every entry left is plan 89.6-39's. */
+const PENDING_OWNED_BY_15_CEILING = 0;
 
 /** The page roots on the page token pair: pinned by a snippet once converted, a PENDING entry until then. */
 const PAGE_ROOTS: { file: string; snippet: string | null }[] = [

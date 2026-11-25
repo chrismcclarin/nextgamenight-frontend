@@ -466,14 +466,20 @@ export function pollChipLabels(prompts, group) {
    per line, the owner's We/eke/nd W/arr/iors); a fixed rem floor on the body (it would drop the
    kebab at ordinary text for a short title); shrinking the kebab (44px is its floor). At ordinary
    text the cell needs 56px and a word of 16px bold rarely passes 150, so nothing moves. */
+/* DECISION Phase 89.6-15 (O-M1-sites): the check-in card's own padding is the card edge token (owner
+   pick S3 = Rules, 2026-11-22: 'No special treatment'; HR-9 reaches every card, SPEC A9), chosen OVER
+   its 12px rem body and right cell, which grew to 24 + 24 + 24px at 200% text and took the title's
+   room. The row's wrap is plan 89.6-17's. Pixel-identical at normal text. The selected cells keep
+   their 11px (px already, one pixel under the token so the 2px border does not grow the card).
+   Changing this is a decision, not a cleanup. */
 const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex flex-wrap items-start';
 const CARD_ROW_SELECTED_CLASS = 'bg-surface-card border-2 border-content-link rounded-card flex flex-wrap items-start';
 const CARD_BODY_BUTTON_CLASS =
-  'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset p-3';
+  'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset p-edge-card';
 const CARD_BODY_BUTTON_SELECTED_CLASS =
   'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset p-[11px]';
-const CARD_BODY_STATIC_CLASS = 'max-w-full flex-1 p-3';
-const CARD_KEBAB_CELL_CLASS = 'ml-auto shrink-0 py-3 pr-3';
+const CARD_BODY_STATIC_CLASS = 'max-w-full flex-1 p-edge-card';
+const CARD_KEBAB_CELL_CLASS = 'ml-auto shrink-0 py-edge-card pr-edge-card';
 const CARD_KEBAB_CELL_SELECTED_CLASS = 'ml-auto shrink-0 py-[11px] pr-[11px]';
 const VIEWING_TAG = 'Viewing';
 const VIEWING_TAG_CLASS = 'block text-xs font-bold uppercase tracking-wider text-content-link mb-0.5';

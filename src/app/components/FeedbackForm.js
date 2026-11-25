@@ -621,8 +621,13 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             <label id={screenshotLabelId} className="block text-sm text-content-secondary mb-2">
               Screenshot <span className="text-content-muted font-normal">(optional)</span>
             </label>
+            {/* DECISION Phase 89.6-15 (O-M1-sites): the screenshot file row takes the card edge token and
+                the drop zone below the page edge token (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin
+                (16px page edge, 12px card edge)'; HR-9, SPEC A9: every card and bar), chosen OVER rem
+                padding that doubles at 200% text. Pixel-identical at normal text. Changing this is a
+                decision, not a cleanup. */}
             {screenshot ? (
-              <div className="flex items-center gap-3 p-3 bg-surface-page border border-line rounded-md">
+              <div className="flex items-center gap-3 p-edge-card bg-surface-page border border-line rounded-md">
                 {/* Round-7 residual #29, closed Phase 88.6-31: STANDALONE decoration, a SIBLING of
                     the named Remove control below rather than a child of it, so `aria-hidden`
                     here is about not announcing an unlabelled graphic beside the filename. Its
@@ -712,7 +717,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 <label
                   id={screenshotDropzoneId}
                   htmlFor={fileInputId}
-                  className="flex flex-col items-center justify-center w-full p-4 border-2 border-dashed border-line rounded-md cursor-pointer hover:border-accent hover:bg-surface-hover transition-colors peer-focus-visible:focus-ring peer-focus-visible:border-accent"
+                  className="flex flex-col items-center justify-center w-full p-edge-page border-2 border-dashed border-line rounded-md cursor-pointer hover:border-accent hover:bg-surface-hover transition-colors peer-focus-visible:focus-ring peer-focus-visible:border-accent"
                 >
                   <svg aria-hidden="true" className="w-6 h-6 text-content-muted mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
