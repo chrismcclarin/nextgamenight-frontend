@@ -6,6 +6,8 @@
 // and the RingGround type are as plan 89.6-37 wrote them. Each expect also rejects the old
 // box-shadow ring-CLASS tokens; it never judges a halo colour token, because hostGround.ts keeps
 // emitting halos on its five consumers until plan 89.6-38.
+// AMENDED Phase 89.6-38 (host-ground): halo colour tokens are now rejected too; hostGround.ts is
+// deleted, so no control emits a halo.
 //
 // Every unit test that asserts a keyboard ring (outside the mechanism tests plan 89.6-13 owns)
 // reads its ring tokens from this module instead of writing them as literals. Five forms:
@@ -19,12 +21,10 @@
 //     FOCUS_RING_SOURCE_TOKEN (source scans count or look for it).
 // Plus expectRingGround(target, ground): which halo (the ring-offset colour) an element wears.
 //
-// Plan 89.6-13 flips the five constants and the four bodies in its run commit; plan 89.6-38
-// deletes hostGround.ts, so this module never imports it (and it imports no source scanner,
-// so it owes no drift-gate-registry row).
-//
-// Never apply expectRingGround to an element whose halo comes from hostGroundHalo: those halos
-// are plan 89.6-38's, and their tests keep their raw lines until then.
+// Plan 89.6-13 flipped the five constants and the four bodies in its run commit; plan 89.6-38
+// deleted hostGround.ts, which this module never imported (and it imports no source scanner,
+// so it owes no drift-gate-registry row). Since plan 89.6-38 every control may be read with
+// expectRingGround: none takes a halo from a host any more.
 //
 // Absence checks (plan review M054): a test that means "no ring at this site" writes
 // .not.toContain(FOCUS_RING_SOURCE_TOKEN), or iterates a whole constant
@@ -71,9 +71,10 @@ const GROUND_HALO: Record<RingGround, string> = {
   hero: 'surface-hero',
 };
 
-// An old box-shadow ring-CLASS token on any focus-visible chain (peer- and group- included). Halo
-// colour tokens (ring-offset-<colour>) are deliberately NOT here until plan 89.6-38.
-const OLD_RING_CLASS = /^(?:[^\s:]+:)*?(?:peer-|group-)?focus-visible:ring-(?:2|inset|focus-ring|ring|offset-[0-9]+)$/;
+// An old box-shadow ring-CLASS token, or a halo, on any focus-visible chain (peer-, group- and any
+// lead such as dark: included). Since plan 89.6-38 the halo colour tokens (ring-offset-<colour>)
+// are rejected with the widths (ring-offset-<n>): any whole token ending focus-visible:ring-offset-.
+const OLD_RING_CLASS = /^(?:[^\s:]+:)*?(?:peer-|group-)?focus-visible:ring-(?:2|inset|focus-ring|ring|offset-\S+)$/;
 // Any ring-offset token on a focus-visible chain, width or colour (expectRingGround's check).
 const ANY_RING_OFFSET = /^(?:[^\s:]+:)*?(?:peer-|group-)?focus-visible:ring-offset-/;
 
@@ -100,7 +101,7 @@ function expectNone(tokens: string[], bad: (t: string) => boolean, what: string,
 }
 
 function expectNoOldRing(tokens: string[], label?: string) {
-  expectNone(tokens, (t) => OLD_RING_CLASS.test(t), 'an old box-shadow ring token is left', label);
+  expectNone(tokens, (t) => OLD_RING_CLASS.test(t), 'an old box-shadow ring token or a halo is left', label);
 }
 
 /** The offset form is present, and no old ring token is. */
@@ -138,8 +139,8 @@ export function expectFocusRingEdge(
 /**
  * No ring-offset token of any kind, width or halo, whatever the ground: owner pick O-1 = B
  * retired the halo, and the codemod deleted every halo a component or call site wrote as a
- * literal. The ground stays in the failure text. Never for an element whose halo comes from
- * hostGroundHalo (plan 89.6-38).
+ * literal. The ground stays in the failure text. Since plan 89.6-38 deleted hostGround.ts no
+ * element takes a halo from its host, so this reads any control.
  */
 export function expectRingGround(target: RingTarget, ground: RingGround, label?: string): void {
   expectNone(

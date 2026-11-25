@@ -686,15 +686,14 @@ describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-
 // O-1 = B, 2026-11-22; the two-tone ring needs no per-ground halo. Its census test
 // (haloCensus.test.ts) and baseline (scripts/baselines/button-halos.json) were deleted in the same
 // commit, and the shared halo reads went with them.
+// AMENDED Phase 89.6-38 (host-ground): the hostGround.ts allowance is removed with the file; test 12
+// judges every src file.
 //
 // Test helpers hold the old tokens as DATA (the reject list in src/test-utils/focusRingAssert.ts),
 // so the helper directory is outside the read. sourceFiles already skips it centrally (DECISION
 // Phase 88.6-44 (T-88.6-124) in src/test-utils/sourceScan.ts); the constant names the same
 // exclusion the ring codemod (scripts/ring-codemod.mjs) makes, so the two reads cannot drift.
 const TEST_HELPER_DIR = 'test-utils';
-// The one named allowance: hostGround.ts still emits per-ground halos for its five consumers.
-// Plan 89.6-38 deletes the file and this entry together.
-const RING_ALLOWANCE = new Set([path.join('components', 'ui', 'hostGround.ts')]);
 // An unprefixed ring-offset-<colour> allowed only here: a tutorial demo highlight, not a ring.
 const HALO_EXCEPTIONS = new Set([path.join('app', 'components', 'tutorial', 'simulated', 'ScheduleDemo.js')]);
 // POPULATION FLOOR, 72% of the utility chunks measured 2026-11-24 at the commit that ran the
@@ -729,7 +728,7 @@ describe('Phase 89.6 — one keyboard ring (owner pick O-1 = B)', () => {
     const offenders: string[] = [];
     for (const abs of sourceFiles(SRC)) {
       const rel = path.relative(SRC, abs);
-      if (rel.split(path.sep)[0] === TEST_HELPER_DIR || RING_ALLOWANCE.has(rel)) continue;
+      if (rel.split(path.sep)[0] === TEST_HELPER_DIR) continue;
       const src = fs.readFileSync(abs, 'utf8');
       for (const c of stringChunks(src)) {
         const tokens = c.text.split(/\s+/).filter(Boolean);
