@@ -1135,6 +1135,42 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
     expect((row.querySelector('p')?.textContent ?? '').trim(), 'the visible name').toBe('Member');
   });
 
+  // CI-01g (Friends half): at large text the tab strip scrolls (the R4 S3 marker), and nothing said
+  // that tabs were hidden past its edge. An aria-hidden cue now fades each end that hides tabs, and
+  // none renders when the three tabs fit. jsdom lays nothing out, so the strip's box is stubbed and
+  // ResizeObserver stood in. The marker is at src/app/friends/page.js ("DECISION Phase 89.6-21 (strip-cue)").
+  it('89.6-21 CI-01g: the strip shows an edge cue only where tabs are hidden', async () => {
+    class StubResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', StubResizeObserver);
+    let stripWidth = 549;
+    const isStrip = (el: Element) => el.classList.contains('overflow-x-auto');
+    const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
+    const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get(this: HTMLElement) { return isStrip(this) ? stripWidth : 0; } });
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get(this: HTMLElement) { return isStrip(this) ? 311 : 0; } });
+    try {
+      const first = renderFriends();
+      await screen.findByText('Dana');
+      const cues = () => Array.from(document.querySelectorAll('[data-strip-cue]')) as HTMLElement[];
+      await waitFor(() => expect(cues().map((cue) => cue.dataset.stripCue)).toEqual(['end']));
+      expect(cues()[0]).toHaveAttribute('aria-hidden', 'true');
+      expect(cues()[0].className.split(/\s+/)).toEqual(expect.arrayContaining(['pointer-events-none', 'w-8']));
+      first.unmount();
+      stripWidth = 311;
+      renderFriends();
+      await screen.findByText('Dana');
+      expect(cues()).toEqual([]);
+    } finally {
+      if (scroll) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', scroll);
+      if (client) Object.defineProperty(HTMLElement.prototype, 'clientWidth', client);
+      vi.unstubAllGlobals();
+    }
+  });
+
   // 88.9-52 R4 B1b (the round-4 re-shoot, 375 with text at 200%): the address field was squeezed
   // to about 80px beside the Search button. The search row may wrap and the field asks for 8rem
   // before it shares a line, so at large text the button drops under a full-width field.
