@@ -47,6 +47,16 @@ import { SPINNER_DELAY_MS } from '@/components/ui/useDelayedSpinner';
 import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { INLINE_RECEIPT_MS } from '@/components/ui/useInlineReceipt';
 import { axe } from 'vitest-axe';
+import { FOCUS_RING_CLASSES, FOCUS_RING_EDGE_CLASSES, expectFocusRing, expectFocusRingEdge, expectFocusRingInset, expectRingGround } from '@/test-utils/focusRingAssert';
+
+// The edge ring as an exact token list: the edge form plus the colour token the offset form
+// carries (today focus-visible:ring-2 focus-visible:ring-focus-ring), derived from the helper
+// so plan 89.6-13's flip carries it (after the flip the colour drops out and the list is the
+// one utility token, as the codemod writes the source).
+const EDGE_RING = [
+  ...FOCUS_RING_EDGE_CLASSES,
+  ...FOCUS_RING_CLASSES.filter((t) => !FOCUS_RING_EDGE_CLASSES.includes(t) && !t.includes('ring-offset-')),
+];
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -1465,10 +1475,10 @@ describe('userProfile form controls (Req 1 — the 16px floor)', () => {
   it('the Edit-username pencil carries the 44px tap-target idiom, ring inset, one name source (88.6.1-53, V-1a)', async () => {
     renderProfile();
     const pencil = await screen.findByRole('button', { name: 'Edit username' });
-    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center', 'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-inset']) {
+    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center', 'focus:outline-hidden']) {
       expect(pencil.className.split(/\s+/)).toContain(cls);
     }
-    expect(pencil.className.split(/\s+/)).not.toContain('focus-visible:ring-offset-2');
+    expectFocusRingInset(pencil, 'Edit username');
     // One name source: no aria-label, the title names it, and every glyph is aria-hidden.
     expect(pencil).not.toHaveAttribute('aria-label');
     expect(pencil).toHaveAttribute('title', 'Edit username');
@@ -2210,14 +2220,12 @@ describe('userProfile phone block (plan 88.6-17)', () => {
       const classes = el.className.split(/\s+/);
       expect(classes).toContain('min-h-11');
       expect(classes, 'these are floored IN PLACE, not migrated').not.toContain('btn');
-      expect(classes).toContain('focus-visible:ring-2');
-      expect(classes).toContain('focus-visible:ring-focus-ring');
     }
     // AMENDED Phase 88.9-52 (W38 completion): Change number keeps its card-ground ring offset; Remove
     // now wears the schedule Delete's look, whose ring has none (the exact set is pinned in the
     // 88.9-52 W38 phone Remove test below).
-    expect(change.className.split(/\s+/)).toContain('focus-visible:ring-offset-2');
-    expect(remove.className.split(/\s+/)).not.toContain('focus-visible:ring-offset-2');
+    expectFocusRing(change, 'Change number');
+    expectFocusRingEdge(remove, undefined, 'Remove');
     expect(remove.className).toMatch(/\btext-content-status-error\b/);
 
     // AMENDED Phase 88.9-68 (X36b): the arm is the shared gated two-tap, so the armed state is read
@@ -2250,7 +2258,7 @@ describe('userProfile phone block (plan 88.6-17)', () => {
       const classes = dismiss.className.split(/\s+/);
       expect(classes).toContain('min-h-11');
       expect(classes).toContain('min-w-11');
-      expect(classes).toContain('focus-visible:ring-focus-ring');
+      expectFocusRing(classes, 'Dismiss');
       // §4.3: a glyph-only control is ICON sizing, never a type rung — byte-unchanged.
       expect(classes).toContain('text-lg');
     } finally {
@@ -3177,7 +3185,7 @@ describe('breadcrumb ring and separator (88.6.1-53: D-46 / R7-M7)', () => {
     expect(slice.split('<Link href="/"').length - 1).toBe(1);
     const linkAt = slice.indexOf('<Link href="/"');
     const tag = slice.slice(linkAt, slice.indexOf('>', linkAt));
-    for (const cls of ['focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring', 'focus-visible:ring-offset-2']) {
+    for (const cls of ['focus:outline-hidden', ...FOCUS_RING_CLASSES]) {
       expect(tag, `the Home link is missing ${cls}`).toContain(cls);
     }
   });
@@ -3415,16 +3423,14 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
     const dismissClasses = screen.getByRole('button', { name: 'Dismiss' }).className.split(/\s+/);
     for (const cls of [
       'text-content-status-warning',
-      'focus-visible:ring-2',
-      'focus-visible:ring-focus-ring',
-      'focus-visible:ring-offset-2',
-      'focus-visible:ring-offset-status-warning-subtle',
       'min-h-11',
       'min-w-11',
       '-m-2',
     ]) {
       expect(dismissClasses).toContain(cls);
     }
+    expectFocusRing(dismissClasses, 'Dismiss');
+    expectRingGround(dismissClasses, 'warning', 'Dismiss');
     expect(dismissClasses.filter((c) => c.startsWith('dark:focus-visible:ring-offset-'))).toEqual([]);
     expect(dismissClasses.filter((c) => c.includes('amber'))).toEqual([]);
   });
@@ -6926,11 +6932,15 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     // 44px tall, no border and no fill in any state, error-subtle on hover.
     expect(remove.className.split(/\s+/).filter(Boolean)).toEqual([
       'ml-auto', 'inline-flex', 'min-h-11', 'shrink-0', 'items-center', 'whitespace-nowrap', 'rounded-btn', 'px-2', 'text-sm',
-      'text-content-status-error', 'hover:bg-status-error-subtle', 'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring',
+      'text-content-status-error', 'hover:bg-status-error-subtle', 'focus:outline-hidden', ...EDGE_RING,
     ]);
     // The page's own phone Remove is the model: every look class it carries, this one carries.
     const source = await pageSource();
-    const phone = /className=\{`-mx-2 ml-3 (inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring)\$\{/.exec(source);
+    const phone = new RegExp(
+      'className=\\{`-mx-2 ml-3 (inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden ' +
+        EDGE_RING.join(' ') +
+        ')\\$\\{',
+    ).exec(source);
     expect(phone, 'LOCATOR: the phone Remove class string').not.toBeNull();
     for (const cls of phone![1].split(' ')) expect(remove.className.split(/\s+/), cls).toContain(cls);
     // No slot around the button and nothing reserved at rest.
@@ -7269,7 +7279,7 @@ describe('phone layout of the availability panels and the inline two-tap control
     const DELETE_LOOK = [
       'inline-flex', 'min-h-11', 'items-center', 'whitespace-nowrap', 'rounded-btn', 'px-2', 'text-sm',
       'text-content-status-error', 'hover:bg-status-error-subtle',
-      'focus:outline-hidden', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring',
+      'focus:outline-hidden', ...EDGE_RING,
     ];
     const PLACE = ['-mx-2', 'ml-3'];
     const sorted = (list: string[]) => [...list].sort();

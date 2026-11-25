@@ -11,6 +11,7 @@ import * as React from 'react';
 import { render, screen, waitFor, cleanup, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FOCUS_RING_CLASSES, expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -634,7 +635,9 @@ describe('groupHomePage header CTAs on the Button primitive (88.6-21 D-09 / UI-S
     ]) {
       // Present exactly ONCE. `cn`'s tailwind-merge would keep a duplicate call-site copy of a
       // ring token beside the base's, so "present" alone would not catch a second expression.
-      expect(el.className.match(/focus-visible:ring-2/g) ?? []).toHaveLength(1);
+      for (const t of FOCUS_RING_CLASSES) {
+        expect(el.className.split(/\s+/).filter((c) => c === t), t).toHaveLength(1);
+      }
     }
   });
 });
@@ -685,8 +688,6 @@ describe('groupHomePage group-settings entry is owner/admin (88.6-21 D-31, owner
 // CS-01; 88.9-PICKS-B7B.json, B5, B1, B7A). Token pins: jsdom paints nothing, so each test reads the
 // class tokens the picked variant ships and the ones it must not.
 describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV-01 / CS-01)', () => {
-  const GROUP_HALO = 'focus-visible:ring-offset-surface-group-halo';
-  const ELEVATED_HALO = 'focus-visible:ring-offset-surface-elevated';
   const tokens = (el: Element) => el.className.toString().split(/\s+/);
   /** The identity header host: the h1's nearest ancestor carrying the host's own rounded-lg + overflow-visible pair. */
   const headerHost = (): HTMLElement => {
@@ -757,7 +758,7 @@ describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV
     (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group', background_color: '#722f37' });
     await renderHeaderAt('owner');
     const tintedGear = screen.getByRole('button', { name: 'Group settings' });
-    expect(tintedGear).toHaveClass(GROUP_HALO);
+    expectRingGround(tintedGear, 'group', 'the tinted gear');
     expect(tintedGear, 'the tinted gear still hovers on the surface wash').toHaveClass('hover:bg-btn-secondary-hover');
     expect(tintedGear).not.toHaveClass('hover:bg-surface-hover');
     (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
@@ -771,8 +772,7 @@ describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV
     expect(host).toHaveClass('bg-[var(--group-ground-light)]');
     expect(host).toHaveClass('[--group-halo:var(--group-ground-light)]', 'dark:[--group-halo:var(--group-ground)]');
     for (const el of headerControls()) {
-      expect(el).toHaveClass(GROUP_HALO);
-      expect(el).not.toHaveClass(ELEVATED_HALO);
+      expectRingGround(el, 'group', el.getAttribute('aria-label') ?? el.textContent ?? '');
     }
 
     cleanup();
@@ -782,8 +782,7 @@ describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV
     expect(plain).toHaveClass('bg-surface-elevated');
     expect(plain.className).not.toContain('--group-halo');
     for (const el of headerControls()) {
-      expect(el).toHaveClass(ELEVATED_HALO);
-      expect(el).not.toHaveClass(GROUP_HALO);
+      expectRingGround(el, 'elevated', el.getAttribute('aria-label') ?? el.textContent ?? '');
     }
   });
 
@@ -826,14 +825,8 @@ describe('groupHomePage breadcrumb — hidden separator, min-w-0, ring (88.6.1-5
 
     // The preservation half: the Home link already carried the ring (DECISION Phase 88.3-17).
     const homeTokens = within(nav).getByRole('link', { name: 'Home' }).className.split(/\s+/);
-    for (const token of [
-      'focus:outline-hidden',
-      'focus-visible:ring-2',
-      'focus-visible:ring-focus-ring',
-      'focus-visible:ring-offset-2',
-    ]) {
-      expect(homeTokens).toContain(token);
-    }
+    expect(homeTokens).toContain('focus:outline-hidden');
+    expectFocusRing(homeTokens, 'Home');
   });
 });
 

@@ -20,6 +20,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { axe } from 'vitest-axe';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
+import { expectFocusRingInset } from '@/test-utils/focusRingAssert';
 
 afterEach(cleanup);
 
@@ -130,8 +131,7 @@ describe('Tabs', () => {
       expect(classes).toContain('border-b-2');
       expect(classes).toContain('shrink-0');
       expect(classes).toContain('whitespace-nowrap');
-      expect(classes).toContain('focus-visible:ring-2');
-      expect(classes).toContain('focus-visible:ring-inset');
+      expectFocusRingInset(classes, tab.textContent ?? '');
       expect(classes.filter((c) => c.startsWith('focus-visible:ring-offset-'))).toEqual([]);
     }
   });
@@ -146,8 +146,7 @@ describe('Tabs', () => {
   it('uses a focus-visible ring and no bare focus: ring utility', () => {
     renderTabs();
     const tab = screen.getAllByRole('tab')[0];
-    expect(tab.className).toContain('focus-visible:ring-2');
-    expect(tab.className).toContain('focus-visible:ring-focus-ring');
+    expectFocusRingInset(tab, 'the first tab');
     expect(tab.className).not.toMatch(/(^|\s)focus:(ring|border|bg)/);
   });
 

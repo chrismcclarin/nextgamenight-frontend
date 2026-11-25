@@ -29,6 +29,7 @@ import { act, cleanup, render as rtlRender, screen, waitFor, within } from '@tes
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { expectFocusRing } from '@/test-utils/focusRingAssert';
 
 const h = vi.hoisted(() => {
   const USER = { sub: 'auth0|self' };
@@ -272,8 +273,7 @@ describe('groupPlanning page — breadcrumb exposes "you are here" (plan 88.6-53
     const links = within(nav).getAllByRole('link');
     expect(links).toHaveLength(2);
     for (const link of links) {
-      expect(link.className).toContain('focus-visible:ring-2');
-      expect(link.className).toContain('focus-visible:ring-focus-ring');
+      expectFocusRing(link, link.textContent ?? '');
     }
   });
 });

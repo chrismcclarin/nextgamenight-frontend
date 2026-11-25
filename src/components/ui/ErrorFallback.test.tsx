@@ -19,6 +19,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { ErrorFallback } from './ErrorFallback';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 afterEach(cleanup);
 
@@ -174,16 +175,15 @@ describe('ErrorFallback', () => {
     // byte-identical to Button.tsx:113 / cascadeOrder.test.ts:68-69 (HOUSE_RING_FULL). The
     // bridge-token spelling it replaced painted the same var(--ring) (globals.css:445 and :505),
     // so the convergence moves zero pixels; the old ring class must be gone.
-    const HOUSE_RING =
-      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
     render(<ErrorFallback onRetry={vi.fn()} onReload={vi.fn()} />);
     for (const name of ['Try again', 'Reload page']) {
       const btn = screen.getByRole('button', { name });
-      expect(btn.className, name).toContain(HOUSE_RING);
+      expect(btn.className, name).toContain('focus:outline-hidden');
+      expectFocusRing(btn, name);
       // AMENDED Phase 88.9-14 (Task 3, halo census R071/R072): the halo follows the ring, both
       // controls sit on this component's own bg-surface-card panel.
-      expect(btn.className, `${name}: card halo`).toContain(`${HOUSE_RING} focus-visible:ring-offset-surface-card`);
-      expect(btn.className.split(/\s+/), `${name}: no bridge-token ring`).not.toContain('focus-visible:ring-ring');
+      expectRingGround(btn, 'card', `${name}: card halo`);
+      expect(btn.className.split(/\s+/), `${name}: no bridge-token ring`).not.toContain('focus-visible:ring-ring'); // ring-literal: an absence check on the retired bridge colour; its verdict does not change with the app's ring
     }
   });
 

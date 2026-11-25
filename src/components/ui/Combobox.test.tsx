@@ -23,6 +23,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { Combobox, type ComboboxItem } from './Combobox';
+import { expectFocusRingEdge } from '@/test-utils/focusRingAssert';
 
 afterEach(cleanup);
 
@@ -316,7 +317,7 @@ describe('Combobox', () => {
       ...screen.getAllByRole('option'),
     ];
 
-    expect(getInput().className).toContain('focus-visible:ring-2');
+    expectFocusRingEdge(getInput(), undefined, 'the combobox input');
     for (const node of nodes) {
       expect(node.className).not.toMatch(/(^|\s)focus:(ring|border|bg)/);
       expect(node.className).not.toMatch(

@@ -63,6 +63,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
 import { selectUpcomingWithin7Days } from '@/lib/upcomingEvents';
+import { expectRingGround } from '@/test-utils/focusRingAssert';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const SHEET_TITLE = 'Calendar';
@@ -794,7 +795,7 @@ describe('Phase 88.9-58 — X60: the phone Calendar button on the page ground', 
     const button = await findCalendarButton(nameFor(FILTERED.length));
     const tokens = (button.getAttribute('class') ?? '').split(/\s+/);
     expect(tokens, 'the Calendar button must stay the secondary variant').toContain('btn-secondary');
-    expect(tokens, 'the Calendar button must keep the page halo').toContain('focus-visible:ring-offset-surface-page');
+    expectRingGround(tokens, 'page', 'the Calendar button must keep the page halo');
     expect(tokens, 'the resting fill must read the page-fill token').toContain(
       '[--color-btn-secondary-bg:var(--color-btn-secondary-page-bg)]',
     );

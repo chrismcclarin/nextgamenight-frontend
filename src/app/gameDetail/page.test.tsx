@@ -40,6 +40,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { expectFocusRing } from '@/test-utils/focusRingAssert';
 
 const SELF_UUID = '11111111-1111-4111-8111-111111111111';
 const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
@@ -3378,7 +3379,7 @@ describe('gameDetail event link — Requirement 1 (88.6.1-25)', () => {
       // An UNPREFIXED token: a breakpoint-gated min-h does not count (plan 21's rule).
       const tokens = link.className.split(/\s+/);
       expect(tokens, `${s.label}: the unprefixed min-h-11 floor`).toContain('min-h-11');
-      expect(tokens, `${s.label}: the house focus ring`).toContain('focus-visible:ring-2');
+      expectFocusRing(tokens, `${s.label}: the house focus ring`);
       cleanup();
       vi.clearAllMocks();
     }
@@ -4270,13 +4271,6 @@ describe('gameDetail Sessions date filter explains a backwards range (E5, 88.6.1
 // separators hidden from assistive tech, and min-w-0 on the nav. Separators are read by TEXT, as
 // groupPlanning/page.test.tsx explains: a role query would pass without the attribute.
 // ---------------------------------------------------------------------------
-const HOUSE_RING_TOKENS = [
-  'focus:outline-hidden',
-  'focus-visible:ring-2',
-  'focus-visible:ring-focus-ring',
-  'focus-visible:ring-offset-2',
-];
-
 function expectHouseBreadcrumb(nav: HTMLElement) {
   for (const token of ['inline-block', 'max-w-full', 'wrap-break-word', 'min-w-0']) {
     expect(nav).toHaveClass(token);
@@ -4284,9 +4278,8 @@ function expectHouseBreadcrumb(nav: HTMLElement) {
   const links = within(nav).getAllByRole('link');
   expect(links).toHaveLength(2);
   for (const link of links) {
-    for (const token of HOUSE_RING_TOKENS) {
-      expect(link.className.split(/\s+/)).toContain(token);
-    }
+    expect(link.className.split(/\s+/)).toContain('focus:outline-hidden');
+    expectFocusRing(link, link.textContent ?? '');
   }
   const separators = within(nav).getAllByText('>');
   expect(separators).toHaveLength(2);

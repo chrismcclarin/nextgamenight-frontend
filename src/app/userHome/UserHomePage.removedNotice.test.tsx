@@ -20,6 +20,7 @@ import * as React from 'react';
 import { render, screen, cleanup, act, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -188,13 +189,11 @@ describe('the removed-from-group notice is spoken from a region that was already
       'hover:text-content-primary',
       'rounded-btn',
       'focus:outline-hidden',
-      'focus-visible:ring-2',
-      'focus-visible:ring-focus-ring',
-      'focus-visible:ring-offset-2',
-      'focus-visible:ring-offset-status-warning-subtle',
     ]) {
       expect(dismiss.classList.contains(token), 'Dismiss class list carries ' + token).toBe(true);
     }
+    expectFocusRing(dismiss, 'Dismiss');
+    expectRingGround(dismiss, 'warning', 'Dismiss');
     const classes = Array.from(dismiss.classList);
     expect(
       classes.filter((c) => c.startsWith('dark:focus-visible:ring-offset-')),

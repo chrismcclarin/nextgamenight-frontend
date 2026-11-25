@@ -16,6 +16,7 @@ import { join, relative, resolve } from 'node:path';
 import { act, render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { expectRingGround } from '@/test-utils/focusRingAssert';
 // 88.9-66 (X68): the report hook is replaced by a holder that is null unless a test sets it, so
 // every other test in this file still renders a banner with no report host.
 const reportHost = vi.hoisted(() => ({ open: null as null | ((request: { subject: string; description: string }) => void) }));
@@ -151,9 +152,7 @@ describe('FetchErrorBanner — 88.9-26 title, halo and sign-in pins', () => {
     for (const cls of ['min-h-11', 'min-w-11', 'inline-flex', 'items-center', 'text-content-link', 'underline']) {
       expect(link, `Sign in carries ${cls}`).toHaveClass(cls);
     }
-    expect(link, 'Sign in takes the elevated halo of the Banner it sits in').toHaveClass(
-      'focus-visible:ring-offset-surface-elevated'
-    );
+    expectRingGround(link, 'elevated', 'Sign in takes the elevated halo of the Banner it sits in');
     expect(link, '44px at every width: no desktop reset').not.toHaveClass('md:min-h-0');
     expect(screen.queryByRole('button', { name: 'Try again' }), 'Sign in is IN PLACE OF Try again').toBeNull();
     const alert = screen.getByRole('alert');

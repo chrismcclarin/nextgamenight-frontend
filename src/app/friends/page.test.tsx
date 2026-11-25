@@ -26,7 +26,8 @@ import { resolve } from 'node:path';
 import * as React from 'react';
 import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
+import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner';
+import { expectFocusRingEdge, expectFocusRingInset, expectRingGround } from '@/test-utils/focusRingAssert'; // AMENDED Phase 88.9-54 (R-C3b): the hold budget
 
 const SELF_UUID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const FRIEND_UUID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
@@ -531,8 +532,7 @@ describe('remove friend (two-tap tier)', () => {
 
     expect(button).toHaveAttribute('type', 'button');
     expect(button.className).toContain('min-h-11');
-    expect(button.className).toContain('focus-visible:ring-2');
-    expect(button.className).toContain('focus-visible:ring-focus-ring');
+    expectFocusRingEdge(button, undefined, 'Remove Dana');
     // `outline-hidden`, not `outline-none` — Tailwind v4 naming.
     expect(button.className).toContain('focus:outline-hidden');
   });
@@ -940,9 +940,6 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
       const classes = tab.className.split(/\s+/);
       for (const token of [
         'focus:outline-hidden',
-        'focus-visible:ring-2',
-        'focus-visible:ring-inset',
-        'focus-visible:ring-focus-ring',
         // The label sits clear of the 2px ring at each side (12px). Up and down it is centred by
         // the tab itself (88.9-52 R4 S3, the test below), no longer by a 3px bottom padding.
         'px-3',
@@ -954,6 +951,7 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
       ]) {
         expect(classes, token).toContain(token);
       }
+      expectFocusRingInset(classes, tab.textContent ?? '');
       // The outset form is gone whole: no offset, no halo colour, no bottom-only padding.
       expect(tab.className).not.toContain('ring-offset');
       expect(classes).not.toContain('pb-3');
@@ -1019,7 +1017,7 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
           expect(classes.includes(merged), merged + ' on ' + (tab.textContent ?? '')).toBe(active);
         }
         // The ring itself is unchanged on every tab: 2px, inset, the focus-ring colour.
-        expect(classes).toEqual(expect.arrayContaining(['focus-visible:ring-2', 'focus-visible:ring-inset', 'focus-visible:ring-focus-ring']));
+        expectFocusRingInset(classes, tab.textContent ?? '');
         // The underline keeps its colour: the band reads the same token the border class names.
         if (active) expect(classes).toContain('border-tab-indicator');
         // No other up-or-down padding or margin is left to push the label off the middle.
@@ -2890,9 +2888,10 @@ describe('friend Remove takes the one inline two-tap look (88.9-52: W38)', () =>
 
     // At rest: the model's host classes, and no border class of any kind.
     expect(borderClasses(remove)).toEqual([]);
-    for (const c of ['inline-flex', 'items-center', 'min-h-11', 'shrink-0', 'whitespace-nowrap', 'px-2', 'rounded-btn', 'text-sm', 'text-content-status-error', 'hover:bg-status-error-subtle', 'focus-visible:ring-2', 'focus-visible:ring-focus-ring']) {
+    for (const c of ['inline-flex', 'items-center', 'min-h-11', 'shrink-0', 'whitespace-nowrap', 'px-2', 'rounded-btn', 'text-sm', 'text-content-status-error', 'hover:bg-status-error-subtle']) {
       expect(classes(), c).toContain(c);
     }
+    expectFocusRingEdge(classes(), undefined, 'Remove at rest');
     expect(classes()).not.toContain('font-semibold');
 
     // Armed, while it counts down and once live: weight only, still no border.
@@ -2974,8 +2973,8 @@ describe('friends rows are cards (88.9-58: X14 family)', () => {
     expectCardRow(requestRowEl, 'received-request row');
     for (const name of ['Accept', 'Decline']) {
       const button = within(requestRowEl as HTMLElement).getByRole('button', { name });
-      expect(classesOf(button), `${name} sits on a card, so it must not carry the page halo`).not.toContain('focus-visible:ring-offset-surface-page');
-      expect(classesOf(button), `${name} keeps the Button default card halo`).toContain('focus-visible:ring-offset-surface-card');
+      // On a card: the Button default card halo, never the page one.
+      expectRingGround(classesOf(button), 'card', name);
     }
     // Decline is the ordinary secondary on the card: no page-ground fill override.
     const decline = within(requestRowEl as HTMLElement).getByRole('button', { name: 'Decline' });

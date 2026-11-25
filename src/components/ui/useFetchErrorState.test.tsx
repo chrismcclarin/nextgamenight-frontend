@@ -19,6 +19,7 @@ import { FeedbackModalProvider } from '@/app/components/FeedbackModalProvider';
 import type { FetchErrorState, FetchErrorCode } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
 import { logger } from '@/lib/logger';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 afterEach(() => cleanup());
 
@@ -461,15 +462,15 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
   // Phase 88.6.1-21 (Req 7 ring): the house focus ring, byte-identical to its one home in the
   // `.btn` family (Button.tsx:113) and to cascadeOrder.test.ts:68-69 (`HOUSE_RING_FULL`).
   it('paints the byte-identical house focus ring on all three link-buttons', () => {
-    const HOUSE_RING =
-      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
     const { unmount } = render(<FetchErrorBanner compact state={errorState('boom')} />);
-    expect(screen.getByRole('button', { name: 'Retry' }).className, 'Retry').toContain(HOUSE_RING);
+    expect(screen.getByRole('button', { name: 'Retry' }).className, 'Retry').toContain('focus:outline-hidden');
+    expectFocusRing(screen.getByRole('button', { name: 'Retry' }), 'Retry');
     // AMENDED Phase 88.9-14 (Task 3, halo census R073-R075): the small-notice Retry sits outside
     // Banner and takes its host-majority card halo; Try again and Report this sit in Banner's
     // actions slot, which paints bg-surface-elevated for every tone, so they take the elevated one.
     const retryClass = screen.getByRole('button', { name: 'Retry' }).className;
-    expect(retryClass, 'Retry: card halo').toContain(`${HOUSE_RING} focus-visible:ring-offset-surface-card`);
+    // The compact Retry's halo comes from hostGroundHalo: raw until plan 89.6-38.
+    expect(retryClass, 'Retry: card halo').toContain('focus-visible:ring-offset-surface-card');
     expect(retryClass, 'Retry: never the elevated halo').not.toContain('ring-offset-surface-elevated');
     unmount();
 
@@ -477,10 +478,9 @@ describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () 
     // opens the app-level report host (plan 88.6.1-69): setup only, no assertion edited.
     render(<FeedbackModalProvider><FetchErrorBanner state={{ ...errorState('boom'), retryFailed: true }} /></FeedbackModalProvider>);
     for (const name of ['Try again', 'Report this']) {
-      expect(screen.getByRole('button', { name }).className, name).toContain(HOUSE_RING);
-      expect(screen.getByRole('button', { name }).className, `${name}: elevated halo`).toContain(
-        `${HOUSE_RING} focus-visible:ring-offset-surface-elevated`
-      );
+      expect(screen.getByRole('button', { name }).className, name).toContain('focus:outline-hidden');
+      expectFocusRing(screen.getByRole('button', { name }), name);
+      expectRingGround(screen.getByRole('button', { name }), 'elevated', `${name}: elevated halo`);
     }
   });
 });

@@ -19,6 +19,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { Switch } from './Switch';
+import { expectFocusRing } from '@/test-utils/focusRingAssert';
 
 afterEach(cleanup);
 
@@ -77,8 +78,7 @@ describe('Switch', () => {
   it('uses a focus-visible ring and no bare focus: ring utility', () => {
     render(<Switch aria-label="Email notifications" />);
     const control = screen.getByRole('switch');
-    expect(control.className).toContain('focus-visible:ring-2');
-    expect(control.className).toContain('focus-visible:ring-focus-ring');
+    expectFocusRing(control, 'the switch');
     expect(control.className).not.toMatch(/(^|\s)focus:(ring|border|bg)/);
   });
 

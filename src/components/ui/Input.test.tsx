@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { axe } from 'vitest-axe';
 import { FormField } from '@/app/components/form/FormField';
 import { Input, Textarea, SelectControl, controlClass } from './Input';
+import { expectFocusRingEdge } from '@/test-utils/focusRingAssert';
 
 afterEach(cleanup);
 
@@ -38,8 +39,7 @@ describe('Input', () => {
   });
 
   it('uses a focus-visible ring and no bare focus: ring/border/bg utility', () => {
-    expect(controlClass).toContain('focus-visible:ring-2');
-    expect(controlClass).toContain('focus-visible:ring-focus-ring');
+    expectFocusRingEdge(controlClass, undefined, 'the Input control');
     expect(controlClass).not.toMatch(/(^|\s)focus:(ring|border|bg)/);
   });
 
