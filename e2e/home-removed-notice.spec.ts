@@ -1,10 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
 import {
   assertTheme,
+  C40_BAND,
   describeRatio,
+  describeRing,
   focusRingMeasurement,
   forceLightMode,
-  haloGroundRatio,
   ratioAgainstGround,
 } from './support/contrast';
 
@@ -176,11 +177,12 @@ test.describe('Phase 88.6.1-82 — the removed-from-group notice (phone project)
       const dismiss = page.getByRole('button', { name: 'Dismiss', exact: true });
       const ring = await focusRingMeasurement(page, dismiss, `${arm.theme} Dismiss focus ring`);
       expect(ring.ratio, describeRatio(`${arm.theme} Dismiss focus ring`, 3, ring)).toBeGreaterThanOrEqual(3);
-      const halo = await haloGroundRatio(ring, dismiss);
+      // AMENDED Phase 89.6-14 (O-1 B): the halo-is-the-box read is replaced by the band read. The box
+      // (the notice, the Dismiss button's parent) is the ground the reader measures the bands on.
       expect(
-        halo.ratio,
-        `${arm.theme}: the Dismiss halo ${halo.halo} against the box ${halo.behind} reads ${halo.ratio.toFixed(3)}:1, want below 1.05 (the halo is the box)`
-      ).toBeLessThan(1.05);
+        ring.bandRatio,
+        `${arm.theme}: the Dismiss ring's two bands, on the notice box ${ring.ground} as the ground: ${describeRing(`${arm.theme} Dismiss focus ring`, ring)}`
+      ).toBeGreaterThanOrEqual(C40_BAND);
     }
   });
 });

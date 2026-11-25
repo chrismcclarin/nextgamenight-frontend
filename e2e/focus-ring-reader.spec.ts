@@ -3,7 +3,7 @@ import {
   contrastRatio,
   focusByKeyboard,
   focusRingMeasurement,
-  samplePaintedPixel,
+  sampleBottomCentrePixel,
   settleFocusTransitions,
   type RingMeasurement,
 } from './support/contrast';
@@ -210,11 +210,7 @@ test.describe('89.6-14 ring reader (fixture page, no server, no sign-in)', () =>
       const control = page.locator(`#${p.id}`);
       await focusByKeyboard(page, control);
       await settleFocusTransitions(control);
-      const box = await control.boundingBox();
-      if (!box) throw new Error(`${p.id}: no bounding box`);
-      const x = Math.floor(box.x + box.width / 2);
-      const y = Math.floor(box.y + box.height) - 1;
-      const pixel = await samplePaintedPixel(page, x, y);
+      const { pixel, x, y } = await sampleBottomCentrePixel(page, control, p.id);
       const want = p.body === 'new' ? CUE : OUTER;
       if (!near(pixel, channels(want))) {
         problems.push(
@@ -224,4 +220,5 @@ test.describe('89.6-14 ring reader (fixture page, no server, no sign-in)', () =>
     }
     expect(problems, problems.join('\n')).toEqual([]);
   });
+
 });

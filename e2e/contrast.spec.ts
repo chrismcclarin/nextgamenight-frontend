@@ -2,21 +2,23 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 
 import {
   assertTheme,
+  C40_BAND,
   compositeGround,
   contrastRatio,
   deltaLStar,
   describeDelta,
   describeGround,
   describeRatio,
+  describeRing,
   focusRingMeasurement,
   forceLightMode,
-  haloGroundRatio,
   inkRatioThroughOpacity,
   groundResolutionOf,
   lStarOfGround,
   parseHex,
   probeElement,
   ratioAgainstGround,
+  sampleBottomCentrePixel,
   vacuityGround,
   type Measurement,
 } from './support/contrast';
@@ -547,18 +549,14 @@ async function assertPresetGroundLanded(page: Page, theme: 'light' | 'dark'): Pr
 //
 // The halo contract: planning:.planning/phases/88.9-fe-look-decisions-design-phase-mockup-gated-split-from-88-6/88.9-UI-SPEC.md ("## Contract item — the house offset ring takes the surface colour").
 // Each ring test asserts the ring clears 3:1 against its halo AND that the halo is the surface under
-// the control (haloGroundRatio <= 1.01, i.e. the halo reads as no band at all). Red by design until
+// the control (the halo read at <= 1.01, i.e. the halo reads as no band at all). Red by design until
 // the fixes land: the bell Accept ring and the halo on card ground with 88.9-05, the brand link ring
 // with its plan, the page ground with 88.9-11 and the elevated ground with 88.9-12.
-const HALO_EQUAL = 1.01;
+// AMENDED Phase 89.6-14 (O-1 B, owner pick 2026-11-22, 89.6-PICKS-READ O-1 = B): the halo is now a
+// fixed inner band, so 'equals the surface' is replaced by 'C40-apart from the outer ring' plus lane
+// R's O-1 rule on the real ground and fill. Each ring test asserts m.bandRatio >= C40_BAND (9:1)
+// and m.ratio >= 3 (one band clears 3:1 on the ground outside AND one on the control's own fill).
 const RING_INVITE = pendingInvite('e2e-contrast-ring-invite', 'E2E Contrast Ring');
-
-function haloMessage(label: string, h: { ratio: number; halo: string; behind: string }): string {
-  return (
-    `${label}: the ring halo ${h.halo} measured ${h.ratio.toFixed(3)}:1 against the surface under the ` +
-    `control ${h.behind}; the house ring's halo must equal the surface (<= ${HALO_EQUAL}:1).`
-  );
-}
 
 /** A3d: the bell panel's Accept action, inside the region on the card ground. */
 async function bellAcceptRing(page: Page, theme: 'light' | 'dark'): Promise<void> {
@@ -580,8 +578,7 @@ async function bellAcceptRing(page: Page, theme: 'light' | 'dark'): Promise<void
     const label = `bell panel Accept focus ring (A3d, ${theme})`;
     const m = await focusRingMeasurement(page, accept, label);
     expectRatio(label, m, NON_TEXT);
-    const h = await haloGroundRatio(m, accept);
-    expect(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+    expect(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
   } finally {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   }
@@ -597,8 +594,7 @@ async function brandLinkRing(page: Page, theme: 'light' | 'dark'): Promise<void>
   const label = `header brand link focus ring (A10c, ${theme})`;
   const m = await focusRingMeasurement(page, link, label);
   expectRatio(label, m, NON_TEXT);
-  const h = await haloGroundRatio(m, link);
-  expect(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+  expect(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
 }
 
 /** The page-ground halo step: the phone Calendar button on the home page ground. */
@@ -610,8 +606,7 @@ async function haloPageGround(page: Page, theme: 'light' | 'dark'): Promise<void
   const label = `halo on the PAGE ground — phone Calendar button (${theme})`;
   const m = await focusRingMeasurement(page, button, label);
   expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
-  const h = await haloGroundRatio(m, button);
-  expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+  expect.soft(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
 }
 
 /* =========================================================================================
@@ -830,14 +825,24 @@ async function timezoneRowCue(page: Page, theme: 'light' | 'dark'): Promise<void
     const row = active;
     await expect(row).toHaveText(/\S/);
 
-    // The cue: ring colour, ring-inset, AND a real inset box-shadow layer — ring-inset only sets
-    // a custom property and only a ring WIDTH utility writes box-shadow, so the first two reads
-    // alone would pass a fix that ships no ring width. Pre-fix the ring colour read throws.
+    // The cue: an inset box-shadow layer with a real spread, and ITS colour against the row's
+    // ground. AMENDED Phase 89.6-14: this is the listbox's active-option highlight, a selection
+    // ring with no focus-visible prefix (src/components/ui/Combobox.tsx ("activeIndex === index && !item.disabled && 'ring-2 ring-inset")),
+    // which the ring codemod (plan 89.6-13) did not touch, so it is NOT the two-tone keyboard ring and
+    // focusRingMeasurement does not apply. It used to read Tailwind's ring colour and inset
+    // variables; it now reads the painted inset layer itself (the colour the variables produced),
+    // so it still fails when the highlight ships no ring width, no inset, or a colour under 3:1.
     const cueLabel = `A6e (${theme}) highlighted timezone row inset cue`;
-    const cue = await ratioAgainstGround(row, cueLabel, '--tw-ring-color');
-    expect(cue.ratio, describeRatio(cueLabel, NON_TEXT, cue)).toBeGreaterThanOrEqual(NON_TEXT);
-    const p = await probeElement(row, ['--tw-ring-inset', 'box-shadow']);
-    expect(p.computed['--tw-ring-inset']?.raw.trim(), `${cueLabel}: computed --tw-ring-inset is not inset`).toBe('inset');
+    const p = await probeElement(row, ['box-shadow']);
+    const cueLayer = (p.shadowLayers ?? []).find((layer) => layer.inset && (layer.lengths[3] ?? 0) !== 0 && (layer.colour.alpha ?? 0) > 0);
+    const cueGround = compositeGround(p, 0);
+    const cueColour = cueLayer?.colour.css ?? null;
+    const cueRatio = cueColour && cueGround ? contrastRatio(cueColour, cueGround) : null;
+    expect(
+      cueRatio ?? 0,
+      `${cueLabel}: the inset cue layer ${cueColour ?? '(none)'} on the row ground ${cueGround ?? '(none)'} measures ` +
+        `${cueRatio === null ? 'nothing' : cueRatio.toFixed(3)}:1, floor ${NON_TEXT}:1 (box-shadow ${p.computed['box-shadow']?.raw ?? ''})`
+    ).toBeGreaterThanOrEqual(NON_TEXT);
     const shadow = p.computed['box-shadow']?.raw ?? '';
     const insetSpread = shadowLayers(shadow).some((layer) => {
       if (!/\binset\b/.test(layer)) return false;
@@ -913,26 +918,32 @@ async function inBothThemes(page: Page, label: string, run: (theme: Theme) => Pr
 
 /**
  * The round-2 offset-ring read: the ring clears 3:1 against its halo AND the halo is the surface
- * under the control (<= HALO_EQUAL), so the ring's contrast against what lies outside it equals
- * its contrast against the halo. Throws (a valid red) when the control wears a UA outline
- * (focusRingMeasurement: empty ring colour) or a non-offset ring (haloGroundRatio).
+ * under the control (the halo read at <= 1.01), so the ring's contrast against what lies outside it
+ * equals its contrast against the halo. Throws (a valid red) when the control wears a UA outline
+ * or any shape other than the house ring (focusRingMeasurement names it).
+ * AMENDED Phase 89.6-14 (the halo read): the halo clause is replaced by the band read, bandRatio >= C40_BAND,
+ * beside lane R's O-1 rule (m.ratio >= 3 on the ground outside and the control's own fill).
  */
 async function offsetRingBand(page: Page, target: Locator, label: string): Promise<void> {
   const m = await focusRingMeasurement(page, target, label);
   expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
-  const h = await haloGroundRatio(m, target);
-  expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+  expect.soft(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
 }
 
-/** The fleet ring read (R2-38 B6a): a NO-offset ring drawn just outside the control, 3:1 on the ground. */
+/**
+ * The fleet ring read (R2-38 B6a): a NO-offset ring drawn just outside the control, 3:1 on the ground.
+ * AMENDED Phase 89.6-14 (O-1 B): the no-offset fleet ring moved 2px outside with the codemod (plan
+ * 89.6-13); it is an offset ring now.
+ */
 async function outsideRing(page: Page, target: Locator, label: string): Promise<void> {
   const m = await focusRingMeasurement(page, target, label);
   expect(
     m.ringGroundKind,
-    `${label}: the ring is '${m.ringGroundKind}' (ring ${m.fg} on ${m.ground}); the fleet ring (R2-38, B6a) is a ` +
-      'no-offset ring drawn just outside the control, so it must read as an outside ring.'
-  ).toBe('outside');
+    `${label}: the ring is '${m.ringGroundKind}' (${describeRing(label, m)}); the fleet ring (R2-38, B6a) is ` +
+      'the house offset ring since plan 89.6-13 moved it 2px outside the control, so it must read as an offset ring.'
+  ).toBe('offset');
   expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+  expect.soft(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
 }
 
 /**
@@ -944,18 +955,20 @@ async function accentRingReads(page: Page, target: Locator, label: string, theme
   const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
   expect(isDark, `${label}: the html element's dark class is ${isDark}, expected ${theme === 'dark'} — the theme switch did not land`).toBe(theme === 'dark');
   const m = await focusRingMeasurement(page, target, label);
-  const h = await haloGroundRatio(m, target);
-  const outside = contrastRatio(m.fg, h.behind);
-  if (outside === null) throw new Error(`${label}: could not compute the ring ${m.fg} against the ground ${h.behind}`);
+  // AMENDED Phase 89.6-14 (O-19 reads): the ground outside is the reader's own parent read (m.ground);
+  // the outer colour alone against it is logged for the record, and O-1 asks for one band, so the
+  // asserted number is the better band against that ground (m.groundRatio).
+  const outerAlone = contrastRatio(m.outer, m.ground);
   // eslint-disable-next-line no-console -- the measured ratios are recorded from the CI log
   console.log(
-    `${label}: ring ${m.fg} vs halo ${m.ground} ${m.ratio.toFixed(2)}:1 (${m.ratio}); ring vs ground outside ${h.behind} ` +
-      `${outside.toFixed(2)}:1 (${outside}); halo vs ground ${h.ratio.toFixed(3)}:1`
+    `${label}: outer ${m.outer} vs ground outside ${m.ground} ${outerAlone?.toFixed(2)}:1 (${outerAlone}); ` +
+      `better band vs ground ${m.groundRatio.toFixed(2)}:1; vs fill ${m.fill} ${m.fillRatio.toFixed(2)}:1; bands ${m.bandRatio.toFixed(2)}:1`
   );
-  expect.soft(m.ratio, describeRatio(`${label} — ring vs halo`, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+  expect.soft(m.ratio, describeRatio(`${label} — O-1, the ring on its ground and fill`, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
+  expect.soft(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
   expect.soft(
-    outside,
-    `${label}: the ring ${m.fg} on the ground outside the halo ${h.behind} is ${outside.toFixed(2)}:1, floor ${NON_TEXT}:1`
+    m.groundRatio,
+    `${label}: the better band on the ground outside the ring ${m.ground} is ${m.groundRatio.toFixed(2)}:1, floor ${NON_TEXT}:1. ${describeRing(label, m)}`
   ).toBeGreaterThanOrEqual(NON_TEXT);
 }
 
@@ -1423,7 +1436,8 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // element it names. `f696732` moved `role="button"` / `tabIndex` / `onKeyDown` OFF the card
       // onto the title block (src/app/components/grouplist.js), so the CARD is no longer a control and can never
       // match `:focus-visible` — it wears no `ring-*` utility and no `tabIndex`, and
-      // `focusRingMeasurement` THROWS on an empty `--tw-ring-color` rather than failing softly.
+      // `focusRingMeasurement` THROWS on an element with no outline (it never matched :focus-visible)
+      // rather than failing softly (AMENDED Phase 89.6-14: the reader reads the two-tone outline ring).
       // The conclusion above is UNCHANGED — the control is card-hosted and its ground IS the white
       // card — only the node carrying the role moved, so this step measures the title block.
       const cardRing = await focusRingMeasurement(
@@ -2252,18 +2266,17 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
       await expect(trigger, 'halo card (dark): the Delete My Account trigger is not visible.').toBeVisible({ timeout: 15_000 });
       const label = 'halo on the CARD ground — Danger Zone trigger (dark)';
       const m = await focusRingMeasurement(page, trigger, label);
-      const h = await haloGroundRatio(m, trigger);
       // Self-check, opaque-fill arm: the walk stops on the button's own fill, so the surface must
-      // come from the parent and differ visibly from that fill.
+      // come from the parent and differ visibly from that fill. (AMENDED Phase 89.6-14: the reader
+      // reads the surface from the parent by construction, as m.ground, and the fill as m.fill.)
       expect(m.probe.opaqueAt, `halo self-check (card): the trigger does not paint its own fill.`).toBe(0);
-      expect(h.behindSource, 'halo self-check (card): the surface was not read from the parent.').toBe('parent');
-      const fillVsSurface = h.ownFill === null ? null : contrastRatio(h.behind, h.ownFill);
+      const fillVsSurface = contrastRatio(m.ground, m.fill);
       expect(
         fillVsSurface,
-        `halo self-check (card): the surface ${h.behind} is indistinguishable from the button fill ${h.ownFill}, so the helper may be reading the fill.`
+        `halo self-check (card): the surface ${m.ground} is indistinguishable from the button fill ${m.fill}, so the reader may be reading the fill.`
       ).toBeGreaterThan(1.5);
       expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
-      expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+      expect.soft(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
     });
 
     await test.step('elevated ground — the Breadcrumb Home link (transparent arm)', async () => {
@@ -2273,14 +2286,13 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
       await expect(link, 'halo elevated (dark): the Breadcrumb Home link is not visible.').toBeVisible({ timeout: 15_000 });
       const label = 'halo on the ELEVATED ground — Breadcrumb Home link (dark)';
       const m = await focusRingMeasurement(page, link, label);
-      const h = await haloGroundRatio(m, link);
       // Self-check, transparent arm: for a control that paints nothing, the parent's composite is
       // the ground just outside the control.
-      expect(h.behind, 'halo self-check (elevated): the parent surface differs from the ground outside the link.').toBe(
+      expect(m.ground, 'halo self-check (elevated): the parent surface differs from the ground outside the link.').toBe(
         compositeGround(m.probe, 1)
       );
       expect.soft(m.ratio, describeRatio(label, NON_TEXT, m)).toBeGreaterThanOrEqual(NON_TEXT);
-      expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
+      expect.soft(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
     });
 
     await test.step('page ground — the phone Calendar button', async () => {
@@ -2399,10 +2411,13 @@ async function assertAccentLabelRatio(page: Page, theme: 'light' | 'dark'): Prom
     const el = document.createElement('button');
     el.type = 'button';
     // The class string src/app/components/EventDayModal.js ("the legacy accent class pair is retired onto the") retired in
-    // Phase 88.6-27, minus the layout-only `mt-2`. Every token is still emitted: each appears in other src/ files.
+    // Phase 88.6-27, minus the layout-only `mt-2`. Every layout token is still emitted: each appears in other src/ files.
+    // AMENDED Phase 89.6-14: the ring pair is re-pinned to the shipped Button ring after plan 89.6-13,
+    // src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:focus-ring',"), which Button
+    // wears, so both tokens are emitted.
     el.className =
       'btn btn-accent font-semibold text-xs px-3 py-1.5 inline-flex items-center gap-1.5 ' +
-      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+      'focus:outline-hidden focus-visible:focus-ring';
     el.textContent = name;
     el.setAttribute('data-e2e-accent-probe', '');
     document.body.appendChild(el);
@@ -2461,6 +2476,8 @@ async function assertAccentLabelRatio(page: Page, theme: 'light' | 'dark'): Prom
  * the composite above is no longer the ring's neighbour. Three reads per theme: the ring's shape
  * (an offset ring, asserted hard), the ring against its band, the band against the surface under
  * the control (equal), and the ring against that surface outside the band.
+ * AMENDED Phase 89.6-14 (O-1 B): the band is the fixed inner token, not the hero surface; the band is
+ * asserted C40-apart from the ring.
  */
 test.describe('Req 11 Gate C — OI-7, the logged-out landing hero (both themes, 88.9-33)', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
@@ -2504,21 +2521,20 @@ test.describe('Req 11 Gate C — OI-7, the logged-out landing hero (both themes,
         `${label}: the ring is '${m.ringGroundKind}' (ring ${m.fg} on ${m.ground}); it must be an offset ring that ` +
           'sits outside the button on a band of the hero surface, the shape Get Started wears.'
       ).toBe('offset');
-      // Ring against its band.
+      // O-1: one band clears 3:1 on the hero surface outside AND one on the button's own fill.
       expectRatio(label, m, NON_TEXT);
-      // The band against the surface under the control: equal, so the band reads as the hero.
-      const h = await haloGroundRatio(m, google);
-      expect.soft(h.ratio, haloMessage(label, h)).toBeLessThanOrEqual(HALO_EQUAL);
-      // Ring against the surface just outside the band.
-      const outside = contrastRatio(m.fg, h.behind);
-      if (outside === null) throw new Error(`${label}: could not compute the ring ${m.fg} against the surface ${h.behind}`);
+      // The band against the ring: C40-apart (pick O-1 B), not equal to the hero surface.
+      expect.soft(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
+      // The ring against the surface just outside it: the better band on m.ground; the outer colour
+      // alone is logged for the record.
+      const outerAlone = contrastRatio(m.outer, m.ground);
       // eslint-disable-next-line no-console -- the measured ratios are recorded from the CI log
       console.log(
-        `${label}: ring ${m.fg} vs band ${m.ground} ${m.ratio.toFixed(2)}:1 (${m.ratio}); band vs surface ${h.behind} ` +
-          `${h.ratio.toFixed(3)}:1; ring vs surface outside ${outside.toFixed(2)}:1 (${outside})`
+        `${label}: outer ${m.outer} vs surface ${m.ground} ${outerAlone?.toFixed(2)}:1 (${outerAlone}); inner ${m.inner}; ` +
+          `better band vs surface ${m.groundRatio.toFixed(2)}:1; vs fill ${m.fill} ${m.fillRatio.toFixed(2)}:1; bands ${m.bandRatio.toFixed(2)}:1`
       );
       expect
-        .soft(outside, `${label}: the ring ${m.fg} on the surface outside the band ${h.behind} is ${outside.toFixed(2)}:1, floor ${NON_TEXT}:1`)
+        .soft(m.groundRatio, `${label}: the better band on the surface outside the ring ${m.ground} is ${m.groundRatio.toFixed(2)}:1, floor ${NON_TEXT}:1. ${describeRing(label, m)}`)
         .toBeGreaterThanOrEqual(NON_TEXT);
     });
   });
@@ -3069,19 +3085,32 @@ test.describe('Req 11 Gate C — 89.6 R7 edges, both themes per test', () => {
         `U1 (${theme}): the focused tab does not match focus-visible, so its band is not drawn`
       ).toBe(true);
       await settleAnimations(tab);
-      const shadow = (await probeElement(tab, ['box-shadow'])).computed['box-shadow'].raw;
-      const layers = shadow.split(/,(?![^(]*\))/).map((layer) => layer.trim());
-      // NOTE FOR THE NEXT EDITOR. The FIRST colour of the box-shadow is read, which is right only
-      // while the underline band is the first layer on the focused tab; the check below fails the
-      // test by name if it is not. Plan 89.6-14 adds the ring's inner band to the same list and
-      // changes this read to pick the underline band by its inset keyword and offset, not by
-      // position.
-      expect(
-        layers[0]?.endsWith('0px -2px 0px 0px inset'),
-        `U1 (${theme}): the first box-shadow layer of the focused tab is not the 2px underline band (${shadow})`
-      ).toBe(true);
-      const band = /rgba?\([^)]*\)/.exec(shadow)?.[0];
-      if (!band) throw new Error(`U1 (${theme}): no rgb colour in the focused tab's box-shadow (${shadow}). A probe failure, not a contrast failure.`);
+      // AMENDED Phase 89.6-14 (U1 focused): the focused tab wears the inset ring now
+      // (focus-visible:focus-ring-inset), so its box-shadow list holds THREE inset layers: the
+      // underline band, the ring's outer band and its inner band. Each is picked by its shape (the
+      // inset keyword and its lengths), never by its place in the list.
+      const read = await probeElement(tab, ['box-shadow', 'outline-style', 'outline-width', 'outline-offset', 'outline-color']);
+      const shadow = read.computed['box-shadow'].raw;
+      const layers = read.shadowLayers ?? [];
+      const shaped = (y: number, spread: number): number =>
+        layers.findIndex(
+          (l) => l.inset && l.lengths.length === 4 && l.lengths[0] === 0 && l.lengths[1] === y && l.lengths[2] === 0 && l.lengths[3] === spread
+        );
+      const pair = (await probeElement(page.locator('html'), ['--focus-ring-outer', '--focus-ring-inner'])).computed;
+      const ringOuter = pair['--focus-ring-outer']?.css;
+      const ringInner = pair['--focus-ring-inner']?.css;
+      if (!ringOuter || !ringInner) throw new Error(`U1 (${theme}): the ring pair did not resolve on html (${pair['--focus-ring-outer']?.raw} / ${pair['--focus-ring-inner']?.raw})`);
+      const bandAt = shaped(-2, 0);
+      const outerAt = shaped(0, 2);
+      const innerAt = shaped(0, 4);
+      const { pixel, x: px, y: py } = await sampleBottomCentrePixel(page, tab, `U1 (${theme}) focused tab`);
+      await expect(tab, `U1 (${theme}): scrolling the tab into view moved focus`).toBeFocused();
+      const why = (what: string): string =>
+        `U1 (${theme}; the test runs light then dark): ${what}. box-shadow ${shadow}; pixel at (${px}, ${py}) rgb(${pixel.join(', ')})`;
+      // (i) the underline band: inset 0 -2px 0 0, the resting underline's colour, clearing 3:1.
+      expect(bandAt, why('no inset 0 -2px 0 0 underline band in the focused tab')).toBeGreaterThanOrEqual(0);
+      const band = layers[bandAt]?.colour.css;
+      if (!band) throw new Error(why('the underline band colour did not normalise. A probe failure, not a contrast failure'));
       const bandRatio = contrastRatio(band, rest.ground);
       if (bandRatio === null) throw new Error(`U1 (${theme}): could not compute the band ${band} against the ground ${rest.ground}`);
       expect
@@ -3090,8 +3119,27 @@ test.describe('Req 11 Gate C — 89.6 R7 edges, both themes per test', () => {
       // One indicator colour: the band is the resting underline's colour.
       expect(
         parseHex(band)?.join(','),
-        `U1 (${theme}): the focused band ${band} is not the resting underline's colour ${rest.fg}`
+        why(`the focused band ${band} is not the resting underline's colour ${rest.fg}`)
       ).toBe(parseHex(rest.fg)?.join(','));
+      // (ii) the ring's two inset layers, in the page pair, both listed after the band.
+      expect(outerAt, why('no inset 0 0 0 2px layer (the ring outer band)')).toBeGreaterThanOrEqual(0);
+      expect(innerAt, why('no inset 0 0 0 4px layer (the ring inner band)')).toBeGreaterThanOrEqual(0);
+      expect(layers[outerAt]?.colour.css, why(`the outer band is not --focus-ring-outer ${ringOuter}`)).toBe(ringOuter);
+      expect(layers[innerAt]?.colour.css, why(`the inner band is not --focus-ring-inner ${ringInner}`)).toBe(ringInner);
+      expect(bandAt, why('the underline band is not listed before the outer band, so the ring paints over it')).toBeLessThan(outerAt);
+      expect(bandAt, why('the underline band is not listed before the inner band, so the ring paints over it')).toBeLessThan(innerAt);
+      // (iii) the outline is transparent: solid, 2px, at -2, alpha 0 (it shows only in forced colours).
+      expect(read.computed['outline-style'].raw, why('the outline is not solid')).toBe('solid');
+      expect(read.computed['outline-width'].raw, why('the outline is not 2px')).toBe('2px');
+      expect(read.computed['outline-offset'].raw, why('the outline is not at -2px')).toBe('-2px');
+      expect(read.computed['outline-color'].alpha, why(`the outline colour ${read.computed['outline-color'].raw} is not transparent, so it paints over the underline`)).toBe(0);
+      // (iv) the painted pixel 1px above the bottom edge, at the centre, is the band colour.
+      const want = parseHex(band);
+      if (!want) throw new Error(why('the band colour did not parse'));
+      expect(
+        pixel.every((v, i) => Math.abs(v - want[i]) <= 2),
+        why(`the painted pixel is not the band colour ${band} within 2 per channel: the ring hides the selected cue`)
+      ).toBe(true);
     });
   });
 });

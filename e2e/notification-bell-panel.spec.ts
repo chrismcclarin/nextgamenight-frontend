@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { holdWrites } from './support/inFlight';
 import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
-import { assertTheme, describeRatio, focusRingMeasurement, forceLightMode, haloGroundRatio } from './support/contrast';
+import { assertTheme, C40_BAND, describeRatio, describeRing, focusRingMeasurement, forceLightMode } from './support/contrast';
 
 // Phase 88.6.1-28 (D-18, AC-17, register R128) — the notification bell's panel in a real browser.
 //
@@ -35,10 +35,11 @@ const PANEL_ACTION = 'Accept invite to E2E Bell Panel';
 
 // Phase 88.9-04 — the 1280 half of A3d: the desktop popover's Accept ring, both themes.
 // Red by design until plan 88.9-05 lands the house ring (pre-fix the ring reads 1.67:1 on its white
-// halo in both themes). haloGroundRatio reads the surface from the control's PARENT, so an
-// opaque-fill Accept is compared with the panel card, never with its own fill (e2e/support/contrast.ts ("this helper probes the parent")).
+// halo in both themes). The reader reads the surface under the control from the control's PARENT, so
+// an opaque-fill Accept is compared with the panel card, never with its own fill (e2e/support/contrast.ts ("this helper probes the parent")).
+// AMENDED Phase 89.6-14 (O-1 B): the surface-coloured halo is replaced by a fixed inner band, so the
+// read is the band C40-apart from the outer ring plus lane R's O-1 rule (m.ratio >= 3).
 const RING_FLOOR = 3;
-const HALO_EQUAL = 1.01;
 
 async function desktopAcceptRing(page: Page, theme: 'light' | 'dark'): Promise<void> {
   const bell = page.getByRole('button', { name: 'Notifications', exact: true });
@@ -53,12 +54,7 @@ async function desktopAcceptRing(page: Page, theme: 'light' | 'dark'): Promise<v
   const label = `desktop bell popover Accept focus ring (A3d, ${theme})`;
   const m = await focusRingMeasurement(page, action, label);
   expect(m.ratio, describeRatio(label, RING_FLOOR, m)).toBeGreaterThanOrEqual(RING_FLOOR);
-  const h = await haloGroundRatio(m, action);
-  expect(
-    h.ratio,
-    `${label}: the ring halo ${h.halo} measured ${h.ratio.toFixed(3)}:1 against the surface under the control ` +
-      `${h.behind}; the house ring's halo must equal the surface (<= ${HALO_EQUAL}:1).`
-  ).toBeLessThanOrEqual(HALO_EQUAL);
+  expect(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
 }
 
 test.describe('notification bell panel — phone (row variant in the hamburger)', () => {

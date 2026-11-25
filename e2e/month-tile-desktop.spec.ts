@@ -11,9 +11,10 @@ import {
   compositeGround,
   contrastRatio,
   describeRatio,
+  C40_BAND,
+  describeRing,
   focusRingMeasurement,
   forceLightMode,
-  haloGroundRatio,
   inkRatioThroughOpacity,
   probeElement,
 } from './support/contrast';
@@ -932,7 +933,7 @@ async function readGuestEdge(tile: Locator, label: string): Promise<EdgeRead> {
   const tileGround = compositeGround(probe, 0);
   // The tinted tile paints its own opaque ground, so its walk stops at index 0 and
   // compositeGround(probe, 1) is null: the cell is read from the parent's own walk, the
-  // haloGroundRatio move (e2e/support/contrast.ts ("const parent = await probeElement(anchor.locator('xpath=..'), []);")).
+  // ring reader's parent probe (e2e/support/contrast.ts ("const parent = await probeElement(anchor.locator('xpath=..'), []);")).
   const cellGround = compositeGround(await probeElement(tile.locator('xpath=..'), []), 0);
   if (tileGround === null || cellGround === null) {
     throw new Error(
@@ -1098,7 +1099,6 @@ test.describe('a group picture that fails to load on the FULL month tile (88.9 X
 
 const E2E_COLOURED_GROUP_ID = process.env.E2E_COLOURED_GROUP_ID ?? '1';
 const O19_FLOOR = 3;
-const O19_HALO_EQUAL = 1.01;
 const O19_TINTED = 'E2E O19 Tinted';
 const O19_PLAIN = 'E2E O19 Plain';
 
@@ -1231,17 +1231,18 @@ async function measureDayModalQr(page: Page, read: () => O19Day, theme: 'light' 
 
   const label = `O-19 day-modal Share Game QR ring on the tinted row (${theme})`;
   const m = await focusRingMeasurement(page, share, label);
-  const h = await haloGroundRatio(m, share);
-  const outside = contrastRatio(m.fg, h.behind);
-  if (outside === null) throw new Error(`${label}: could not compute the ring ${m.fg} against the row ground ${h.behind}`);
+  // AMENDED Phase 89.6-14 (O-1 B): the G halo is a fixed inner band now. The row ground is the
+  // reader's parent read (m.ground); the outer colour alone against it is logged for the record, and
+  // the asserted numbers are O-1 (m.ratio), the better band on the row ground, and the C40 band.
+  const outerAlone = contrastRatio(m.outer, m.ground);
   // eslint-disable-next-line no-console -- the measured ratios are recorded from the CI log
   console.log(
-    `${label}: ring ${m.fg} vs halo ${m.ground} ${m.ratio.toFixed(2)}:1 (${m.ratio}); ring vs row ground ${h.behind} ` +
-      `${outside.toFixed(2)}:1 (${outside}); halo vs row ground ${h.ratio.toFixed(3)}:1`
+    `${label}: outer ${m.outer} vs row ground ${m.ground} ${outerAlone?.toFixed(2)}:1 (${outerAlone}); ` +
+      `better band vs row ground ${m.groundRatio.toFixed(2)}:1; vs fill ${m.fill} ${m.fillRatio.toFixed(2)}:1; bands ${m.bandRatio.toFixed(2)}:1`
   );
-  expect.soft(m.ratio, describeRatio(`${label} — ring vs halo`, O19_FLOOR, m)).toBeGreaterThanOrEqual(O19_FLOOR);
-  expect.soft(outside, `${label}: the ring ${m.fg} on the tinted row ground ${h.behind} is ${outside.toFixed(2)}:1, floor ${O19_FLOOR}:1`).toBeGreaterThanOrEqual(O19_FLOOR);
-  expect.soft(h.ratio, `${label}: the halo ${h.halo} is ${h.ratio.toFixed(3)}:1 against the row ground ${h.behind}; the G halo must equal it (<= ${O19_HALO_EQUAL}:1)`).toBeLessThanOrEqual(O19_HALO_EQUAL);
+  expect.soft(m.ratio, describeRatio(`${label} — O-1, the ring on its ground and fill`, O19_FLOOR, m)).toBeGreaterThanOrEqual(O19_FLOOR);
+  expect.soft(m.groundRatio, `${label}: the better band on the tinted row ground ${m.ground} is ${m.groundRatio.toFixed(2)}:1, floor ${O19_FLOOR}:1. ${describeRing(label, m)}`).toBeGreaterThanOrEqual(O19_FLOOR);
+  expect.soft(m.bandRatio, describeRing(label, m)).toBeGreaterThanOrEqual(C40_BAND);
   await page.keyboard.press('Escape');
   await expect(dialog, `O-19 (${theme}): the day modal did not close`).toBeHidden();
 }

@@ -978,3 +978,40 @@ export async function samplePaintedPixel(page: Page, x: number, y: number): Prom
     return [px[0], px[1], px[2]];
   }, url);
 }
+
+/**
+ * Phase 89.6-14 — the pixel a border cue paints: 1px above the control's bottom edge, at its
+ * horizontal centre (the last pixel row inside the box), read through samplePaintedPixel.
+ *
+ * The control is scrolled into view first (a clip outside the viewport is an error), and the box
+ * is read again after the screenshot: if it moved (a late font or a loading row above shifting the
+ * page), the sample is taken again, up to ten times, so the pixel always belongs to the box it was
+ * measured from. Throws if the box never holds still.
+ */
+export async function sampleBottomCentrePixel(
+  page: Page,
+  anchor: Locator,
+  label: string
+): Promise<{ pixel: [number, number, number]; x: number; y: number }> {
+  const seen: string[] = [];
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await anchor.scrollIntoViewIfNeeded();
+    const before = await anchor.boundingBox();
+    if (!before) throw new Error(`${label}: the control has no box to sample.`);
+    const x = Math.floor(before.x + before.width / 2);
+    const y = Math.floor(before.y + before.height) - 1;
+    const view = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+    seen.push(`box ${before.x},${before.y} ${before.width}x${before.height} in ${view.w}x${view.h}`);
+    if (x < 0 || y < 0 || x >= view.w || y >= view.h) {
+      await page.waitForTimeout(200);
+      continue;
+    }
+    const pixel = await samplePaintedPixel(page, x, y);
+    const after = await anchor.boundingBox();
+    if (after && after.x === before.x && after.y === before.y && after.width === before.width && after.height === before.height) {
+      return { pixel, x, y };
+    }
+    await page.waitForTimeout(200);
+  }
+  throw new Error(`${label}: the control's box kept moving or stayed outside the viewport, so no painted pixel could be tied to it (${seen.join('; ')}).`);
+}
