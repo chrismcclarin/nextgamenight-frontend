@@ -2938,7 +2938,7 @@ describe('friend Remove takes the one inline two-tap look (88.9-52: W38)', () =>
 // row that is not clickable). The controls inside a row therefore sit on a card, so their focus
 // halo names the card, not the page. The rendered half is e2e/friends-page.spec.ts ("X14 Friends rows (88.9): friend and request rows paint the card colour").
 describe('friends rows are cards (88.9-58: X14 family)', () => {
-  it('X14 Friends rows (88.9): the friend, received-request and sent-request rows are card surfaces with no hover, and their checkbox, Accept and Decline take the card as halo host', async () => {
+  it('X14 Friends rows (88.9): the friend, received-request and sent-request rows are card surfaces with no hover, their Accept and Decline take the card as halo host, and the checkbox keeps the browser ring', async () => {
     providerCtx.receivedRequests = [SAM_REQUEST];
     renderFriends({ sent: [ALEX_SENT] });
     await screen.findByText('Dana');
@@ -2959,8 +2959,14 @@ describe('friends rows are cards (88.9-58: X14 family)', () => {
     const friendRow = document.querySelector('[data-friend-row]');
     expectCardRow(friendRow, 'friend row');
     const checkbox = within(friendRow as HTMLElement).getByRole('checkbox');
-    expect(classesOf(checkbox), 'the checkbox sits on a card, so its halo names the card').toContain('focus-visible:ring-offset-surface-card');
-    expect(classesOf(checkbox), 'the checkbox no longer sits on the page').not.toContain('focus-visible:ring-offset-surface-page');
+    // AMENDED Phase 89.6-12 (O-1b c, owner pick 2026-11-22): the checkbox no longer carries an app ring
+    // or a halo at all, so it no longer names the card; the browser draws its focus ring (the written
+    // exception, DECISION Phase 89.6-12 (O-1b) in globals.css). The 88.9-58 halo pin held until then.
+    expect(
+      classesOf(checkbox).filter((t) => t.includes('ring')),
+      'the checkbox carries no app ring or halo: the browser draws its focus ring',
+    ).toEqual([]);
+    expect(classesOf(checkbox), 'the checkbox must not hide its outline').not.toContain('focus:outline-hidden');
 
     fireEvent.click(requestsTab());
     await screen.findByText('Sam');

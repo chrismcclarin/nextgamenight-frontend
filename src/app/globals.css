@@ -810,6 +810,21 @@
     min-width: 0;
   }
 
+  /* DECISION Phase 89.6-12 (O-1b): owner pick O-1b = c, 2026-11-22 ('Keep the browser's own
+     checkbox; set its tick colour to ours (one value for light, a lighter one for dark)'): native
+     checkboxes take purple-600 in light and purple-400 in dark (purple-600 measures 1.99 in dark and
+     fails); a ticked box on the selected invite row measured 2.8 as built and 3.76 with the pick.
+     WRITTEN EXCEPTION to the one-ring rule (DECISION Phase 89.6-12 (focus-ring)): a native checkbox
+     keeps the browser's own rounded focus ring in the browser's colour and carries no app ring class;
+     focusRingUtility.test.ts scans it, and the ring codemod skips checkbox inputs.
+     Chosen OVER a house Checkbox building block (the owner, in chat: 'introducing more bugs/issues
+     with something taht we created versus an already made object') and OVER one accent on :root
+     (radios, range and progress would change, unpicked). An accent utility at a call site still
+     wins (AvailabilityGrid). Changing this is a decision, not a cleanup. */
+  input[type='checkbox'] {
+    accent-color: var(--color-checkbox-accent);
+  }
+
   /* DECISION Phase 89.6-02 (HR-1): a word breaks only when that word alone is wider than its
      line: break-word in the base layer, chosen OVER wrap-anywhere (it lowers min-content and lets
      flex items shrink into letter-stacks) and OVER a per-site wrap class (a site that forgets one
@@ -2367,6 +2382,7 @@
   --color-focus-ring: var(--purple-700);
   --focus-ring-outer: var(--purple-900);
   --focus-ring-inner: #ffffff;
+  --color-checkbox-accent: var(--purple-600);
 
   /* Transitions */
   --theme-transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
@@ -2719,6 +2735,7 @@
   --color-focus-ring: var(--amber-400);
   --focus-ring-outer: var(--amber-400);
   --focus-ring-inner: var(--purple-950);
+  --color-checkbox-accent: var(--purple-400);
 }
 
 /* ===== shadcn/ui token bridge (introduced Phase 84; mapped onto the existing --color-* palette)

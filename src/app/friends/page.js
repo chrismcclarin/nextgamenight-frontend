@@ -1655,7 +1655,8 @@ function FriendsPage() {
                                                                 checked={isInGroup || selectedFriends.has(friendUserId)}
                                                                 disabled={checkboxDisabled}
                                                                 onChange={() => toggleFriendSelection(friendUserId)}
-                                                                className={`h-4 w-4 shrink-0 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${
+                                                                // DECISION Phase 89.6-12 (O-1b): the browser's own focus ring, chosen OVER the app ring, under the written exception for checkboxes (owner pick O-1b = c); same as the invite panel.
+                                                                className={`h-4 w-4 shrink-0 rounded-sm border-line text-btn-primary ${
                                                                     checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                                 }`}
                                                             />

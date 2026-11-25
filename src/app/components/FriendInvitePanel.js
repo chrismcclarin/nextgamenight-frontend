@@ -680,10 +680,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                                    next ground is the page body of all three hosts). Chosen OVER one shared halo (wrong against one
                                                    of the two grounds) and OVER a bare halo token inside an interpolation (the source scan reads it
                                                    as a chunk with no ring). The in-group arm is disabled, never focusable, so it needs no arm of its
-                                                   own. Collapsing this to one literal is a decision, not a cleanup. */
-                                                className={!isInGroup && selectedFriends.has(friend.id)
-                                                    ? 'h-4 w-4 rounded-sm border-line text-content-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-muted disabled:opacity-40'
-                                                    : 'h-4 w-4 rounded-sm border-line text-content-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page disabled:opacity-40'}
+                                                   own. Collapsing this to one literal is a decision, not a cleanup.
+                                                   AMENDED Phase 89.6-12 (O-1b c, owner pick 2026-11-22: 'remove the extra ring the app adds on
+                                                   the invite panel so the browser's rounded ring shows there'): the app ring and both halos are
+                                                   removed, so the two arms collapsed into one literal; the collapse IS this decision. The browser
+                                                   draws the focus ring (the written exception, DECISION Phase 89.6-12 (O-1b) in globals.css). */
+                                                className="h-4 w-4 rounded-sm border-line text-content-accent disabled:opacity-40"
                                             />
                                             <div className="flex-1 min-w-0">
                                                 {/* UI-SPEC §4.5, the EMPHASIS outcome: `font-medium` deleted, the
