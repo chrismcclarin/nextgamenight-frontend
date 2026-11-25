@@ -478,7 +478,8 @@ describe('W2 / W18 / W22 (88.9-52): the Your Groups header and the card title ro
       for (const t of ['shrink-0', 'max-w-full']) {
         expect(tokens(heading), `${where}: the heading lacks ${t}`).toContain(t);
       }
-      expect(tokens(screen.getByRole('button', { name: 'Create new group' })), `${where}: the Create button can wrap its label`).toContain('whitespace-nowrap');
+      // AMENDED 89.6-16 (home-columns): the Create label wraps inside its button (the bb-label span) instead of being cut.
+      expect(tokens(screen.getByRole('button', { name: 'Create new group' })), `${where}: the Create label is cut instead of wrapping (89.6-16)`).not.toContain('whitespace-nowrap');
     };
     h.selfUuid = SELF_UUID;
     (groupsAPI.getUserGroups as Mock).mockResolvedValue([ALPHA]);

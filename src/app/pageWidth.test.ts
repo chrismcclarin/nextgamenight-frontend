@@ -87,9 +87,12 @@ describe('page width — X5 (88.9-59)', () => {
     }
   });
 
-  it('X5b + X12 (88.9): the home column is md:flex-[0_0_clamp(320px,42vw,460px)] and no grouplist root keeps a 400px cap', () => {
+  it('X5b + X12 (88.9, rem form 89.6-16): the home column is md:[--bb-col:clamp(20rem,42vw,28.75rem)] and no grouplist root keeps a 400px cap', () => {
     const home = code(HOME);
-    expect(count(home, 'md:flex-[0_0_clamp(320px,42vw,460px)]'), 'the clamp column literal').toBe(1);
+    // AMENDED 89.6-16 (home-columns): the column is a bb-columns item whose basis is the rem clamp,
+    // identical to the px clamp at normal text; the px basis literal is gone.
+    expect(count(home, 'md:[--bb-col:clamp(20rem,42vw,28.75rem)]'), 'the rem clamp column literal').toBe(1);
+    expect(count(home, 'md:flex-[0_0_clamp(320px,42vw,460px)]'), 'the px clamp basis left behind').toBe(0);
     expect(count(home, 'md:flex-[0_0_460px]'), 'the fixed 460 basis').toBe(0);
 
     const list = code(GROUP_LIST);

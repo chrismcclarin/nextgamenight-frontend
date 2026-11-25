@@ -737,7 +737,15 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     <FetchErrorBanner state={pageSessionState} thing="this page" />
                 </div>
             )}
-            <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+            {/* DECISION Phase 89.6-16 (home-columns): GR, the governing rule (owner, 2026-11-22: 'A row stays
+                a row while everything in it fits whole. When it does not, items stack. Nothing is squeezed,
+                shrunk, cut or broken to avoid stacking. Scrolling down is fine; scrolling sideways is not.'):
+                the groups and calendar columns are a bb-columns row, so they stack before a group card
+                narrows past its longest word, chosen OVER the media-query row (blind to text size: 'We / eke
+                / nd War / rior / s' at 768 / 200%, register CI-02) and OVER a px column. When stacked at
+                large text the groups column keeps its own width (grow 0), chosen OVER growing it (a grow
+                share would move it at normal text). Changing this is a decision, not a cleanup. */}
+            <div className="bb-columns gap-4 md:gap-6">
                 {/* Req 11b (UI-SPEC S4): the phone-only entry point to the calendar, above the
                     group list. It lives HERE and not inside `grouplist.js`, because desktop
                     renders that component too and its header already carries a CTA.
@@ -785,7 +793,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     the only secondary on the page ground (halo census, 88.9-58); a new one takes the
                     same two classes and its own pin. Dark is unchanged: the token is the dark
                     secondary fill there. Removing either class is a decision, not a cleanup. */}
-                <div className="md:hidden">
+                <div className="md:hidden basis-full">
                     <Button
                         variant="secondary"
                         onClick={() => setCalendarSheetOpen(true)}
@@ -814,8 +822,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     calendar column; while the calendar showed its short Loading card (or a failure banner) the
                     groups were a strip with the top edge of one card. 600px is the List view's own fixed height
                     (src/app/components/CalendarListView.js ("const CONTAINER_HEIGHT_FULL = 600;")), under the
-                    month grid's, so a loaded page is unchanged. Changing this is a decision, not a cleanup. */}
-                <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_clamp(320px,42vw,460px)] md:relative md:min-h-[600px]">
+                    month grid's, so a loaded page is unchanged. Changing this is a decision, not a cleanup.
+                    AMENDED Phase 89.6-16 (home-columns): the clamp is written in rem, 20rem to 28.75rem around 42vw,
+                    identical at normal text; the picks above stand. */}
+                <div className="md:grow-0 md:[--bb-col:clamp(20rem,42vw,28.75rem)] md:relative md:min-h-[600px]">
                     <div className="md:absolute md:inset-0">
                     <GroupList
                         onGroupSelect={handleGroupSelect}
@@ -854,7 +864,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     is not this plan's to change. The marker's job is to stop the layout decision
                     being re-litigated AND to stop "deliberate and untouched" being read as
                     "measured". */}
-                <div className="hidden md:flex md:flex-col md:flex-1 md:min-w-0 md:gap-4">
+                <div className="hidden md:flex md:flex-col md:min-w-0 md:gap-4">
                     {/* DECISION Phase 88.9-59 (X65, owner at N09 part 2, 2026-11-11: fine): while the page-level
                         session banner shows, this calendar keeps its own couldn't-load banner and Sign in, chosen
                         OVER hiding it under O22d's one banner (the column would go blank). Hiding it is a

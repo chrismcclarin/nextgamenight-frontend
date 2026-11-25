@@ -658,7 +658,8 @@ describe('W12 (88.9-52) — the groups column keeps a usable height while the ca
     const column = fill.parentElement as HTMLElement;
     expect(fill.className.split(/\s+/), 'the list no longer fills the column').toEqual(expect.arrayContaining(['md:absolute', 'md:inset-0']));
     expect(column.className.split(/\s+/), 'the column has no height floor').toContain('md:min-h-[600px]');
-    expect(column.className.split(/\s+/), 'the column lost its width rule').toContain('md:flex-[0_0_clamp(320px,42vw,460px)]');
+    // AMENDED 89.6-16 (home-columns): the width rule is the bb-columns basis in rem, and the column does not grow.
+    expect(column.className.split(/\s+/), 'the column lost its width rule').toEqual(expect.arrayContaining(['md:grow-0', 'md:[--bb-col:clamp(20rem,42vw,28.75rem)]']));
   });
 });
 
