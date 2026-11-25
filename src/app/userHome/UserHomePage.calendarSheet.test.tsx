@@ -660,6 +660,8 @@ describe('W12 (88.9-52) — the groups column keeps a usable height while the ca
     expect(column.className.split(/\s+/), 'the column has no height floor').toContain('md:min-h-[600px]');
     // AMENDED 89.6-16 (home-columns): the width rule is the bb-columns basis in rem, and the column does not grow.
     expect(column.className.split(/\s+/), 'the column lost its width rule').toEqual(expect.arrayContaining(['md:grow-0', 'md:[--bb-col:clamp(20rem,42vw,28.75rem)]']));
+    // AMENDED 89.6-16 (home-columns, R01-long): when stacked the column takes the whole row instead of keeping its width.
+    expect(column.className.split(/\s+/), 'the stacked groups column keeps its width and holds a long name narrow (R01-long held, CI 45612916541)').toContain('md:[flex-basis:max(var(--bb-col),calc((var(--bb-col)_+_1.5rem_+_18rem_-_100%)_*_999))]');
   });
 });
 

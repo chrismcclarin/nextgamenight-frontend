@@ -744,7 +744,15 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 narrows past its longest word, chosen OVER the media-query row (blind to text size: 'We / eke
                 / nd War / rior / s' at 768 / 200%, register CI-02) and OVER a px column. When stacked at
                 large text the groups column keeps its own width (grow 0), chosen OVER growing it (a grow
-                share would move it at normal text). Changing this is a decision, not a cleanup. */}
+                share would move it at normal text). Changing this is a decision, not a cleanup.
+                AMENDED Phase 89.6-16 (home-columns, R01-long): stacked, the groups column takes the whole
+                row, chosen OVER keeping its own width there (CI 45612916541: at 768 / 200% the 640px column
+                held a thirty-letter group name narrow, a 'held' word, while the row had about 736px). A
+                switch basis, not a grow share: max(the column width, (the column width + the 1.5rem gap +
+                the calendar's 18rem basis - the row) x 999). While both columns fit the second term is
+                negative and the basis is the picked width (grow stays 0, so nothing moves at normal text);
+                once they do not, it is huge, the column is capped at the row by bb-columns' max-width and
+                the calendar wraps under it at the same threshold the row wrapped at before. */}
             <div className="bb-columns gap-4 md:gap-6">
                 {/* Req 11b (UI-SPEC S4): the phone-only entry point to the calendar, above the
                     group list. It lives HERE and not inside `grouplist.js`, because desktop
@@ -825,7 +833,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     month grid's, so a loaded page is unchanged. Changing this is a decision, not a cleanup.
                     AMENDED Phase 89.6-16 (home-columns): the clamp is written in rem, 20rem to 28.75rem around 42vw,
                     identical at normal text; the picks above stand. */}
-                <div className="md:grow-0 md:[--bb-col:clamp(20rem,42vw,28.75rem)] md:relative md:min-h-[600px]">
+                <div className="md:grow-0 md:[--bb-col:clamp(20rem,42vw,28.75rem)] md:[flex-basis:max(var(--bb-col),calc((var(--bb-col)_+_1.5rem_+_18rem_-_100%)_*_999))] md:relative md:min-h-[600px]">
                     <div className="md:absolute md:inset-0">
                     <GroupList
                         onGroupSelect={handleGroupSelect}
