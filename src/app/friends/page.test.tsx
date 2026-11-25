@@ -1171,6 +1171,32 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
     }
   });
 
+  // CI-01g, a tab wider than the room between the two cues: at 320 with text at 200% the strip is
+  // 256px, each cue 64px, and Requests 176px (measured on the app's CSS). Brought in by "nearest"
+  // it sat flush with the strip's right edge, 64px of it under the end cue, where centring leaves
+  // 24px under each, the least the geometry allows (CI run 45706391242, R04 at 320 dark 200%).
+  // The strip's and the tab's boxes are stubbed (jsdom lays nothing out); the marker is at
+  // src/app/friends/page.js ("a wider one is centred in the strip").
+  it('89.6-21 CI-01g: a focused tab wider than the room between the cues is centred in the strip', async () => {
+    renderFriends();
+    await screen.findByText('Dana');
+    const requests = screen.getByRole('button', { name: /^Requests/ });
+    const strip = requests.closest('.overflow-x-auto') as HTMLElement;
+    let scrollLeft = 0;
+    Object.defineProperty(strip, 'scrollLeft', { configurable: true, get: () => scrollLeft, set: (v: number) => { scrollLeft = v; } });
+    const rect = (left: number, width: number) => ({ left, right: left + width, width, top: 0, bottom: 44, height: 44, x: left, y: 0, toJSON() {} }) as DOMRect;
+    strip.getBoundingClientRect = () => rect(32, 256);
+    requests.getBoundingClientRect = () => rect(32 + 210 - scrollLeft, 176);
+    document.documentElement.style.fontSize = '32px';
+    try {
+      fireEvent.focus(requests);
+      // Tab centre 330 to strip centre 160: the strip scrolls 170px, leaving 40px clear of each edge.
+      expect(scrollLeft).toBe(170);
+    } finally {
+      document.documentElement.style.fontSize = '';
+    }
+  });
+
   // 88.9-52 R4 B1b (the round-4 re-shoot, 375 with text at 200%): the address field was squeezed
   // to about 80px beside the Search button. The search row may wrap and the field asks for 8rem
   // before it shares a line, so at large text the button drops under a full-width field.
