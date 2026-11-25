@@ -656,10 +656,11 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     // (friend.id), matching the roster side (member.id).
                                     const isInGroup = groupMemberIds.includes(friend.id);
 
+                                    // DECISION Phase 89.6-21 (friends-row): GR, the governing rule (owner, 2026-11-22: 'A row stays a row while everything in it fits whole. When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking. Scrolling down is fine; scrolling sideways is not.'): the panel's friend row is a bb-row; names wrap by whole words, In group moves under the name first, then the name moves under its checkbox, before any word breaks, chosen OVER the ellipsis (register 'Names still cut with an ellipsis', against the owner's wrap ruling) and OVER a fixed name width. Changing this is a decision, not a cleanup.
                                     return (
                                         <label
                                             key={friendship.id}
-                                            className={`flex items-center gap-3 p-edge-card rounded-lg border transition-colors ${
+                                            className={`bb-row items-center gap-3 p-edge-card rounded-lg border transition-colors ${
                                                 isInGroup
                                                     ? 'border-line bg-surface-page cursor-default'
                                                     : selectedFriends.has(friend.id)
@@ -687,17 +688,19 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                                    draws the focus ring (the written exception, DECISION Phase 89.6-12 (O-1b) in globals.css). */
                                                 className="h-4 w-4 rounded-sm border-line text-content-accent disabled:opacity-40"
                                             />
-                                            <div className="flex-1 min-w-0">
+                                            <div className="bb-row-text">
                                                 {/* UI-SPEC §4.5, the EMPHASIS outcome: `font-medium` deleted, the
                                                     distinction carried by the colour token the ternary already
-                                                    supplies. 500 is not on the 400/700 scale. */}
-                                                <p className={`truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>
-                                                    {friend.username}
+                                                    supplies. 500 is not on the 400/700 scale. A friend with no
+                                                    username reads Member, the friend-fallback decision of
+                                                    src/app/friends/page.js ("DECISION Phase 89.6-21 (friend-fallback)"). */}
+                                                <p className={`wrap-break-word ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>
+                                                    {friend.username || 'Member'}
                                                 </p>
                                                 {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
                                             </div>
                                             {isInGroup && (
-                                                <span className="text-xs text-content-muted italic shrink-0">
+                                                <span className="bb-row-end text-xs text-content-muted italic">
                                                     In group
                                                 </span>
                                             )}
@@ -947,7 +950,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             className="mt-2 text-content-status-success"
                         />
                         {friendPrompt && !friendRequestSent && (
-                            <div data-add-friend-prompt="" className="mt-3 p-edge-card bg-surface-sunken border border-line rounded-lg flex flex-wrap items-center justify-between gap-3">
+                            <div data-add-friend-prompt="" className="mt-3 p-edge-card bg-surface-sunken border border-line rounded-lg bb-row items-center gap-3">
                                 {/* PRIM-04 adoption: render the resolved found-user identity
                                     via the shared UserChip primitive.
                                     AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the found-person row may wrap,
@@ -962,8 +965,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     cut to an ellipsis. REJECTED: a fixed rem floor for the name (a value
                                     that helps at 200% text also drops the button at ordinary text for a
                                     short name) and wrap-anywhere (one letter per line). At ordinary text
-                                    with an ordinary name nothing moves. */}
-                                <div className="flex-1 max-w-full">
+                                    with an ordinary name nothing moves.
+                                    AMENDED Phase 89.6-21 (friends-row): on bb-row; Add Friend no longer shrinks, so it drops under the name instead of wrapping to Add / Friend (register R5-08). */}
+                                <div className="bb-row-text">
                                     <UserChip
                                         user={{ name: friendPrompt.username }}
                                         size="sm"
@@ -978,7 +982,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     busy={addingFriend}
                                     busySuffix=", sending"
                                     aria-describedby={friendRequestError ? 'invite-friend-request-error' : undefined}
-                                    className="ml-auto max-w-full"
+                                    className="bb-row-end flex-nowrap ml-auto"
                                 >
                                     Add Friend
                                 </Button>

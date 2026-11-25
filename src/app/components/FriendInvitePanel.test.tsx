@@ -1218,6 +1218,8 @@ describe('FriendInvitePanel — R7 composed axe audit (UI-SPEC §7.5, surface #4
   // classes of the Friends-row form; the rendered widths are in
   // e2e/friend-invite-panel-header.spec.ts ("R4 D2 (88.9-52)").
   // The marker is at src/app/components/FriendInvitePanel.js ("AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the found-person row may wrap").
+  // AMENDED 89.6-21 (friends-row): the row is a bb-row, the column bb-row-text and Add Friend the
+  // row's end (it never shrinks, so it drops under the name instead of wrapping to Add / Friend).
   it('R4 D2 (88.9-52): the add-friend prompt row may wrap, the name column keeps its longest word, and Add Friend keeps to the right', async () => {
     const { friendshipsAPI: api, invitesAPI } = await import('@/lib/api');
     (api.searchUserByEmail as Mock).mockResolvedValue({ id: FRIEND_UUID, username: 'Weekend Warriors' });
@@ -1231,17 +1233,32 @@ describe('FriendInvitePanel — R7 composed axe audit (UI-SPEC §7.5, surface #4
     const add = await screen.findByRole('button', { name: 'Add Friend' });
     const row = add.parentElement as HTMLElement;
     expect(row).toHaveAttribute('data-add-friend-prompt');
-    expect(row).toHaveClass('flex', 'flex-wrap');
+    expect(row).toHaveClass('bb-row', 'gap-3');
     const name = screen.getByText('Weekend Warriors');
     expect(name.className).not.toMatch(/(^|\s)(truncate|line-clamp-\S+|whitespace-nowrap|wrap-anywhere)(\s|$)/);
     expect(name).toHaveClass('wrap-break-word');
     // The column that holds the chip: grows, capped at the row, and its floor is NOT zeroed.
     const column = row.firstElementChild as HTMLElement;
     expect(column.contains(name)).toBe(true);
-    expect(column).toHaveClass('flex-1', 'max-w-full');
+    expect(column).toHaveClass('bb-row-text');
     expect(column.className).not.toMatch(/(^|\s)(min-w-0|overflow-hidden)(\s|$)/);
-    expect(add).toHaveClass('ml-auto', 'max-w-full');
-    expect(add.className).not.toMatch(/(^|\s)shrink-0(\s|$)/);
+    expect(add).toHaveClass('bb-row-end', 'flex-nowrap', 'ml-auto');
+    expect(add.className).not.toMatch(/(^|\s)(shrink|max-w-full)(\s|$)/);
+  });
+
+  // 89.6-21 UR-01a (the owner's wrap ruling, UI-SPEC plan-52 amendment): a friend name in the panel
+  // was cut with an ellipsis. It now wraps by whole words on a bb-row, and In group moves under the
+  // name first. The marker is at src/app/components/FriendInvitePanel.js ("DECISION Phase 89.6-21 (friends-row)").
+  it('89.6-21: a friend name in the panel wraps and is never cut (UR-01a)', async () => {
+    renderPanel();
+    const name = await screen.findByText('Dana');
+    expect(name.tagName).toBe('P');
+    expect(name).toHaveClass('wrap-break-word');
+    expect(name.className).not.toMatch(/(^|\s)(truncate|text-ellipsis|line-clamp-\S+|whitespace-nowrap|overflow-hidden)(\s|$)/);
+    const column = name.parentElement as HTMLElement;
+    expect(column).toHaveClass('bb-row-text');
+    expect(column.className).not.toMatch(/(^|\s)min-w-0(\s|$)/);
+    expect(column.closest('label')).toHaveClass('bb-row', 'gap-3');
   });
 
   // 88.9-52 Q66: the search answers id and username only, so the prompt has no branch that draws
