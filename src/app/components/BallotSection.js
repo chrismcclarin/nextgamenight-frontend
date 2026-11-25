@@ -9,7 +9,6 @@ import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { logger, errCtx } from '@/lib/logger';
 import { cn } from '../../lib/cn';
-import { hostGroundHalo } from '../../components/ui/hostGround';
 
 /**
  * BallotSection - Game voting ballot for an event
@@ -120,9 +119,8 @@ function toggleOptionVote(ballot, optionId, voted) {
  * @param {string} [props.eventDate]
  * @param {string} [props.userRole]
  * @param {string | null} [props.userRsvpStatus]
- * @param {import('../../components/ui/hostGround').HostGround} [props.hostGround='card'] the ground the HOST paints under the option cards; selects their focus halo
  */
-export default function BallotSection({ eventId, eventDate, userRole, userRsvpStatus, hostGround = 'card' }) {
+export default function BallotSection({ eventId, eventDate, userRole, userRsvpStatus }) {
   const [ballot, setBallot] = useState(null);
   // Loading only with a real event id: fetchBallot returns before its finally when there is none, so a
   // true here would never clear (88.6.1 code review IN-06; the reset below follows the same rule).
@@ -584,13 +582,13 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                      3:1 against the ring in both themes (census, halo-approximate; the page band belongs to plan
                      88.9-16). Swapping it for the fill or the page ground is a decision, not a cleanup.
                      AMENDED Phase 88.9-35 (owner pick B1a, 88.9-PICKS-B1.json, 2026-11-04): the three option cards take
-                     the HOST's ground through hostGround (src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO")),
+                     the HOST's ground through hostGround (the retired hostGround module's six-key map),
                      default card, the shipped literal kept and the host key merged after it by cn, chosen OVER round 1's
                      fixed card halo (band 1.31 / 1.22 on the game page's two page paths; the page host now reads
-                     5.97 / 10.13, band 1.00). */
+                     5.97 / 10.13, band 1.00).
+                     AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key is retired, so this site passes or reads no ground. */
                   className={cn(
-                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:focus-ring',
-                    hostGroundHalo(hostGround)
+                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:focus-ring'
                   )}
                 >
                   <PickContent name={opt.game_name} saving={resolvingOptionId === opt.id} />
@@ -647,8 +645,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   aria-label={resolvingOptionId === opt.id ? savingPickLabel(opt.game_name) : undefined}
                   aria-describedby={error ? 'ballot-fallback-error' : undefined}
                   className={cn(
-                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:focus-ring',
-                    hostGroundHalo(hostGround)
+                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:focus-ring'
                   )}
                 >
                   <PickContent name={opt.game_name} saving={resolvingOptionId === opt.id} />
@@ -732,7 +729,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   disabled={!!votingOptionId && !isToggling}
                   aria-disabled={isToggling ? 'true' : undefined}
                   aria-describedby={error ? 'ballot-vote-error' : undefined}
-                  className={`${cn('w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:focus-ring', hostGroundHalo(hostGround))}
+                  className={`${cn('w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:focus-ring')}
                     ${isVoted
                       ? 'border-accent bg-surface-accent-subtle text-content-primary'
                       : 'border-line bg-surface-card text-content-primary hover:bg-surface-hover hover:border-line-strong'

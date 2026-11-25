@@ -916,7 +916,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                             <div className="flex items-center gap-3 flex-[1_1_6rem] min-w-0">
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                                        <p className="font-bold text-content-status-warning min-w-0 wrap-anywhere"><ClickableMemberName userId={member.id} hostGround="warning" username={member.username || member.email} /></p>
+                                                        <p className="font-bold text-content-status-warning min-w-0 wrap-anywhere"><ClickableMemberName userId={member.id} username={member.username || member.email} /></p>
                                                         {getRoleBadge('pending')}
                                                     </div>
                                                 </div>

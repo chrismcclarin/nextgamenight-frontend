@@ -684,7 +684,6 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                   userId={m.id as string}
                   username={label}
                   showInlineIndicator={false}
-                  hostGround="group"
                 >
                   {/*
                     DECISION Phase 88.5 (owner-directed UAT amendment, 2026-09-01): the

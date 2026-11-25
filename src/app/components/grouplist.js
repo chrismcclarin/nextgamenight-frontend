@@ -747,7 +747,9 @@ const GroupList = ({
                  both. Dropping the host pair empties the key to its card fallback, a decision, not a cleanup.
                  AMENDED Phase 89.6-13: owner pick O-1 = B retired the halo, so the arms were identical and
                  collapsed into one literal; the collapse IS this decision. The host's --group-halo pair
-                 stays for plan 89.6-38, which owns the hostGround halo key that still reads it. */
+                 stays for plan 89.6-38, which owns the hostGround halo key that still reads it.
+                 AMENDED Phase 89.6-38 (host-ground): the key is retired with its file, so nothing reads the
+                 pair any more; its removal is handed to plan 89.6-34 (found-new in the 89.6-38 SUMMARY). */
               <div
                 key={group.id}
                 ref={(node) => {

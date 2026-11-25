@@ -10,7 +10,6 @@ import { Textarea } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
 import { Icon } from '../../components/ui/Icon';
-import { hostGroundHalo } from '../../components/ui/hostGround';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Heading } from '../../components/ui/Heading';
 import { formatDateTime } from '../../lib/datetime';
@@ -44,10 +43,8 @@ const NOTE_LIMIT_STATUS_TESTID = 'rsvp-note-limit-status';
  *   ({ id: <Users.id UUID>, ... }). Own-RSVP resolution keys on `self.id` vs the
  *   nested `rsvp.User.id` UUID (Phase 87.3-04, D-04) — never the flat `user_id`
  *   (a sub through the PR-C window). Undefined while identity is still resolving.
- * @param {import('../../components/ui/hostGround').HostGround} [hostGround='card'] - the ground
- *   the HOST paints under Save note; selects its focus halo.
  */
-export default function RsvpSection({ eventId, self, eventDate, onRsvpChange, hostGround = 'card' }) {
+export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) {
   const [rsvps, setRsvps] = useState([]);
   const [summary, setSummary] = useState({ yes: 0, maybe: 0, no: 0 });
   const [userRsvp, setUserRsvp] = useState(null);
@@ -596,7 +593,6 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange, ho
                 variant="primary"
                 aria-disabled={savingNote || undefined}
                 onClick={handleSaveNote}
-                className={hostGroundHalo(hostGround)}
               >
                 Save note
                 {/* DECISION Phase 88.9-35 (Δ6, house Spinner): Save note keeps its own sr-only
@@ -794,7 +790,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange, ho
                               affordance, and the userId handed to the (soon
                               UUID-keyed) friendship provider is a UUID. */}
                           {rsvp.User?.id ? (
-                            <ClickableMemberName userId={rsvp.User.id} username={rsvp.User.username || 'Unknown'} hostGround={hostGround} />
+                            <ClickableMemberName userId={rsvp.User.id} username={rsvp.User.username || 'Unknown'} />
                           ) : (
                             'Unknown'
                           )}

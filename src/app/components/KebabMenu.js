@@ -14,7 +14,6 @@ import { DelayedSpinner } from '@/components/ui/DelayedSpinner';
 import { ReservedLabel } from '@/components/ui/ReservedLabel';
 import { DEFAULT_ARMED_LABEL, DEFAULT_ARMED_NAME, DISARM_ANNOUNCEMENT } from '@/components/ui/useConfirmAction';
 import { useDismissal } from '@/components/ui/useDismissal';
-import { hostGroundHalo } from '@/components/ui/hostGround';
 import { cn } from '@/lib/cn';
 
 /**
@@ -86,13 +85,11 @@ const MENU_EDGE_GAP_PX = 8;
  * @param {KebabMenuItem[]} [props.items] - Action items. An EMPTY array renders no trigger.
  * @param {string} [props.armedName] - Default spoken name for armed, live twoTap items.
  *                                     Each item can override via item.armedName.
- * @param {import('@/components/ui/hostGround').HostGround} [props.hostGround='card'] - The ground the HOST paints under the trigger; selects its focus halo.
  */
 export default function KebabMenu({
   ariaLabel = 'Actions',
   items = [],
   armedName = DEFAULT_ARMED_NAME,
-  hostGround = 'card',
 }) {
   const [open, setOpen] = useState(false);
   const [armedIndex, setArmedIndex] = useState(null);
@@ -590,16 +587,16 @@ export default function KebabMenu({
         onClick={() => setOpen((prev) => !prev)}
         /* DECISION Phase 88.9-35 R033 (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04): the trigger's
            halo is the HOST's ground passed as a typed hostGround key
-           (src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO")), default card — every
+           (the retired hostGround module's six-key map), default card — every
            live phone host is a card — merged
            after the shipped literal with cn so the literal keeps its card key, chosen OVER round 1's
            fixed card halo on every host. The tinted group-page host left with F5b; the groupPlanning
            desktop arm (card on a phone, page from md) cannot be named by one key and is plan
            88.9-50's. Changing this is a decision, not a cleanup.
-           AMENDED Phase 88.9-50 (plan review 2026-11-08): the groupPlanning desktop arm named above was a census false positive — OpenPollCard's li paints bg-surface-card at every width (src/app/components/OpenPollsList.js ("const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex flex-wrap items-start';")), so every live host is a card and the default key is right; no md companion on this trigger, chosen OVER one (it would paint a page-coloured gap on a card row from 768px, band 1.31 / 1.22). */
+           AMENDED Phase 88.9-50 (plan review 2026-11-08): the groupPlanning desktop arm named above was a census false positive — OpenPollCard's li paints bg-surface-card at every width (src/app/components/OpenPollsList.js ("const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex flex-wrap items-start';")), so every live host is a card and the default key is right; no md companion on this trigger, chosen OVER one (it would paint a page-coloured gap on a card row from 768px, band 1.31 / 1.22).
+           AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key is retired, so this site passes or reads no ground. */
         className={cn(
-          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring',
-          hostGroundHalo(hostGround)
+          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring'
         )}
         aria-expanded={open}
         /* DECISION Phase 88.6-16 (D-12): `aria-controls` is the HONEST replacement

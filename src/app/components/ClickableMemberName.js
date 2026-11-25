@@ -19,7 +19,6 @@ import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
-import { hostGroundHalo } from '../../components/ui/hostGround';
 import { cn } from '../../lib/cn';
 import { DIALOG_ROLE_SELECTOR } from '../../components/ui/focusPageFloor';
 import { logger, errCtx } from '@/lib/logger';
@@ -79,8 +78,6 @@ const FRIEND_PILL_CLASSES =
  * @param {React.ReactNode} [props.children] - Optional custom render (defaults to username span)
  * @param {boolean} [props.showInlineIndicator=true] - Opt OUT of the inline md:hidden indicator
  *   sibling (see the DECISION Phase 88.5 marker below). Default `true` = today's behaviour.
- * @param {import('../../components/ui/hostGround').HostGround} [props.hostGround='card'] - The ground
- *   the HOST paints under this name; selects the focus halo of the name and the + button.
  */
 /* DECISION Phase 88.5 (D-15): `showInlineIndicator` is an OPT-OUT defaulting to `true`,
    chosen so that the member CHIPS introduced by this phase can suppress the inline
@@ -118,7 +115,7 @@ const FRIEND_PILL_CLASSES =
    RSVP pill on desktop). The opt-out, its default and the chip rows are untouched: a chip still
    draws no inline Friend. Going back to the ticked text, or moving Friend after the RSVP pill on
    either width, is a decision, not a cleanup. */
-export default function ClickableMemberName({ userId, username, children, showInlineIndicator = true, hostGround = 'card' }) {
+export default function ClickableMemberName({ userId, username, children, showInlineIndicator = true }) {
   const { getStatus, sendRequest } = useContext(FriendshipContext);
   const [isOpen, setIsOpen] = useState(false);
   const [sent, setSent] = useState(false);
@@ -654,7 +651,6 @@ export default function ClickableMemberName({ userId, username, children, showIn
       disabled={sendingFrom === 'popover'}
       className={cn(
         "md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-toggle-on cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:focus-ring",
-        hostGroundHalo(hostGround),
       )}
       aria-label={`Add ${username} as a friend`}
     >
@@ -964,9 +960,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
           // last-wins, chosen OVER a fixed card halo (the raw amber pending box read 1.04 light / 1.61
           // dark against it) and OVER dropping the card key from the literal (cascadeOrder test 12
           // judges each ring chunk and would red).
+          // AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 
+          // ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key is retired, so this site passes or reads no ground.
           className: cn(
             'cursor-pointer hover:underline rounded-xs focus:outline-hidden focus-visible:focus-ring',
-            hostGroundHalo(hostGround),
           ),
           onClick: (e) => {
             e.stopPropagation();

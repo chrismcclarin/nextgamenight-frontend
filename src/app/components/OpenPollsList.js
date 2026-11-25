@@ -607,7 +607,7 @@ function OpenPollCard({ prompt, group, closing, onClose, selected = false, onSel
 
       {prompt.can_close === true && (
         <div className={selected ? CARD_KEBAB_CELL_SELECTED_CLASS : CARD_KEBAB_CELL_CLASS}>
-          {/* DECISION Phase 88.9-50 R033: the check-in kebab keeps the default card halo at every width — its nearest painting ancestor is this card's li, not the groupPlanning section — chosen OVER this file's md page arm (the two Start a check-in Buttons sit in the section, outside any li). Changing this is a decision, not a cleanup. */}
+          {/* DECISION Phase 88.9-50 R033: the check-in kebab keeps the default card halo at every width — its nearest painting ancestor is this card's li, not the groupPlanning section — chosen OVER this file's md page arm (the two Start a check-in Buttons sit in the section, outside any li). Changing this is a decision, not a cleanup. AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key is retired, so this site passes or reads no ground. */}
           <KebabMenu
             ariaLabel="Check-in actions"
             items={[

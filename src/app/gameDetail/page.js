@@ -3137,8 +3137,8 @@ export default function GameDetailPage() {
                 <div className="space-y-4">
                     <RsvpSection
                         key={`rsvp-${rsvpRefreshKey}`}
-                        /* DECISION Phase 88.9-35 (B1a): see the BallotSection mount below — the single-event host passes its page ground. */
-                        hostGround="page"
+                        /* DECISION Phase 88.9-35 (B1a): see the BallotSection mount below — the single-event host passes its page ground.
+                           AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key is retired, so this site passes or reads no ground. */
                         eventId={singleEvent.id}
                         self={self}
                         eventDate={singleEvent.start_date}
@@ -3173,8 +3173,8 @@ export default function GameDetailPage() {
                     {!repliesLoadState.showError && (
                         <BallotSection
                             key={ballotRefreshKey}
-                            /* DECISION Phase 88.9-35 (B1a): the single-event view mounts RSVP and the ballot on the PAGE ground, so this host passes page; the list mounts sit inside event cards and keep the card default — passing page there is a decision, not a cleanup. */
-                            hostGround="page"
+                            /* DECISION Phase 88.9-35 (B1a): the single-event view mounts RSVP and the ballot on the PAGE ground, so this host passes page; the list mounts sit inside event cards and keep the card default — passing page there is a decision, not a cleanup.
+                               AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key is retired, so this site passes or reads no ground. */
                             eventId={singleEvent.id}
                             eventDate={singleEvent.start_date}
                             userRole={userRole}
