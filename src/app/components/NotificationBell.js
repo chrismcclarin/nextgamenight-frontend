@@ -639,7 +639,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         <button
           ref={triggerRef}
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset"
           aria-label={label ? `${label} notifications` : 'Notifications'}
           aria-describedby={countDescriptionId}
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
@@ -700,7 +700,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
           // padding (32x32, a 4px mismatch between two adjacent icon controls). Desktop only: this
           // trigger lives in the header list hidden below md; the phone row variant is untouched. The
           // count badge stays positioned on the button corner. Changing it is a decision, not a cleanup.
-          className="relative text-white hover:text-amber-400 transition-colors p-1.5 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+          className="relative text-white hover:text-amber-400 transition-colors p-1.5 focus:outline-hidden focus-visible:focus-ring-inset"
           aria-label="Notifications"
           aria-describedby={countDescriptionId}
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.

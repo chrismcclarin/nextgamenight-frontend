@@ -423,7 +423,7 @@ export default function BrowseMoreModal({
                   setPlayerCount((p) => Math.max(1, (p || 1) - 1));
                 }}
                 aria-disabled={decrementDisabled || undefined}
-                className="btn btn-secondary w-11 h-11 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                className="btn btn-secondary w-11 h-11 flex items-center justify-center focus:outline-hidden focus-visible:focus-ring"
                 aria-label="Decrease player count"
               >
                 −
@@ -471,7 +471,7 @@ export default function BrowseMoreModal({
                    the defect.
                    AMENDED Phase 88.9-52 (R4 C2): 44x44 like its twin, and no opt-out class
                    (the decrement's marker has what was chosen and what was rejected). */
-                className="btn btn-secondary w-11 h-11 flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                className="btn btn-secondary w-11 h-11 flex items-center justify-center focus:outline-hidden focus-visible:focus-ring"
                 aria-label="Increase player count"
               >
                 +

@@ -595,7 +595,7 @@ export async function assertTheme(page: Page, theme: 'light' | 'dark'): Promise<
  * interaction was a KEYBOARD one — hence the `Tab` press first, purely to set that
  * modality. Without it the ring rules never apply and `--tw-ring-color` comes back empty,
  * which `requireColor` would (correctly) turn into a probe failure. A bare `:focus`
- * variant would not help: src/components/ui/Button.tsx ("focus-visible:ring-offset-2") and src/components/ui/Input.tsx ("focus:outline-hidden focus-visible:border-input") both use `focus-visible:`
+ * variant would not help: src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:focus-ring'") and src/components/ui/Input.tsx ("focus:outline-hidden focus-visible:border-input") both use `focus-visible:`
  * deliberately, so that pointer and programmatic focus do NOT draw a ring.
  */
 export async function focusByKeyboard(page: Page, anchor: Locator): Promise<void> {

@@ -39,7 +39,7 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
     return (
       <button
         onClick={() => setTheme(isDark ? 'light' : 'dark')}
-        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset"
         aria-label={ariaLabel}
       >
         {icon}
@@ -106,7 +106,7 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
       // warm-800 header. It now carries the same treatment as the row variant, and inherits
       // the amber-400 `--ring` override scoped to the header subtree at `Header.js`'s
       // container. See the DECISION marker at `NotificationBell.js`'s row label.
-      className={`p-2 rounded-lg transition-colors text-white hover:text-amber-400 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${className}`}
+      className={`p-2 rounded-lg transition-colors text-white hover:text-amber-400 focus:outline-hidden focus-visible:focus-ring-inset ${className}`}
       aria-label={ariaLabel}
       title={ariaLabel}
     >

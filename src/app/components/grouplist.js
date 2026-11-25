@@ -377,7 +377,7 @@ const GroupList = ({
             /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. ——— AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18), everything above KEPT AS HISTORY: the `.btn-compact` opt-out this marker names is RETIRED (src/app/globals.css ("the stepper opt-out is RETIRED")). Its only two wearers, the BrowseMoreModal player-count steppers, are 44x44 squares now, chosen OVER keeping them at 32x32 (REJECTED: two small targets 4px apart; this marker family only ever weighed a 32x44 lozenge, never a 44 square). NOTHING about THIS control changes: the phone floor on `.btn` stands, the all-viewport floor on the `.btn` class stays rejected as recorded (its "would distort compact sites" reason no longer has a subject, and re-asking it is a decision nobody has made), and this control keeps the height it had. */
             <Button
               variant="primary"
-              className="whitespace-nowrap focus-visible:ring-offset-surface-page"
+              className="whitespace-nowrap"
               onClick={onCreateGroup}
               aria-label="Create new group"
               data-tutorial="create-group-btn"
@@ -441,7 +441,7 @@ const GroupList = ({
           /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (src/app/globals.css ("or promoting the floor to all"), reasoning at src/app/globals.css ("DECISION Phase 88-01 (D-36, UI-SPEC")), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. ——— AMENDED Phase 88.9-52 (R4 C2, owner 2026-11-18), everything above KEPT AS HISTORY: the `.btn-compact` opt-out this marker names is RETIRED (src/app/globals.css ("the stepper opt-out is RETIRED")). Its only two wearers, the BrowseMoreModal player-count steppers, are 44x44 squares now, chosen OVER keeping them at 32x32 (REJECTED: two small targets 4px apart; this marker family only ever weighed a 32x44 lozenge, never a 44 square). NOTHING about THIS control changes: the phone floor on `.btn` stands, the all-viewport floor on the `.btn` class stays rejected as recorded (its "would distort compact sites" reason no longer has a subject, and re-asking it is a decision nobody has made), and this control keeps the height it had. */
           <Button
             variant="primary"
-            className="whitespace-nowrap focus-visible:ring-offset-surface-page"
+            className="whitespace-nowrap"
             onClick={onCreateGroup}
             aria-label="Create new group"
             data-tutorial="create-group-btn"
@@ -535,7 +535,6 @@ const GroupList = ({
               onCreateGroup ? (
                 <Button
                   variant="primary"
-                  className="focus-visible:ring-offset-surface-page"
                   onClick={onCreateGroup}
                   aria-label="Create new group"
                 >
@@ -859,8 +858,8 @@ const GroupList = ({
                         }}
                         className={
                           tinted
-                            ? 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
-                            : 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                            ? 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:focus-ring'
+                            : 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:focus-ring'
                         }
                       >
                         {/* DECISION Phase 88.6-21 (W42, D-04): this heading sits INSIDE the
@@ -1175,7 +1174,7 @@ const GroupList = ({
                         variant="primary"
                         className={
                           tinted
-                            ? 'flex-1 shadow-theme-md enabled-hover:shadow-theme-lg focus-visible:ring-offset-surface-group-halo'
+                            ? 'flex-1 shadow-theme-md enabled-hover:shadow-theme-lg'
                             : 'flex-1 shadow-theme-md enabled-hover:shadow-theme-lg'
                         }
                         onClick={(e) => {
@@ -1408,8 +1407,8 @@ const GroupList = ({
                       <button
                         className={
                           tinted
-                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
-                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:focus-ring'
+                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:focus-ring'
                         }
                         onClick={(e) => {
                           e.stopPropagation();

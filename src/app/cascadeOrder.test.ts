@@ -208,9 +208,10 @@ const CLOSED_FILES = new Set(BTN_FAMILY_RING_SITES.map((s) => s.file));
 // carried three or four box-shadow tokens, so the occurrence count fell by construction. The two
 // floors are re-measured on the utility and held at 72% of the live count, the ratio the old floor
 // sat at (150 of 208). Measured 2026-11-24 at the commit that ran the codemod:
-//     outside the closed list: MEASURED_OCC occurrences across MEASURED_FILES files
-const RING_FLOOR_OCCURRENCES = 150;
-const RING_FLOOR_FILES = 30;
+//     outside the closed list: 116 occurrences across 50 files
+// (floor(0.72 x 116) = 83, floor(0.72 x 50) = 36). Measured by setting each floor to 99999 for one run.
+const RING_FLOOR_OCCURRENCES = 83;
+const RING_FLOOR_FILES = 36;
 
 /* ==========================================================================================
    CASCADE HELPERS — everything below operates on COMMENT-STRIPPED `globals.css`.
@@ -697,7 +698,7 @@ const RING_ALLOWANCE = new Set([path.join('components', 'ui', 'hostGround.ts')])
 // An unprefixed ring-offset-<colour> allowed only here: a tutorial demo highlight, not a ring.
 const HALO_EXCEPTIONS = new Set([path.join('app', 'components', 'tutorial', 'simulated', 'ScheduleDemo.js')]);
 // POPULATION FLOOR, 72% of the utility chunks measured 2026-11-24 at the commit that ran the
-// codemod: MEASURED_CHUNKS chunks.
+// codemod: 137 chunks (floor(0.72 x 137) = 98), read by setting this floor to 99999 for one run.
 const ONE_RING_POPULATION_FLOOR = 98;
 /** A whole token in the old box-shadow ring family on a focus-visible chain. */
 const OLD_RING_FAMILY = /(?:^|:)(?:peer-|group-)?focus-visible:ring(?:-\S*)?$/;

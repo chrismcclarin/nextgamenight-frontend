@@ -197,7 +197,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
         // keyboard/switch users get the same visible affordance from either
         // entry point; inset (no ring-offset) because the row is a full-bleed
         // menu row where an offset ring would clip against siblings.
-        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset"
         aria-label="Send feedback"
       >
         <svg
@@ -516,7 +516,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
           variant="primary"
           size="iconSquare"
           onClick={(e) => open(e.currentTarget)}
-          className="fixed bottom-[calc(3rem+8px+env(safe-area-inset-bottom,0px))] right-[24px] z-30 w-[56px] h-[56px] min-w-[56px] min-h-[56px] shadow-theme-lg enabled-hover:shadow-theme-lg focus-visible:ring-offset-surface-page"
+          className="fixed bottom-[calc(3rem+8px+env(safe-area-inset-bottom,0px))] right-[24px] z-30 w-[56px] h-[56px] min-w-[56px] min-h-[56px] shadow-theme-lg enabled-hover:shadow-theme-lg"
           aria-label="Send feedback"
         >
           <svg

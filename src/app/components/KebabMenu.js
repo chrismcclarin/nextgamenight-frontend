@@ -597,7 +597,7 @@ export default function KebabMenu({
            88.9-50's. Changing this is a decision, not a cleanup.
            AMENDED Phase 88.9-50 (plan review 2026-11-08): the groupPlanning desktop arm named above was a census false positive — OpenPollCard's li paints bg-surface-card at every width (src/app/components/OpenPollsList.js ("const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex flex-wrap items-start';")), so every live host is a card and the default key is right; no md companion on this trigger, chosen OVER one (it would paint a page-coloured gap on a card row from 768px, band 1.31 / 1.22). */
         className={cn(
-          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring',
           hostGroundHalo(hostGround)
         )}
         aria-expanded={open}
@@ -796,7 +796,7 @@ export default function KebabMenu({
                      forbids the dim, and the wash this item carried was that test's blind spot (a
                      variant-prefixed utility). It also restyles the in-flight Cancelling… / Leaving…
                      items. Owner confirm from one picture (88.9-23 task 3). */
-                  className={`w-full min-h-11 text-left ${soloItem ? 'px-3' : 'px-2 rounded-sm'} py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                  className={`w-full min-h-11 text-left ${soloItem ? 'px-3' : 'px-2 rounded-sm'} py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:focus-ring-inset ${
                     danger
                       ? `text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold' : 'enabled-hover:bg-surface-ghost-hover'}`
                       : 'text-content-primary enabled-hover:bg-surface-ghost-hover'

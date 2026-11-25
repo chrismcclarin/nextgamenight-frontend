@@ -1408,7 +1408,7 @@ function FriendsPage() {
                                     }
                                 }}
                                 aria-current={activeTab === key ? 'true' : undefined}
-                                className={`inline-flex items-center justify-center shrink-0 whitespace-nowrap px-3 text-sm transition-colors relative focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring min-h-11 min-w-11 ${
+                                className={`inline-flex items-center justify-center shrink-0 whitespace-nowrap px-3 text-sm transition-colors relative focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 ${
                                     activeTab === key
                                         ? 'border-b-2 border-tab-indicator pt-[2px] text-content-primary focus-visible:border-b-0 focus-visible:pb-[2px] focus-visible:inset-shadow-[0_-2px_0_0_var(--color-tab-indicator-line)]'
                                         : 'text-content-secondary hover:text-content-primary'
@@ -1715,7 +1715,7 @@ function FriendsPage() {
                                                                     // shrink-0, with NO border in any state, so the armed state speaks
                                                                     // in weight alone. REJECTED: the outlined box it drew when armed
                                                                     // (the only one of the three with a box).
-                                                                    className={`ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                                    className={`ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring ${
                                                                         armed ? 'font-semibold' : ''
                                                                     }`}
                                                                 >

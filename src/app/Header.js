@@ -288,7 +288,7 @@ function Header(){
                         against (its DECISION marker is on the name below). */}
                     <div className="@container flex justify-between items-center h-full">
                         {/* Brand */}
-                        <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-header">
+                        <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity focus:outline-hidden focus-visible:focus-ring">
                             <DieLogo size={34} />
                             {/* EXEMPT FROM THE R2 TYPE SWEEP — owner: Phase 88.9 (UI-SPEC §4.3,
                                 CONTEXT D-02). `text-lg md:text-xl` is a breakpoint-grown size, and
@@ -367,14 +367,14 @@ function Header(){
                                     {isLink ? (
                                         <Link
                                             href={href}
-                                            className="hover:text-accent transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-header"
+                                            className="hover:text-accent transition-colors focus:outline-hidden focus-visible:focus-ring"
                                         >
                                             {label}
                                         </Link>
                                     ) : (
                                         <a
                                             href={href}
-                                            className="hover:text-accent transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-header"
+                                            className="hover:text-accent transition-colors focus:outline-hidden focus-visible:focus-ring"
                                         >
                                             {label}
                                         </a>
@@ -410,7 +410,7 @@ function Header(){
                             marker on the strip); inline-block is a button's own display. */}
                         {sessionKnown && <button
                             ref={triggerRef}
-                            className="relative md:hidden md:@max-[40rem]/header:inline-block text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                            className="relative md:hidden md:@max-[40rem]/header:inline-block text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                             aria-label="Toggle menu"
                             aria-expanded={mobileMenuOpen}
@@ -517,7 +517,7 @@ function Header(){
                                     {isLink ? (
                                         <Link
                                             href={href}
-                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset"
                                             onClick={() => setMobileMenuOpen(false)}
                                         >
                                             {label}
@@ -525,7 +525,7 @@ function Header(){
                                     ) : (
                                         <a
                                             href={href}
-                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset"
                                             onClick={() => setMobileMenuOpen(false)}
                                         >
                                             {label}

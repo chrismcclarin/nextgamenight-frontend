@@ -653,7 +653,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       aria-disabled={sendingFrom === 'inline' ? 'true' : undefined}
       disabled={sendingFrom === 'popover'}
       className={cn(
-        "md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-toggle-on cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card",
+        "md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-toggle-on cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 aria-disabled:text-content-muted focus:outline-hidden focus-visible:focus-ring",
         hostGroundHalo(hostGround),
       )}
       aria-label={`Add ${username} as a friend`}
@@ -965,7 +965,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
           // dark against it) and OVER dropping the card key from the literal (cascadeOrder test 12
           // judges each ring chunk and would red).
           className: cn(
-            'cursor-pointer hover:underline rounded-xs focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+            'cursor-pointer hover:underline rounded-xs focus:outline-hidden focus-visible:focus-ring',
             hostGroundHalo(hostGround),
           ),
           onClick: (e) => {

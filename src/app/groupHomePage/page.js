@@ -1143,7 +1143,7 @@ function GroupHomePage(){
                 plan (D-46), so a screen reader no longer reads "greater than" between the crumbs; it
                 looks the same. */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || GROUP_PAGE_NAME}</span>
             </nav>
@@ -1442,8 +1442,8 @@ function GroupHomePage(){
                                 // header it sits on.
                                 className={
                                     tinted
-                                        ? 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo'
-                                        : 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated'
+                                        ? 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring'
+                                        : 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring'
                                 }
                             >
                                 <Icon name="Settings" size={20} />
@@ -1714,7 +1714,9 @@ function GroupHomePage(){
                                 // the stored ground in dark, through the @theme key surface-group-halo), chosen OVER
                                 // the Button default card halo (band against the tint, UI-SPEC R2-66); the untinted
                                 // elevated arm is unchanged.
-                                (tinted ? ' focus-visible:ring-offset-surface-group-halo' : ' focus-visible:ring-offset-surface-elevated') +
+                                // AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22 retired the halo,
+                                // so both arms emptied and the fork was removed; the three header Buttons take the
+                                // focus-ring utility from the Button base on either ground.
                                 // The 10% white wash moves from an inline `style` to
                                 // `dark:bg-white/10`, because an inline declaration cannot
                                 // be forked by a `dark:` class. On a light ground it was
@@ -1800,7 +1802,6 @@ function GroupHomePage(){
                         className={
                             'shadow-theme-lg enabled-hover:shadow-theme-lg ' +
                             'whitespace-nowrap text-center' +
-                            (tinted ? ' focus-visible:ring-offset-surface-group-halo' : ' focus-visible:ring-offset-surface-elevated') +
                             (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                         }
                     >
@@ -1867,7 +1868,6 @@ function GroupHomePage(){
                                 // (this file ("DECISION Phase 89.6-06 (cta-label-wrap)")): the label wraps inside
                                 // the button instead of running past its edge at large text.
                                 'shadow-theme-lg enabled-hover:shadow-theme-lg' +
-                                (tinted ? ' focus-visible:ring-offset-surface-group-halo' : ' focus-visible:ring-offset-surface-elevated') +
                                 (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                             }
                         >
@@ -1942,7 +1942,7 @@ function GroupHomePage(){
                 <button
                     onClick={() => setActiveTab('home')}
                     aria-current={activeTab === 'home' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 rounded-t-btn ${
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 rounded-t-btn ${
                         activeTab === 'home'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary'
                             : 'text-content-secondary hover:text-content-primary'
@@ -1953,7 +1953,7 @@ function GroupHomePage(){
                 <button
                     onClick={() => setActiveTab('library')}
                     aria-current={activeTab === 'library' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset min-h-11 min-w-11 rounded-t-btn ${
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 rounded-t-btn ${
                         activeTab === 'library'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary'
                             : 'text-content-secondary hover:text-content-primary'

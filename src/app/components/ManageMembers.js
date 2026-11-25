@@ -925,7 +925,6 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <Button
                                                     variant="primary"
                                                     size="default"
-                                                    className="focus-visible:ring-offset-status-warning-subtle"
                                                     onClick={(event) => handleApproveMember(member.id, event)}
                                                 >
                                                     Approve
@@ -933,7 +932,6 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <Button
                                                     variant="danger"
                                                     size="default"
-                                                    className="focus-visible:ring-offset-status-warning-subtle"
                                                     onClick={() => handleRejectMember(member.id, member.username || member.email)}
                                                 >
                                                     Reject

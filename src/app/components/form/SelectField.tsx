@@ -50,7 +50,7 @@ export interface SelectFieldProps<T extends FieldValues> {
    every shipped select, which belongs to an adoption plan and not to a defect fix. Converging
    them later is a decision with a visual diff, not a cleanup. */
 const DEFAULT_SELECT_CLASS =
-  'w-full p-2 border border-line rounded-btn text-base text-content-primary bg-surface-input focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring';
+  'w-full p-2 border border-line rounded-btn text-base text-content-primary bg-surface-input focus:outline-hidden focus-visible:focus-ring';
 
 export function SelectField<T extends FieldValues>({
   control,

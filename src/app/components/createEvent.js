@@ -1543,7 +1543,7 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                 <button
                   type="button"
                   onClick={() => setUseVisualCalendar(!useVisualCalendar)}
-                  className="text-sm text-content-link hover:text-content-link-hover active:opacity-75 underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card min-h-11"
+                  className="text-sm text-content-link hover:text-content-link-hover active:opacity-75 underline focus:outline-hidden focus-visible:focus-ring min-h-11"
                 >
                   {useVisualCalendar ? 'Switch to Manual Entry' : 'Switch to Visual Calendar'}
                 </button>
@@ -1625,7 +1625,7 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                           onClick={handlePrevWeek}
                           disabled={!canGoBack}
                           aria-label="Previous week"
-                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11 min-w-11"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:focus-ring min-h-11 min-w-11"
                         >
                           &lt;
                         </button>
@@ -1639,7 +1639,7 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                             onClick={handleToday}
                             disabled={isOnTodayMonday}
                             aria-label="Today, jump to current week"
-                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11"
+                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:focus-ring min-h-11"
                           >
                             Today
                           </button>
@@ -1649,7 +1649,7 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                           onClick={handleNextWeek}
                           disabled={!canGoForward}
                           aria-label="Next week"
-                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page min-h-11 min-w-11"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:focus-ring min-h-11 min-w-11"
                         >
                           &gt;
                         </button>
@@ -1865,7 +1865,7 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                   type="button"
                   ref={undoButtonRef}
                   onClick={undoRemoveParticipant}
-                  className="min-h-11 px-2 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  className="min-h-11 px-2 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:focus-ring"
                 >
                   Undo
                 </button>
@@ -1877,7 +1877,7 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                     // Add Participant button instead of dropping it to body.
                     addParticipantButtonRef.current?.focus();
                   }}
-                  className="min-h-11 px-2 text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  className="min-h-11 px-2 text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:focus-ring"
                   aria-label={`Dismiss undo for ${removedParticipant.name}`}
                 >
                   Dismiss

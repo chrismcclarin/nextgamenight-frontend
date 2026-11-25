@@ -73,7 +73,7 @@ export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-
    plan 89.6-32. Changing this is a decision, not a cleanup. */
 export const MODAL_HEADER_CLASS = 'flex flex-wrap-reverse items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-6 md:py-3';
 export const MODAL_TITLE_CLASS = 'grow basis-[min-content] max-w-full wrap-break-word text-content-primary';
-export const MODAL_CLOSE_CLASS = 'ml-auto inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-btn text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring';
+export const MODAL_CLOSE_CLASS = 'ml-auto inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-btn text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:focus-ring';
 export const MODAL_BODY_CLASS = 'relative flex-1 overflow-y-auto p-3 md:p-6 @max-[12rem]/dialog:overflow-visible @max-[12rem]/dialog:flex-none scroll-p-2';
 export const MODAL_FOOTER_CLASS = 'flex flex-wrap justify-end gap-3 border-t border-border px-3 py-4 md:px-6 @max-[12rem]/dialog:flex-col @max-[12rem]/dialog:items-stretch';
 

@@ -83,7 +83,7 @@ export function SegmentedToggle<V extends string>({
             aria-label={option.ariaLabel}
             onClick={(event) => onChange(option.value, event)}
             className={cn(
-              'relative inline-flex items-center justify-center min-h-11 min-w-11 px-4 text-sm font-bold border border-line focus:outline-hidden focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+              'relative inline-flex items-center justify-center min-h-11 min-w-11 px-4 text-sm font-bold border border-line focus:outline-hidden focus-visible:z-10 focus-visible:focus-ring',
               SEGMENT_POSITION[positionOf(index, options.length)],
               SEGMENT_STATE[pressed ? 'pressed' : 'unpressed'],
               segmentClassName,

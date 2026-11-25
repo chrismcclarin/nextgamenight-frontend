@@ -568,7 +568,7 @@ export default function EventDayModal({
                               }
                             }}
                             aria-describedby={!isPastEvent ? dayTagId : undefined}
-                            className="rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-group-halo"
+                            className="rounded-sm focus:outline-hidden focus-visible:focus-ring"
                           >
                             {/* D-04: this `<h4>` carries NO SIZE class, so it renders at body
                                 size — `<Heading level={4} size="body">` (16) states that rather
@@ -748,7 +748,7 @@ export default function EventDayModal({
                             // B2a (88.9-39): the group-ground halo rides the Button's ONE className (a second
                             // className attribute would be dropped by JSX); no dark: utility — the key's dark
                             // twin rides --group-ground.
-                            className="mt-2 focus-visible:ring-offset-surface-group-halo"
+                            className="mt-2"
                             title="Share Game QR"
                           >
                             {/* Decorative: the visible "Share Game QR" label (plus the sr-only busy

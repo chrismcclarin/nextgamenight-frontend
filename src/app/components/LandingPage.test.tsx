@@ -110,9 +110,11 @@ describe('Phase 88.9-33 — the landing hero (O01a, L1b, B4a)', () => {
     const { root, getStarted, google } = renderHero();
     expect(tokensOf(root)).toContain('dark:[--ring:var(--amber-400)]');
     expect(tokensOf(root)).not.toContain('[--ring:var(--amber-400)]');
+    // AMENDED Phase 89.6-13 (owner pick O-1 = B): the hero halo is retired with every halo; Get
+    // Started wears the Button base's two-tone ring and no ring-offset token.
     const gs = tokensOf(getStarted);
-    expect(gs).toContain('focus-visible:ring-offset-surface-hero');
-    expect(gs).not.toContain('focus-visible:ring-offset-surface-card');
+    expect(gs.filter((t) => t.includes('ring-offset-'))).toEqual([]);
+    expect(gs).toContain('focus-visible:focus-ring');
     const g = tokensOf(google);
     expect(g).not.toContain('[--ring:var(--amber-400)]');
     expect(g).toEqual(

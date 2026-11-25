@@ -464,7 +464,7 @@ export default function EventCalendar({
       classes go and neither is a loss. `text-sm` was DEAD — `.btn` declares
       `font-size` unlayered (src/app/globals.css ("UNLAYERED with every other declaration it has today")) — and the per-site focus-ring string
       is retired because the ring now lives ONCE in the primitive's cva base
-      (src/components/ui/Button.tsx ("focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"), A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
+      (src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:focus-ring'"), A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
       is byte-unchanged and still true: this control has a project focus ring, it just
       no longer states it itself. `cascadeOrder.test.ts` asserts exactly one of the two
       mechanisms exists, so keeping both would red.

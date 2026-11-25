@@ -728,7 +728,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     aria-busy={inviting || undefined}
                                     busy={inviting}
                                     busySuffix=", sending"
-                                    className="w-full focus-visible:ring-offset-surface-page"
+                                    className="w-full"
                                 >
                                     {inviting ? bulkInviteLabelRef.current : bulkInviteLabel(selectedFriends.size)}
                                 </Button>
@@ -876,7 +876,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                 busy={emailLoading}
                                 busySuffix=", sending"
                                 aria-describedby={sendError ? 'invite-email-send-error' : undefined}
-                                className="shrink-0 focus-visible:ring-offset-surface-page"
+                                className="shrink-0"
                             >
                                 Send
                             </Button>
@@ -978,7 +978,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     busy={addingFriend}
                                     busySuffix=", sending"
                                     aria-describedby={friendRequestError ? 'invite-friend-request-error' : undefined}
-                                    className="ml-auto max-w-full focus-visible:ring-offset-surface-sunken"
+                                    className="ml-auto max-w-full"
                                 >
                                     Add Friend
                                 </Button>
@@ -1065,7 +1065,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                             variant="primary"
                                             size="default"
                                             onClick={handleCopyLink}
-                                            className="mt-3 w-full focus-visible:ring-offset-surface-page"
+                                            className="mt-3 w-full"
                                         >
                                             {copied ? 'Copied!' : 'Copy Invite Link'}
                                         </Button>
@@ -1127,7 +1127,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                         {copyFailed ? (
                                             <a
                                                 href={inviteUrl}
-                                                className="mt-1 block w-full text-center text-sm text-content-link underline break-all focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+                                                className="mt-1 block w-full text-center text-sm text-content-link underline break-all focus:outline-hidden focus-visible:focus-ring"
                                             >
                                                 {inviteUrl}
                                             </a>

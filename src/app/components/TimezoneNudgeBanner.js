@@ -139,7 +139,7 @@ export default function TimezoneNudgeBanner() {
               ring vs the box 6.26 light / 6.37 dark. It showed the browser's own outline. */}
           <Link
             href="/userProfile#timezone"
-            className="underline hover:text-content-primary rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
+            className="underline hover:text-content-primary rounded-sm focus:outline-hidden focus-visible:focus-ring"
           >
             Set your timezone
           </Link>

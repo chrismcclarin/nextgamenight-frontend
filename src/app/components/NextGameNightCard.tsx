@@ -375,7 +375,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
           onClick={() => onEventClick(event)}
           className={cn(
             'block w-full min-h-11 text-left active:opacity-75',
-            'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card'
+            'focus:outline-hidden focus-visible:focus-ring'
           )}
         >
           {/*
@@ -518,7 +518,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
                     // and the clip shaves the selected 2px border off exactly at the
                     // corner arcs (owner UAT finding, 2026-09-01).
                     'first:rounded-l-[inherit] last:rounded-r-[inherit]',
-                    'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset',
+                    'focus:outline-hidden focus-visible:focus-ring-inset',
                     /*
                       DECISION Phase 88.5 (SPEC Req 4): the 2px selected ring is reserved
                       on BOTH states as `border-2 border-transparent`, chosen OVER

@@ -310,7 +310,6 @@ export default function ScheduleList({
                   <Button
                     variant="danger"
                     size="default"
-                    className="focus-visible:ring-offset-status-error-subtle"
                     onClick={(event) => handleConfirmDelete(schedule.id, event)}
                   >
                     Confirm Delete
@@ -320,7 +319,6 @@ export default function ScheduleList({
                     aria-describedby={confirmPromptId}
                     variant="secondary"
                     size="default"
-                    className="focus-visible:ring-offset-status-error-subtle"
                     onClick={handleCancelDelete}
                   >
                     Cancel

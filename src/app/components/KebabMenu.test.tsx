@@ -554,7 +554,11 @@ describe('KebabMenu trigger host halo (88.9-35)', () => {
 
     const unknown = 'not-a-ground' as unknown as 'card';
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround={unknown} />);
-    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-card');
+    // Re-pinned by plan 89.6-13: the unknown-key fallback was the trigger's own card halo literal,
+    // which the ring codemod deleted (owner pick O-1 = B retired the halo); hostGroundHalo names
+    // nothing for an unknown key, so no halo stands. Plan 89.6-38 retires the rest of this it.
+    expect(trigger().className).not.toMatch(/ring-offset-/);
+    expectFocusRing(trigger(), 'the kebab trigger, unknown ground');
   });
 
   // R033's desktop arm was a census false positive (88.9-50): the check-in kebab's nearest painting

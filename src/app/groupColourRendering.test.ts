@@ -359,7 +359,7 @@ const RING_SCAN_FILES: { file: string; count: number }[] = [
  * adding a name to this set removes real coverage and must be paid for by a matching
  * assertion against that primitive's base class.
  */
-// ADDED 88.9-39: its segments carry the house ring, src/components/ui/SegmentedToggle.tsx ("focus-visible:ring-offset-surface-card'")
+// ADDED 88.9-39: its segments carry the house ring, src/components/ui/SegmentedToggle.tsx ("focus-visible:z-10 focus-visible:focus-ring'")
 const RING_BEARING_PRIMITIVES = new Set(['Button', 'SelectControl', 'KebabMenu', 'SegmentedToggle']);
 
 /**

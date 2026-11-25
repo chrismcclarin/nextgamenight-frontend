@@ -185,7 +185,7 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
             correction (2), the fleet-header insets, is unchanged. */}
         <button
           onClick={onClose}
-          className="absolute top-2 right-3 md:top-3 md:right-6 inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute top-2 right-3 md:top-3 md:right-6 inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:focus-ring"
           aria-label="Close"
         >
           <Icon name="X" size={20} strokeWidth={2} />
@@ -255,7 +255,7 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
         {copyFailed && url ? (
           <a
             href={url}
-            className="block mb-3 text-sm text-content-link underline break-all focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+            className="block mb-3 text-sm text-content-link underline break-all focus:outline-hidden focus-visible:focus-ring"
           >
             {url}
           </a>

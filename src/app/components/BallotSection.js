@@ -589,7 +589,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                      fixed card halo (band 1.31 / 1.22 on the game page's two page paths; the page host now reads
                      5.97 / 10.13, band 1.00). */
                   className={cn(
-                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:focus-ring',
                     hostGroundHalo(hostGround)
                   )}
                 >
@@ -647,7 +647,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   aria-label={resolvingOptionId === opt.id ? savingPickLabel(opt.game_name) : undefined}
                   aria-describedby={error ? 'ballot-fallback-error' : undefined}
                   className={cn(
-                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:focus-ring',
                     hostGroundHalo(hostGround)
                   )}
                 >
@@ -732,7 +732,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   disabled={!!votingOptionId && !isToggling}
                   aria-disabled={isToggling ? 'true' : undefined}
                   aria-describedby={error ? 'ballot-vote-error' : undefined}
-                  className={`${cn('w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card', hostGroundHalo(hostGround))}
+                  className={`${cn('w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:focus-ring', hostGroundHalo(hostGround))}
                     ${isVoted
                       ? 'border-accent bg-surface-accent-subtle text-content-primary'
                       : 'border-line bg-surface-card text-content-primary hover:bg-surface-hover hover:border-line-strong'

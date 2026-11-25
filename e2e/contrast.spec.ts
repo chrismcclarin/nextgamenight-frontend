@@ -1561,7 +1561,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // visual mode on this form: `GameComboInput` is its own component and Comments is a
       // `Textarea`. The plan's own escape hatch is taken — the toggle is exercised HERE,
       // after every visual-mode read above, exactly as the plan permits. The ring is a
-      // property of the primitive (src/components/ui/Input.tsx ("focus-visible:ring-2 focus-visible:ring-focus-ring")), not of the mode. DECISION Phase 88.6.2-31 (ruling-B-e2e): line number kept as quoted text over an anchor — the number is the plan's offered cite, which this DEVIATION note quotes.
+      // property of the primitive (src/components/ui/Input.tsx ("'focus-visible:focus-ring'")), not of the mode. DECISION Phase 88.6.2-31 (ruling-B-e2e): line number kept as quoted text over an anchor — the number is the plan's offered cite, which this DEVIATION note quotes.
       await switchToManualEntry(page);
       const input = page.getByLabel(/start date & time/i);
       await expect(input).toBeVisible({ timeout: 15_000 });

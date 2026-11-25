@@ -512,7 +512,7 @@ export default function AvailabilityForm({
               onClick={handleImportGcal}
               disabled={isUnavailable || prefillSource === 'saved'}
               aria-disabled={prefillSource === 'gcal' ? 'true' : undefined}
-              className="flex-1 min-h-11 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
+              className="flex-1 min-h-11 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:focus-ring"
             >
               Import from Google Calendar
               <DelayedSpinner busy={prefillSource === 'gcal'} className="ml-2 align-middle" />
@@ -525,7 +525,7 @@ export default function AvailabilityForm({
             disabled={!hasSavedAvailability || isUnavailable || prefillSource === 'gcal'}
             aria-disabled={prefillSource === 'saved' ? 'true' : undefined}
             title={!hasSavedAvailability ? 'No saved availability for these dates' : undefined}
-            className="flex-1 min-h-11 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
+            className="flex-1 min-h-11 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:focus-ring"
           >
             Use my saved availability
             <DelayedSpinner busy={prefillSource === 'saved'} className="ml-2 align-middle" />
@@ -587,7 +587,7 @@ export default function AvailabilityForm({
           className={`
             w-full flex items-center justify-center gap-3 px-4 py-3 rounded-btn
             active:opacity-75 transition-colors duration-200
-            focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated
+            focus:outline-hidden focus-visible:focus-ring
             ${isUnavailable
               ? 'bg-status-error-subtle border-2 border-status-error text-content-status-error'
               : 'bg-surface-card border-2 border-line text-content-secondary hover:border-line-strong'

@@ -385,7 +385,8 @@ export function processSource(rel, text) {
         const ta = newTextOf.get(a) ?? cooked(a);
         const tb = newTextOf.get(b) ?? cooked(b);
         const ringy = (t) => /focus-ring/.test(t) || hasFamily(t);
-        if (ta === tb && ringy(ta)) f.identical.push(where(n));
+        // Two empty arms are what a halo-only conditional leaves after --write: still a hand site.
+        if (ta === tb && (ringy(ta) || ta.trim() === '')) f.identical.push(where(n));
       }
     }
   };
@@ -527,6 +528,9 @@ function selfTest() {
       "const c = on ? 'a focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card' : 'a focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page';\n";
     const r = processSource('a.ts', src);
     ok('12 identical arms', r.findings.identical.length === 1, JSON.stringify(r.findings.identical));
+    const emptied = processSource('a.ts', "const c = 'x' + (t ? ' focus-visible:ring-offset-surface-page' : ' focus-visible:ring-offset-surface-card');\n");
+    ok('12b halo-only arms emptied, then reported as identical', emptied.findings.identical.length === 1, JSON.stringify(emptied.findings));
+    ok('12c and still reported after the write', processSource('a.ts', emptied.text).findings.identical.length === 1);
   }
   // 13 raw text differs from cooked text
   {

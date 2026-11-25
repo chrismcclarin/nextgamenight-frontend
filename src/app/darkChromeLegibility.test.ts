@@ -243,9 +243,11 @@ describe('Phase 88.3 Req 7/8 — dark-chrome ring, muted labels, and the closed 
     // class at all and fell to the UA outline on warm-800, unlike their row-variant siblings.
     // They sit inside the `Header.js` container subtree, so they inherit its amber-400
     // `--ring` override and need no override of their own — only the utility classes.
+    // AMENDED Phase 89.6-13 (owner pick O-1 = B, 2026-11-22): the ring is the inset two-tone
+    // utility; the header subtree's ring pair colours it, so the read looks for the utility.
     for (const rel of ['app/components/NotificationBell.js', 'app/components/ThemeToggle.js']) {
       const src = read(rel);
-      const ringed = stringChunks(src).filter((c) => c.text.includes('focus-visible:ring-focus-ring'));
+      const ringed = stringChunks(src).filter((c) => c.text.split(/\s+/).includes('focus-visible:focus-ring-inset'));
       expect(
         ringed.map((c) => `${rel}:${lineAt(src, c.offset)}`),
         `${rel} should ring BOTH its row variant and its icon variant`,
@@ -253,7 +255,7 @@ describe('Phase 88.3 Req 7/8 — dark-chrome ring, muted labels, and the closed 
       // The full treatment, not just the colour — an inset ring that suppresses the UA outline.
       for (const c of ringed) {
         expect(c.text).toContain('focus:outline-hidden');
-        expect(c.text).toContain('focus-visible:ring-inset');
+        expect(c.text).not.toMatch(/focus-visible:ring-/);
       }
     }
   });

@@ -256,7 +256,7 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
                The `title` is KEPT for the desktop tooltip, but it is NOT the accessible name —
                `aria-label` is (§7.3: a bare `title` is not reliably exposed and is invisible on
                touch). Removing either one is a decision, not a cleanup. */
-            className="absolute right-2 flex h-6 w-6 items-center justify-center rounded-btn text-lg leading-none text-content-muted hover:text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring after:absolute after:-inset-2.5 after:content-['']"
+            className="absolute right-2 flex h-6 w-6 items-center justify-center rounded-btn text-lg leading-none text-content-muted hover:text-content-secondary focus:outline-hidden focus-visible:focus-ring after:absolute after:-inset-2.5 after:content-['']"
             aria-label="Clear game selection"
             title="Clear game selection"
           >

@@ -1026,7 +1026,7 @@ function SectionHeader({ headingId, panelId, expanded, onToggle, buttonRef, chil
         onClick={onToggle}
         aria-expanded={expanded}
         aria-controls={panelId}
-        className="w-full min-h-11 focus-visible:ring-inset focus-visible:ring-offset-0"
+        className="w-full min-h-11 focus-visible:focus-ring-inset"
       >
         <span className="flex w-full items-center justify-between gap-2 @max-[14rem]:-mx-4 @max-[14rem]:w-[calc(100%+2rem)]">
           <span className="min-w-0 text-left text-xl leading-tight font-bold text-content-primary">{children}</span>
@@ -1348,7 +1348,7 @@ const EventRow = forwardRef(function EventRow(
          enabled-hover variant exists to withhold the lift from a GATED CONTROL, and there is no
          control here to gate. REJECTED: leaving the alias in place for visual continuity.
          Re-spelling it back to `shadow-md` is a decision, not a cleanup. */
-      className={`p-3 sm:p-4 ${guest ? (hasBgImage ? GUEST_PICTURE_ROW_EDGE : GUEST_ROW_EDGE) : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card ${tinted && !statusTag ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+      className={`p-3 sm:p-4 ${guest ? (hasBgImage ? GUEST_PICTURE_ROW_EDGE : GUEST_ROW_EDGE) : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer focus:outline-hidden focus-visible:focus-ring ${tinted && !statusTag ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
       style={{
         ...(tinted && {
           '--group-ground': ground,

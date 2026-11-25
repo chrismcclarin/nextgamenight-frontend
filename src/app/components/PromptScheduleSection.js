@@ -283,7 +283,7 @@ export default function PromptScheduleSection({
             setIsExpanded((prev) => !prev);
           }
         }}
-        className="p-3 cursor-pointer hover:bg-surface-hover active:opacity-75 rounded-card transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+        className="p-3 cursor-pointer hover:bg-surface-hover active:opacity-75 rounded-card transition-colors focus:outline-hidden focus-visible:focus-ring-inset"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

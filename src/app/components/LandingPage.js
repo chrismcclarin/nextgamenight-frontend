@@ -119,7 +119,7 @@ export default function LandingPage() {
             <Button
               asChild
               variant="primary"
-              className="shadow-theme-lg enabled-hover:shadow-theme-lg w-full sm:w-80 min-h-11 focus-visible:ring-offset-surface-hero"
+              className="shadow-theme-lg enabled-hover:shadow-theme-lg w-full sm:w-80 min-h-11"
             >
               <a href="/api/auth/login">
                 Get Started
@@ -209,7 +209,7 @@ export default function LandingPage() {
                 unchanged. */}
             <a
               href="/api/auth/login?connection=google-oauth2"
-              className="bg-btn-secondary hover:bg-btn-secondary-hover text-btn-secondary-text border border-line-btn-secondary dark:bg-white/20 dark:hover:bg-white/30 dark:border-white/30 dark:text-white active:opacity-75 px-4 py-2 rounded-btn text-sm font-semibold transition-all w-full sm:w-80 min-h-11 text-center inline-flex items-center justify-center gap-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-hero"
+              className="bg-btn-secondary hover:bg-btn-secondary-hover text-btn-secondary-text border border-line-btn-secondary dark:bg-white/20 dark:hover:bg-white/30 dark:border-white/30 dark:text-white active:opacity-75 px-4 py-2 rounded-btn text-sm font-semibold transition-all w-full sm:w-80 min-h-11 text-center inline-flex items-center justify-center gap-2 focus:outline-hidden focus-visible:focus-ring"
             >
               {/* DECISION Phase 88-22 (Req 2): the four fills below stay RAW,
                   chosen OVER converting them to semantic tokens with the rest of

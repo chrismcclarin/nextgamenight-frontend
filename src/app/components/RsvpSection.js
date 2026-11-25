@@ -447,7 +447,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange, ho
                   aria-disabled={isLoading || undefined}
                   onClick={() => handleStatusClick(status)}
                   disabled={otherInFlight}
-                  className={`flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors first:rounded-l-[inherit] last:rounded-r-[inherit] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset
+                  className={`flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors first:rounded-l-[inherit] last:rounded-r-[inherit] focus:outline-hidden focus-visible:focus-ring-inset
                     ${idx > 0 ? 'border-l border-line' : ''}
                     ${isActive
                       ? `${config.activeBg} ${config.activeBorder} border-2 text-content-primary`

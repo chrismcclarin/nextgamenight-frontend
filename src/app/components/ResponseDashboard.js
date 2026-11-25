@@ -723,7 +723,7 @@ export default function ResponseDashboard({
           margins is a decision, not a cleanup. */}
       <button
         onClick={handleRefresh}
-        className="mt-1 -mb-3 min-h-11 text-sm text-content-muted hover:text-content-secondary active:opacity-75 inline-flex items-center gap-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+        className="mt-1 -mb-3 min-h-11 text-sm text-content-muted hover:text-content-secondary active:opacity-75 inline-flex items-center gap-1 focus:outline-hidden focus-visible:focus-ring"
       >
         <RefreshSpinIcon refreshing={refreshing} />
         Refresh
@@ -806,7 +806,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, statusId, onRemind 
       id={remindButtonIdFor(statusId)}
       onClick={() => onRemind(userId)}
       aria-disabled={isReminding || undefined}
-      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:text-content-muted shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+      className="-my-2 inline-flex min-h-11 items-center px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 aria-disabled:text-content-muted shrink-0 transition-colors focus:outline-hidden focus-visible:focus-ring"
     >
       {/* DECISION Phase 88.9-45 (rule 1, raw button): the Spinner primitive plus an sr-only ", sending" span are composed here by hand, chosen OVER converting this link-styled row control to Button (the unlayered .btn rules would repaint it) and OVER the Sending swap word. AMENDED Phase 88.9-56 (R-C3b reach): the spinner is the delayed, held element beside the label, outside the busy guard; a sent reminder replaces this button with its Reminded line (the hold ends with the host), a failed one keeps the button, so the spinner finishes its hold. */}
       Remind

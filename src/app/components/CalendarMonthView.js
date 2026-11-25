@@ -346,7 +346,7 @@ export default function CalendarMonthView({
         <div className="flex flex-wrap items-center justify-center gap-2">
           <button
             onClick={onGoToday}
-            className="mt-1 inline-flex items-center justify-center min-h-11 px-4 rounded-full border border-line bg-surface-card text-sm font-bold text-content-primary hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+            className="mt-1 inline-flex items-center justify-center min-h-11 px-4 rounded-full border border-line bg-surface-card text-sm font-bold text-content-primary hover:bg-surface-hover focus:outline-hidden focus-visible:focus-ring"
           >
             Today
           </button>
@@ -660,7 +660,7 @@ export default function CalendarMonthView({
                     aria-current={isCurrentDay ? 'date' : undefined}
                     className={`${variant === 'compact' ? `text-xs ${NARROW_DAY_NUMBER}` : 'text-sm'} mb-1 ${
                       dayTargetActive
-                        ? 'rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset '
+                        ? 'rounded-sm focus:outline-hidden focus-visible:focus-ring-inset '
                         : ''
                     }${
                       isCurrentDay ? 'text-content-accent' :
@@ -1155,7 +1155,7 @@ export default function CalendarMonthView({
                                  MEASURED BEFORE: ~20px (ARITHMETIC, not a rendered read — 16px
                                  `text-xs` line box + 2px `p-0.5` top and bottom). This is a
                                  decision, not a cleanup. */
-                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}${compactGuest ? ` ${GUEST_TILE_EDGE} ${GUEST_TILE_HOVER}` : tinted ? ' hover:opacity-90' : ''} ${dayEvents.length === 1 ? NARROW_SOLO_TILE : '@max-[14rem]:hidden'}`}
+                              className={`min-h-6 text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:focus-ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}${compactGuest ? ` ${GUEST_TILE_EDGE} ${GUEST_TILE_HOVER}` : tinted ? ' hover:opacity-90' : ''} ${dayEvents.length === 1 ? NARROW_SOLO_TILE : '@max-[14rem]:hidden'}`}
                               style={{
                                 ...(tinted && {
                                   '--group-ground': ground,
@@ -1297,7 +1297,7 @@ export default function CalendarMonthView({
                                beside the rows' export (src/app/components/GuestPill.tsx ("export const GUEST_TILE_EDGE")).
                                AMENDED Phase 88.9-52 (S-B1): a guest tile's hover is the solid edge, not the 90%
                                fade (src/app/components/GuestPill.tsx ("export const GUEST_TILE_HOVER")); a member tile keeps the fade. */
-                            className={`text-xs p-1 rounded-sm truncate ${guest ? GUEST_TILE_HOVER : 'hover:opacity-90'} transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''} ${guest ? GUEST_TILE_EDGE : isPastDate ? 'border border-[rgba(0,0,0,0.1)]' : 'border border-[rgba(0,0,0,0.2)]'}`}
+                            className={`text-xs p-1 rounded-sm truncate ${guest ? GUEST_TILE_HOVER : 'hover:opacity-90'} transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:focus-ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''} ${guest ? GUEST_TILE_EDGE : isPastDate ? 'border border-[rgba(0,0,0,0.1)]' : 'border border-[rgba(0,0,0,0.2)]'}`}
                             style={{
                               ...(tinted && {
                                 '--group-ground': ground,

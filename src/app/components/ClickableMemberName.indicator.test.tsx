@@ -892,7 +892,14 @@ describe('Phase 88.9-30 — F6a placement and the host-ground halo', () => {
     }
     utils.unmount();
 
+    // Re-pinned by plan 89.6-13: the unknown-key fallback was this component's own card halo
+    // literal, which the ring codemod deleted (owner pick O-1 = B retired the halo). hostGroundHalo
+    // names nothing for an unknown key, so no halo stands and the two-tone ring is unchanged.
+    // Plan 89.6-38 retires the rest of this it with hostGround.ts.
     renderName('none', { hostGround: 'nonsense' as HostGround });
-    for (const el of both()) expect(el, 'an unknown key: the card halo stands').toHaveClass(card);
+    for (const el of both()) {
+      expect(el.className, 'an unknown key: no halo token stands').not.toMatch(/ring-offset-/);
+      expect(el, 'an unknown key: the ring stands').toHaveClass('focus-visible:focus-ring');
+    }
   });
 });

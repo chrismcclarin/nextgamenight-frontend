@@ -51,7 +51,7 @@ const CentredPageFrame = React.forwardRef<HTMLDivElement, CentredPageFrameProps>
         ref={ref}
         data-slot="page-frame"
         className={cn(
-          'w-full max-w-xl rounded-card focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page',
+          'w-full max-w-xl rounded-card focus:outline-hidden focus-visible:focus-ring',
           className
         )}
         {...props}

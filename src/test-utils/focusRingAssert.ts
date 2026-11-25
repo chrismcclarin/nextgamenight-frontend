@@ -1,5 +1,12 @@
 // The keyboard focus ring as it is TODAY, described once for the unit tests.
 //
+// FLIPPED Phase 89.6-13 (owner pick O-1 = B, 2026-11-22: "Two-colour ring, 2px: a thin inner band
+// plus a darker outer ring; passes all 96"): every form is now the two-tone focus-ring utility
+// (src/app/globals.css, plan 89.6-12). Only the values and bodies changed; every name, signature
+// and the RingGround type are as plan 89.6-37 wrote them. Each expect also rejects the old
+// box-shadow ring-CLASS tokens; it never judges a halo colour token, because hostGround.ts keeps
+// emitting halos on its five consumers until plan 89.6-38.
+//
 // Every unit test that asserts a keyboard ring (outside the mechanism tests plan 89.6-13 owns)
 // reads its ring tokens from this module instead of writing them as literals. Five forms:
 //   - the offset form (the Button base and most controls): FOCUS_RING_CLASSES, expectFocusRing;
@@ -37,28 +44,20 @@ export type RingGround = 'card' | 'page' | 'elevated' | 'muted' | 'warning' | 'g
 /** An element, a class string, or a list of class tokens (each entry may hold several). */
 type RingTarget = Element | string | readonly string[];
 
-/** The offset form: a 2px focus-ring-coloured ring, 2px outside the box. */
-export const FOCUS_RING_CLASSES: readonly string[] = [
-  'focus-visible:ring-2',
-  'focus-visible:ring-focus-ring',
-  'focus-visible:ring-offset-2',
-];
+/** The offset form: the two-tone ring, 2px outside the box (the focus-ring utility). */
+export const FOCUS_RING_CLASSES: readonly string[] = ['focus-visible:focus-ring'];
 
-/** The inset form: the same ring drawn inside the box. */
-export const FOCUS_RING_INSET_CLASSES: readonly string[] = [
-  'focus-visible:ring-2',
-  'focus-visible:ring-inset',
-  'focus-visible:ring-focus-ring',
-];
+/** The inset form: the two-tone ring drawn inside the box. */
+export const FOCUS_RING_INSET_CLASSES: readonly string[] = ['focus-visible:focus-ring-inset'];
 
-/** The edge form: a ring with no offset; its colour is expectFocusRingEdge's argument. */
-export const FOCUS_RING_EDGE_CLASSES: readonly string[] = ['focus-visible:ring-2'];
+/** The former edge form (no offset): the codemod mapped it to the outset utility. */
+export const FOCUS_RING_EDGE_CLASSES: readonly string[] = ['focus-visible:focus-ring'];
 
 /** The peer form: the ring a focused input paints on its styled sibling. */
-export const FOCUS_RING_PEER_CLASSES: readonly string[] = ['peer-focus-visible:ring-2'];
+export const FOCUS_RING_PEER_CLASSES: readonly string[] = ['peer-focus-visible:focus-ring'];
 
-/** The token every ring string in source carries today, in every form (a substring match). */
-export const FOCUS_RING_SOURCE_TOKEN = 'focus-visible:ring-2';
+/** The token every ring string in source carries, in every form (a substring match). */
+export const FOCUS_RING_SOURCE_TOKEN = 'focus-visible:focus-ring';
 
 // Ground to halo colour. Held here OVER importing HOST_GROUND_HALO: plan 89.6-38 deletes
 // hostGround.ts, and the landing hero ground is not in that map.
@@ -72,8 +71,11 @@ const GROUND_HALO: Record<RingGround, string> = {
   hero: 'surface-hero',
 };
 
-const OUTSIDE_OFFSET = /^focus-visible:ring-offset-[1-9][0-9]*$/;
-const HALO_COLOUR = /^focus-visible:ring-offset-(?![0-9]+$).+$/;
+// An old box-shadow ring-CLASS token on any focus-visible chain (peer- and group- included). Halo
+// colour tokens (ring-offset-<colour>) are deliberately NOT here until plan 89.6-38.
+const OLD_RING_CLASS = /^(?:[^\s:]+:)*?(?:peer-|group-)?focus-visible:ring-(?:2|inset|focus-ring|ring|offset-[0-9]+)$/;
+// Any ring-offset token on a focus-visible chain, width or colour (expectRingGround's check).
+const ANY_RING_OFFSET = /^(?:[^\s:]+:)*?(?:peer-|group-)?focus-visible:ring-offset-/;
 
 // A class string may be a slice of SOURCE text (a source scan hands over a whole open tag), so
 // quotes, backticks and braces split tokens as whitespace does: className="a b" reads as a, b.
@@ -97,46 +99,53 @@ function expectNone(tokens: string[], bad: (t: string) => boolean, what: string,
   expect(found, `${label ?? 'element'}: ${what} (${found.join(', ')})`).toEqual([]);
 }
 
-/** The offset form is present in full. */
-export function expectFocusRing(target: RingTarget, label?: string): void {
-  expectAll(tokensOf(target), FOCUS_RING_CLASSES, 'the focus ring', label);
+function expectNoOldRing(tokens: string[], label?: string) {
+  expectNone(tokens, (t) => OLD_RING_CLASS.test(t), 'an old box-shadow ring token is left', label);
 }
 
-/** The inset form is present in full, with no outside offset (ring-offset-0 is allowed). */
+/** The offset form is present, and no old ring token is. */
+export function expectFocusRing(target: RingTarget, label?: string): void {
+  const tokens = tokensOf(target);
+  expectAll(tokens, FOCUS_RING_CLASSES, 'the focus ring', label);
+  expectNoOldRing(tokens, label);
+}
+
+/**
+ * The inset form is present, and no old ring token is. A focus-visible:focus-ring beside it is
+ * allowed: a Button call site passing the inset form also carries the base's outset utility, cn()
+ * cannot see that the two custom utilities conflict, and the inset rule wins because it is emitted
+ * after the outset one (pinned by src/app/focusRingUtility.test.ts ("3. both focus-visible ring utilities")).
+ */
 export function expectFocusRingInset(target: RingTarget, label?: string): void {
   const tokens = tokensOf(target);
   expectAll(tokens, FOCUS_RING_INSET_CLASSES, 'the inset focus ring', label);
-  expectNone(tokens, (t) => OUTSIDE_OFFSET.test(t), 'an inset ring carries an outside offset', label);
+  expectNoOldRing(tokens, label);
 }
 
-/** The edge form and its colour are present, with no inset and no outside offset. */
+/** The former edge form: the outset utility is present, and no old ring token is. */
 export function expectFocusRingEdge(
   target: RingTarget,
   colour = 'focus-visible:ring-focus-ring',
   label?: string,
 ): void {
+  // The colour argument is ignored since the flip: the two-tone ring has no colour token.
+  void colour;
   const tokens = tokensOf(target);
-  expectAll(tokens, [...FOCUS_RING_EDGE_CLASSES, colour], 'the edge focus ring', label);
-  expectNone(
-    tokens,
-    (t) => t === 'focus-visible:ring-inset' || OUTSIDE_OFFSET.test(t),
-    'an edge ring carries an inset or an outside offset',
-    label,
-  );
+  expectAll(tokens, FOCUS_RING_EDGE_CLASSES, 'the edge focus ring', label);
+  expectNoOldRing(tokens, label);
 }
 
 /**
- * The halo for this ground is present and no other un-prefixed halo colour is (a dark: variant
- * is not judged here). Never for an element whose halo comes from hostGroundHalo.
+ * No ring-offset token of any kind, width or halo, whatever the ground: owner pick O-1 = B
+ * retired the halo, and the codemod deleted every halo a component or call site wrote as a
+ * literal. The ground stays in the failure text. Never for an element whose halo comes from
+ * hostGroundHalo (plan 89.6-38).
  */
 export function expectRingGround(target: RingTarget, ground: RingGround, label?: string): void {
-  const tokens = tokensOf(target);
-  const want = `focus-visible:ring-offset-${GROUND_HALO[ground]}`;
-  expectAll(tokens, [want], `the ${ground}-ground halo`, label);
   expectNone(
-    tokens,
-    (t) => HALO_COLOUR.test(t) && t !== want,
-    `another halo beside the ${ground}-ground one`,
+    tokensOf(target),
+    (t) => ANY_RING_OFFSET.test(t),
+    `the ${ground}-ground halo (${GROUND_HALO[ground]}) is retired; a ring-offset token is left`,
     label,
   );
 }

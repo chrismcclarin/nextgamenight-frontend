@@ -709,7 +709,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 {removedNoticeShown && (
                     <button
                         onClick={dismissRemovedNotice}
-                        className="text-content-status-warning hover:text-content-primary hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 md:-my-1 rounded-btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
+                        className="text-content-status-warning hover:text-content-primary hover:underline text-xs shrink-0 min-h-12 min-w-12 px-2 -mx-2 -my-3 md:-my-1 rounded-btn focus:outline-hidden focus-visible:focus-ring"
                         aria-label="Dismiss"
                     >
                         Dismiss
@@ -787,7 +787,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                         onClick={() => setCalendarSheetOpen(true)}
                         aria-haspopup="dialog"
                         aria-label={calendarButtonLabel}
-                        className="min-h-11 min-w-11 gap-2 focus-visible:ring-offset-surface-page [--color-btn-secondary-bg:var(--color-btn-secondary-page-bg)] [--color-btn-secondary-gated-bg:var(--color-btn-secondary-page-bg)]"
+                        className="min-h-11 min-w-11 gap-2 [--color-btn-secondary-bg:var(--color-btn-secondary-page-bg)] [--color-btn-secondary-gated-bg:var(--color-btn-secondary-page-bg)]"
                     >
                         {/* Decorative — the explicit aria-label above is the accessible name. */}
                         <Icon name="CalendarDays" size={20} />

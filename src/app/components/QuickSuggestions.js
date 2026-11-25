@@ -312,7 +312,7 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
               onClick={onRetry}
               aria-disabled={retrying || undefined}
               aria-label={retrying ? 'Try again, retrying' : undefined}
-              className="ml-auto shrink-0 inline-flex items-center min-h-11 text-xs font-bold text-content-accent aria-disabled:text-content-muted underline underline-offset-2 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+              className="ml-auto shrink-0 inline-flex items-center min-h-11 text-xs font-bold text-content-accent aria-disabled:text-content-muted underline underline-offset-2 rounded-sm focus:outline-hidden focus-visible:focus-ring"
             >
               Try again
               <DelayedSpinner busy={retrying} className="ml-2 align-middle" />

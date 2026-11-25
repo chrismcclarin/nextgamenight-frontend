@@ -2461,8 +2461,11 @@
      equal the resting accent and delete the hover cue; it is the same step the dark link already
      ships, this file ("--color-text-link-hover: var(--amber-300);"). The dark focus ring is
      amber-400 too and reads 1.00 against an accent fill: every house ring keeps its offset halo,
-     src/app/cascadeOrder.test.ts ("every house offset ring in src declares a surface halo"); never
-     drop the offset on an accent control. The light theme does not move. */
+     src/app/cascadeOrder.test.ts ("no box-shadow focus ring and no halo remains in src"); never
+     drop the offset on an accent control. The light theme does not move.
+     AMENDED Phase 89.6-13: owner pick O-1 = B, 2026-11-22 retired the halo; the two-tone ring's
+     purple-950 inner band separates the amber-400 outer ring from an accent fill, and the outset
+     utility keeps its 2px offset. */
   --color-accent: var(--amber-400);
   --color-accent-hover: var(--amber-300);
   /* Phase 88.3 (Req 4): the dark half of the accent rename + mint. The full rationale, the two

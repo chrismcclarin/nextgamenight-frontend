@@ -288,7 +288,11 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
       // output back: ONE token moved, the focus arm, from the strong border to the input edge
       // (the marker is on that arm in `Input.tsx`). Every other class is byte-identical and in
       // the same order; nothing was dropped by `tailwind-merge`. Plan 89.6-09 declares this file.
-      'block w-full p-2 max-md:min-h-11 rounded-btn border border-input bg-surface-input text-base text-content-primary focus:outline-hidden focus-visible:border-input focus-visible:ring-2 focus-visible:ring-focus-ring pr-11 rounded-card'
+      //
+      // RE-SEEDED Phase 89.6-13 (owner pick O-1 = B, 2026-11-22), by running the assertion: the ring
+      // pair focus-visible:ring-2 focus-visible:ring-focus-ring became the one utility
+      // focus-visible:focus-ring, in the same place; every other class is byte-identical.
+      'block w-full p-2 max-md:min-h-11 rounded-btn border border-input bg-surface-input text-base text-content-primary focus:outline-hidden focus-visible:border-input focus-visible:focus-ring pr-11 rounded-card'
     );
   });
 });

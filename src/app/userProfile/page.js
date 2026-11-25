@@ -2567,7 +2567,7 @@ function Profile(){
                                decision, not a cleanup.
                                AMENDED Phase 88.9-58 (X21b): light box now amber-200 (the X21b pick); ring vs halo
                                re-measured 6.26 light / 6.37 dark, band 1.00. */
-                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-status-warning hover:text-content-primary text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-status-warning-subtle"
+                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-status-warning hover:text-content-primary text-lg leading-none shrink-0 focus:outline-hidden focus-visible:focus-ring"
                             aria-label="Dismiss"
                         >
                             ×
@@ -2593,7 +2593,7 @@ function Profile(){
                     (R7-M7) rules the change, and plan 88.6.1-55 amends that marker in place.
                     Dropping any of the three is a decision, not a cleanup. */}
                 <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated">Home</Link>
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
                     <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     {/* DECISION Phase 88.6-17 (D-03 emphasis / T-88.6-138): the current-page span
                         takes 400 plus a colour token, and gains `aria-current="page"` in the SAME
@@ -2777,7 +2777,7 @@ function Profile(){
                                                 clearReceipt();
                                                 setEditingUsername(true);
                                             }}
-                                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:focus-ring-inset"
                                             title="Edit username"
                                         >
                                             <span aria-hidden="true">✏️</span>
@@ -3102,7 +3102,7 @@ function Profile(){
                                                 (R3 finding 144) — this control carried none. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary mt-1 focus:outline-hidden focus-visible:focus-ring"
                                             >
                                                 Change number
                                             </button>
@@ -3128,7 +3128,7 @@ function Profile(){
                                             {/* A10: floored in place — see the Remove marker below. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline sm:ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline sm:ml-2 focus:outline-hidden focus-visible:focus-ring"
                                             >
                                                 Change number
                                             </button>
@@ -3203,7 +3203,7 @@ function Profile(){
                                                 {...removePhoneTriggerProps}
                                                 onClick={handleRemovePhone}
                                                 {...(removingPhone ? { 'aria-disabled': 'true', 'aria-label': 'Remove, removing' } : {})}
-                                                className={`-mx-2 ml-3 inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring${
+                                                className={`-mx-2 ml-3 inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring${
                                                     removePhoneGate.isArmed() ? ' font-semibold' : ''
                                                 }`}
                                             >
@@ -4035,7 +4035,7 @@ function Profile(){
                                             onClick={handleCreateRecurringPattern}
                                             aria-disabled={savingPattern ? 'true' : undefined}
                                             busy={savingPattern}
-                                            className="w-full focus-visible:ring-offset-surface-page"
+                                            className="w-full"
                                         >
                                             Save Schedule
                                         </Button>
@@ -4138,7 +4138,7 @@ function Profile(){
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
-                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring justify-self-end sm:col-start-2 sm:row-start-1 sm:row-span-2 ${
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring justify-self-end sm:col-start-2 sm:row-start-1 sm:row-span-2 ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
@@ -4255,7 +4255,7 @@ function Profile(){
                                             onClick={handleCreateSpecificOverride}
                                             aria-disabled={savingPattern ? 'true' : undefined}
                                             busy={savingPattern}
-                                            className="w-full focus-visible:ring-offset-surface-page"
+                                            className="w-full"
                                         >
                                             Save Override
                                         </Button>
@@ -4310,7 +4310,7 @@ function Profile(){
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
-                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring justify-self-end sm:col-start-2 sm:row-start-1 sm:row-span-2 ${
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring justify-self-end sm:col-start-2 sm:row-start-1 sm:row-span-2 ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
@@ -4488,7 +4488,7 @@ function Profile(){
                                 onClick={handleImportCollectionClick}
                                 disabled={!bggUsername.trim() || (!selfUuid && selfQuery.isPending)}
                                 aria-disabled={importingCollection ? 'true' : undefined}
-                                className="whitespace-nowrap focus-visible:ring-offset-surface-page"
+                                className="whitespace-nowrap"
                                 busy={importingCollection}
                                 busySuffix=", importing"
                             >
@@ -4590,7 +4590,7 @@ function Profile(){
                                     onClick={searchBGG}
                                     disabled={!bggSearchQuery.trim()}
                                     aria-disabled={bggSearching ? 'true' : undefined}
-                                    className="whitespace-nowrap focus-visible:ring-offset-surface-page"
+                                    className="whitespace-nowrap"
                                     busy={bggSearching}
                                     busySuffix=", searching"
                                 >
@@ -4839,7 +4839,7 @@ function Profile(){
                                     }}
                                     aria-expanded={collectionOpen}
                                     aria-controls={collectionGridId}
-                                    className="flex w-full min-h-12 items-center justify-center gap-2 text-sm text-content-primary rounded-b-card scroll-mt-20 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                                    className="flex w-full min-h-12 items-center justify-center gap-2 text-sm text-content-primary rounded-b-card scroll-mt-20 focus:outline-hidden focus-visible:focus-ring-inset"
                                 >
                                     {collectionOpen ? 'Show fewer' : `Show all ${ownedGames.length} games`}
                                     <Icon name={collectionOpen ? 'ChevronUp' : 'ChevronDown'} size={16} />
@@ -4997,7 +4997,7 @@ const CollectionCard = memo(function CollectionCard({
                     size="body"
                     className={
                         isFirstRevealed
-                            ? 'text-content-primary scroll-mt-20 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring'
+                            ? 'text-content-primary scroll-mt-20 rounded-sm focus:outline-hidden focus-visible:focus-ring'
                             : 'text-content-primary'
                     }
                 >
@@ -5081,7 +5081,7 @@ const CollectionCard = memo(function CollectionCard({
                     // AMENDED Phase 88.9-52 (PIX-2, W38 one look, picture pass): claim (2) was not true as built. Rendered at 375 the X moved 7px RIGHT while busy (left edge 302 to 309): the 32px box was CENTRED in the 44px button at rest (6px each side), and once the spinner made the box 50px, wider than the button, it sat flush with the button's right edge (6px), with the 2px of centring slack round the X gone as well (1px). Now, at rest and while busy, the button anchors the box 6px inside its right edge (justify-end, pr-1.5: 44 - 6 - 32 leaves the same 6px on the left at rest) and the box pads 5px a side (px-1.25: 20 + 10 + 2 = 32, no slack), so the X's right edge is 12px inside the button's right edge in both states and the box grows left only (52px box, 58px button, inside the slot's reserve). Chosen OVER a spinner slot reserved at rest (a 52px box for good, X53 rejected the large resting box) and OVER an absolutely placed spinner (it would sit outside the border, and an icon button's busy sign belongs in its box). The ARMED button keeps the centred, unpadded string: its box is the slot's whole reserve, and 6px of padding would widen the slot on arming and push the title (walk row 573). Arithmetic at the default text size only, not rendered: with enlarged text the box's rem minimum is larger than the 20px icon needs, the slack returns and the X can still shift while busy.
                     // AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the box and the x the two lines above describe are gone; the button is the schedule Delete's class string plus ml-auto and shrink-0 (the Friends Remove's form), 600 while armed, and the spinner still leads.
                     {...(removing ? { 'aria-disabled': 'true', 'aria-label': `Remove ${game.name}, removing` } : {})}
-                    className={`ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring${
+                    className={`ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring${
                         armed ? ' font-semibold' : ''
                     }`}
                 >

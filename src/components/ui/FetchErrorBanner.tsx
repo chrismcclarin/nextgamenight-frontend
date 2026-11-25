@@ -457,7 +457,7 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, host
           notices, and the floor suite counts this ONE element (`bannerRetries`, expectedCount 2).
 
           DECISION Phase 88.6.1-21 (Req 7 ring): the same three carry the byte-identical
-          house ring (src/components/ui/Button.tsx ("focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"); 54 non-test lines in 28 files carried it before this
+          house ring (src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:focus-ring'"); 54 non-test lines in 28 files carried it before this
           plan, measured 2026-10-15), keyboard-only by `focus-visible`. It is a box-shadow
           outside the box, clear of the message above (`mt-2`) and the neighbours (`gap-2` /
           `gap-4`). The orchestrator decision of 2026-10-05; it supersedes the earlier plan to
@@ -475,7 +475,7 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, host
         aria-disabled={retrying || undefined}
         aria-describedby={textId}
         className={cn(
-          'inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-card',
+          'inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:focus-ring',
           hostGroundHalo(hostGround)
         )}
       >
@@ -784,7 +784,7 @@ export function FetchErrorBanner({
           ref={signInRef}
           href={buildSignInUrl()}
           onFocus={watchFocus}
-          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
+          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:focus-ring"
         >
           Sign in
         </a>
@@ -795,7 +795,7 @@ export function FetchErrorBanner({
           onClick={handleRetry}
           onFocus={watchFocus}
           aria-disabled={retrying || undefined}
-          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
+          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:focus-ring"
         >
           {/* Same in-flight shape as the shared row's Retry — see the rule 1 B37/B38 marker there. */}
           <RetrySlot retrying={retrying} />
@@ -832,7 +832,7 @@ export function FetchErrorBanner({
           type="button"
           onClick={handleReportPress}
           onFocus={watchReportFocus}
-          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated"
+          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:focus-ring"
         >
           <Icon name="Flag" size={14} />
           Report this

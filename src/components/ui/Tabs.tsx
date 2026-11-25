@@ -84,7 +84,7 @@ const TabsTrigger = React.forwardRef<
       // §7.2: `focus-visible` only; `outline-hidden` keeps the transparent outline
       // forced-colors mode needs (v4's `outline-none` removes it outright).
       // X54: inset, the KebabMenu item idiom inside a clipping box.
-      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring',
+      'focus:outline-hidden focus-visible:focus-ring-inset',
       'disabled:cursor-not-allowed disabled:opacity-50',
       className
     )}
@@ -103,7 +103,7 @@ const TabsContent = React.forwardRef<
     // holds no focusable child — which means it can receive focus and therefore needs
     // a ring of its own.
     className={cn(
-      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring',
+      'focus:outline-hidden focus-visible:focus-ring',
       className
     )}
     {...props}

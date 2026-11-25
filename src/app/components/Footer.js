@@ -115,19 +115,19 @@ function PublicFooter() {
           <div className="flex flex-wrap items-center justify-center gap-4 md:max-w-[calc(100%_-_88px_+_1rem)]">
             <a
               href="/about"
-              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
             >
               About
             </a>
             <a
               href="/Privacy"
-              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
             >
               Privacy
             </a>
             <a
               href="/terms"
-              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
             >
               Terms
             </a>
@@ -157,25 +157,25 @@ function AuthFooter() {
             <div className="flex flex-wrap items-center justify-center gap-4 md:max-w-[calc(100%_-_88px_+_1rem)]">
               <a
                 href="/about"
-                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
               >
                 About
               </a>
               <a
                 href="/Privacy"
-                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
               >
                 Privacy
               </a>
               <a
                 href="/terms"
-                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
               >
                 Terms
               </a>
               <button
                 onClick={() => setShowFeedbackForm(true)}
-                className="hover:text-content-secondary transition-colors min-h-11 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-page"
+                className="hover:text-content-secondary transition-colors min-h-11 focus:outline-hidden focus-visible:focus-ring"
                 aria-label="Report bug or suggest feature"
               >
                 Report bug
