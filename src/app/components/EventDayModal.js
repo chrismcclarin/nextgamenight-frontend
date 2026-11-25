@@ -514,7 +514,10 @@ export default function EventDayModal({
                     {/* F3b (88.9-39, owner pick, votes-b5 v10): gap-2 — 8px between the tag column and the picture. */}
                     <div className="flex justify-between items-start gap-2 relative z-10">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          {/* Phase 89.6-28 (D05, SPEC R4): the title row wraps, so at 200% text the status tag drops
+                              under the title instead of holding the row 58px past the dialog at 320 (CI run
+                              45698640190); at normal text everything still fits on one line, so nothing moves. */}
                           {/* DECISION Phase 88.6-27 (D-14b, RESEARCH §C.2 Open Question 6):
                                 `shadow-xs` -> `shadow-theme-sm`. THIS ELEMENT HAD NO MARKER AT
                                 ALL, which is why D-14b never named it.

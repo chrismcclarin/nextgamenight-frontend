@@ -206,8 +206,14 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
       <Modal.Header>{title}</Modal.Header>
       <Modal.Body>
         {/* QR Code: a 4-module white quiet zone (O-2 B, 'the code with a full white border'), the
-            default dark-on-white colours in both themes (never inverted: the O-2 card read). */}
-        <div className="flex justify-center mb-4">
+            default dark-on-white colours in both themes (never inverted: the O-2 card read).
+            DECISION Phase 89.6-28 (D06 code size): the code keeps its full 200px at every width, in a
+            fit-content block centred by auto margins, chosen OVER the flex centring it had, which let
+            the code shrink to the room (measured 165px at the 215px page-zoom width and 137px at 187,
+            CI run 45698640190): a shrunk code is a loss of function, while a box that scrolls sideways
+            at those widths still shows all of it. Auto margins (not justify-center) so an overflow
+            runs to the right, where scrolling reaches it. Changing this is a decision, not a cleanup. */}
+        <div className="mx-auto mb-4 w-fit">
           <QRCodeSVG
             value={url || ''}
             size={200}
