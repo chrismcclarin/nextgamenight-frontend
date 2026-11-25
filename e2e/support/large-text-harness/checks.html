@@ -502,6 +502,19 @@
   </main>
 </section>
 
+<!-- T1's counterpart (89.6-16, ruling D14): an absolutely positioned box that FILLS its relative parent (inset-0, the shape of Home's stacked groups list) holds a card whose side padding leaves less room than the word, and the frame has room for it. The positioned box holds nothing narrow: the card's padding takes the room. WIDE. The read as built before D14 called it held by the positioned box. -->
+<section data-case="split-positioned-fills-parent">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-column relative h-[200px]">
+      <div class="lt-list absolute inset-0">
+        <div class="lt-card rounded-card border border-line bg-surface-card px-[70px]">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
 <!--
   T2, the middle word of a padded inline box, bad form only. Sized like the padded pill above: the
   row is the word plus 36px wide. The inline box has 20px of padding on each side, which sits only

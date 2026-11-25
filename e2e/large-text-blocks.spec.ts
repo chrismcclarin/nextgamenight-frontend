@@ -763,6 +763,33 @@ test('check: split, T1 (89.6-02, R6): a word in a pop-up of fixed width is held 
   expect(requests, 'the page made a request').toEqual([]);
 });
 
+test('check: split, T1 filled (89.6-16, D14): a word in a padded card inside a positioned box that fills its relative parent is wide, not held by the positioned box', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const filled = await splitCase(page, 'split-positioned-fills-parent');
+  // The shape, measured after the read: the positioned box is as wide as its parent's padding box, and the word is
+  // wider than the card's content but not than the frame's.
+  const shape = await page.evaluate(() => {
+    const contentOf = (el: Element) => {
+      const cs = getComputedStyle(el);
+      return el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    };
+    const column = document.querySelector('.lt-column') as HTMLElement;
+    const list = document.querySelector('.lt-list') as HTMLElement;
+    const card = document.querySelector('.lt-card') as HTMLElement;
+    const name = document.querySelector('.lt-name') as HTMLElement;
+    const frame = document.querySelector('[data-frame]') as HTMLElement;
+    name.style.whiteSpace = 'nowrap';
+    name.style.width = 'max-content';
+    return { column: column.clientWidth, list: list.getBoundingClientRect().width, card: contentOf(card), word: name.getBoundingClientRect().width, frame: contentOf(frame) };
+  });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ filled, shape }, null, 2), contentType: 'application/json' });
+  expect(Math.abs(shape.list - shape.column), `the positioned box does not fill its parent: the harness is not the shape it says (${JSON.stringify(shape)})`).toBeLessThanOrEqual(0.5);
+  expect(shape.word, `the word fits the card: the harness is not the shape it says (${JSON.stringify(shape)})`).toBeGreaterThan(shape.card + 0.5);
+  expect(shape.word, `the word is wider than the frame: the harness is not the shape it says (${JSON.stringify(shape)})`).toBeLessThan(shape.frame - 0.5);
+  expectWide(filled, 'a word in a card with 70px of side padding, inside an absolute inset-0 box that fills its relative parent');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
 test('check: split, T2 (89.6-02, R6): reports the middle word of a padded inline box, which has a line of its own with no padding once its row stacks', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
   const middle = await splitCase(page, 'split-inline-middle');
