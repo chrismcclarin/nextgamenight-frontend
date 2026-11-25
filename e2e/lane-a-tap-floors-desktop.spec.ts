@@ -2,9 +2,13 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 
 import {
   assertTheme,
+  compositeGround,
+  contrastRatio,
   describeGround,
   describeRatio,
+  describeRing,
   focusByKeyboard,
+  focusRingMeasurement,
   forceLightMode,
   groundResolutionOf,
   probeElement,
@@ -269,14 +273,23 @@ async function timezoneRowCue(page: Page, theme: Theme): Promise<void> {
     const row = active;
     await expect(row).toHaveText(/\S/);
 
-    // The cue: ring colour, ring-inset, AND a real inset box-shadow layer — ring-inset only sets a
-    // custom property and only a ring WIDTH utility writes box-shadow, so the first two reads alone
-    // would pass a fix that ships no ring width. Pre-fix the ring colour read throws.
+    // The cue: an inset box-shadow layer with a real spread, and ITS colour against the row's
+    // ground. AMENDED Phase 89.6-14: this is the listbox's active-option highlight, a selection ring
+    // with no focus-visible prefix (src/components/ui/Combobox.tsx ("activeIndex === index && !item.disabled && 'ring-2 ring-inset")),
+    // which the ring codemod (plan 89.6-13) did not touch, so the two-tone ring reader does not apply.
+    // It used to read Tailwind's ring colour and inset variables; it now reads the painted inset layer
+    // itself, so it still fails when the highlight ships no ring width, no inset, or a colour under 3:1.
     const cueLabel = `A6e at 1280 (${theme}) highlighted timezone row inset cue`;
-    const cue = await ratioAgainstGround(row, cueLabel, '--tw-ring-color');
-    expect(cue.ratio, describeRatio(cueLabel, NON_TEXT, cue)).toBeGreaterThanOrEqual(NON_TEXT);
-    const p = await probeElement(row, ['--tw-ring-inset', 'box-shadow']);
-    expect(p.computed['--tw-ring-inset']?.raw.trim(), `${cueLabel}: computed --tw-ring-inset is not inset`).toBe('inset');
+    const p = await probeElement(row, ['box-shadow']);
+    const cueLayer = (p.shadowLayers ?? []).find((layer) => layer.inset && (layer.lengths[3] ?? 0) !== 0 && (layer.colour.alpha ?? 0) > 0);
+    const cueGround = compositeGround(p, 0);
+    const cueColour = cueLayer?.colour.css ?? null;
+    const cueRatio = cueColour && cueGround ? contrastRatio(cueColour, cueGround) : null;
+    expect(
+      cueRatio ?? 0,
+      `${cueLabel}: the inset cue layer ${cueColour ?? '(none)'} on the row ground ${cueGround ?? '(none)'} measures ` +
+        `${cueRatio === null ? 'nothing' : cueRatio.toFixed(3)}:1, floor ${NON_TEXT}:1 (box-shadow ${p.computed['box-shadow']?.raw ?? ''})`
+    ).toBeGreaterThanOrEqual(NON_TEXT);
     const shadow = p.computed['box-shadow']?.raw ?? '';
     const insetSpread = shadowLayers(shadow).some((layer) => {
       if (!/\binset\b/.test(layer)) return false;
@@ -305,17 +318,6 @@ const REMOVED_REGION = '[data-testid="removed-from-group-status"]';
 const REMOVED_SENTENCE = "You're no longer a member of that group.";
 const REMOVED_PATH = '/?removedFrom=' + encodeURIComponent('E2E removed group');
 
-/** The largest spread among the non-inset layers of a computed box-shadow: how far the ring paints past the box. */
-function ringExtent(shadow: string): number {
-  let extent = 0;
-  for (const layer of shadowLayers(shadow)) {
-    if (/\binset\b/.test(layer)) continue;
-    const lengths = [...layer.matchAll(/(-?[\d.]+)px/g)].map((m) => Number(m[1]));
-    if (lengths.length >= 4 && lengths[3] > extent) extent = lengths[3];
-  }
-  return extent;
-}
-
 async function removedDismissRing(page: Page, theme: Theme): Promise<void> {
   for (const width of [1280, 1440]) {
     await page.setViewportSize({ width, height: 720 });
@@ -325,10 +327,15 @@ async function removedDismissRing(page: Page, theme: Theme): Promise<void> {
 
     const dismiss = page.getByRole('button', { name: 'Dismiss', exact: true });
     const notice = region.locator('xpath=..');
-    await focusByKeyboard(page, dismiss);
+    const label = `removed-notice Dismiss at ${width} (X19, ${theme})`;
+    // AMENDED Phase 89.6-14 (O-1 B): the ring's reach comes from the shared reader (the outline's
+    // offset plus its width, or the widest outward spread), not from the box-shadow alone, which
+    // reads the 4px outline ring as 2px. The reader focuses by keyboard, waits for transitions and
+    // throws on any non-house shape.
+    const ring = await focusRingMeasurement(page, dismiss, label);
+    const extent = ring.reach;
 
     const read = async () => {
-      const shadow = await dismiss.evaluate((el) => getComputedStyle(el).boxShadow);
       const box = await dismiss.evaluate((el) => {
         const r = el.getBoundingClientRect();
         return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
@@ -337,16 +344,14 @@ async function removedDismissRing(page: Page, theme: Theme): Promise<void> {
         const r = el.getBoundingClientRect();
         return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, height: r.height };
       });
-      return { shadow, box, outer, extent: ringExtent(shadow) };
+      return { box, outer };
     };
 
-    const label = `removed-notice Dismiss at ${width} (X19, ${theme})`;
-    // The ring is drawn (a vacuity guard: without it every containment check below passes on nothing).
-    await expect
-      .poll(async () => (await read()).extent, { message: `${label}: no focus ring was drawn (no outer box-shadow spread)` })
-      .toBeGreaterThan(0);
+    // The ring is drawn (a vacuity guard: without it every containment check below passes on
+    // nothing): the reader resolved, and its reach is above 0.
+    expect(extent, `${label}: no focus ring reaches outside the control. ${describeRing(label, ring)}`).toBeGreaterThan(0);
 
-    const { box, outer, extent } = await read();
+    const { box, outer } = await read();
     const numbers =
       `box ${box.width.toFixed(2)} x ${box.height.toFixed(2)}, ring extent ${extent}px, notice ${outer.height.toFixed(2)}px tall; ` +
       `ring edges past the notice: top ${(outer.top - (box.top - extent)).toFixed(2)}, bottom ${(box.bottom + extent - outer.bottom).toFixed(2)}, ` +

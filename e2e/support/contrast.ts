@@ -877,18 +877,6 @@ export function describeRing(label: string, m: RingMeasurement): string {
 }
 
 /**
- * Retired by plan 89.6-14 (owner pick O-1 B): the halo is a fixed inner band now, so the
- * "halo equals the surface" read is replaced by the band read. Kept as a throwing stub for one
- * commit only, so a caller not yet moved fails loudly; plan 89.6-14 Task 4 deletes it.
- */
-export async function haloGroundRatio(
-  _m: Measurement & { ringGroundKind: string },
-  _anchor: Locator
-): Promise<{ ratio: number; halo: string; behind: string; ownFill: string | null; behindSource: 'parent' }> {
-  throw new Error('haloGroundRatio is retired by 89.6-14 under pick O-1 B: assert m.bandRatio against C40_BAND');
-}
-
-/**
  * Phase 88.9-01 — text ink contrast THROUGH ancestor opacity (the pick tooling's `inkRatio`).
  *
  * WHY IT EXISTS beside `ratioAgainstGround`: that helper reads the computed `color` and ignores

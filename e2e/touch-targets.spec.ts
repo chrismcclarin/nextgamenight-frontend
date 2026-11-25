@@ -8,7 +8,7 @@ import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './suppo
 // the ring rules never apply. Its own docblock in e2e/support/contrast.ts carries the reasoning.
 // A local copy would be the duplication this project's tenet forbids; `support/contrast.ts` is not
 // a spec file, so importing it adds no collected suite.
-import { focusByKeyboard } from './support/contrast';
+import { describeRing, focusByKeyboard, focusRingMeasurement, probeElement, type RingMeasurement } from './support/contrast';
 import { routeFakeGameSuccess } from './support/fakeGame';
 // 88.6.1 code review WR-03: the shared write hold for the R4 toggle arms (see the note above them).
 import { expectNoApiWrites, holdWrites } from './support/inFlight';
@@ -1291,11 +1291,15 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       // as of 2026-09-15 (since migrated to a Button, src/app/groupHomePage/page.js ("onClick={() => setMemberModal(true)}")). Every class here but md:text-base (desktop-only, inert at 375px) is emitted because some src/ file
       // still wears it (grep, 2026-10-24); `e2e/` is outside the `@source` globs (src/app/globals.css ("source(none);"), src/app/globals.css ("DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit")), so a
       // class no `src/` file wears would render nothing and measure nothing.
+      // AMENDED Phase 89.6-14: the ring tail is re-pinned to the shipped Button ring after plan 89.6-13,
+      // src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:focus-ring',"), the Button
+      // this call site migrated to; the old ring tokens are worn by no src/ file now, so they would
+      // render nothing.
       const shipped = make(
         'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
           'text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ' +
           'rounded-btn hover:bg-surface-hover transition-all shadow-theme-md ' +
-          'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
+          'focus:outline-hidden focus-visible:focus-ring',
       );
       const read = (el: HTMLElement) => {
         const r = el.getBoundingClientRect();
@@ -1770,8 +1774,10 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       const ITEM_SOLO = 'px-3';
       const ITEM_SEVERAL = 'px-2 rounded-sm';
       // AMENDED Phase 88.9-23 (O-17): the gated item's look is muted ink, transcribed in lockstep.
+      // AMENDED Phase 89.6-14: the ring tail re-transcribed after plan 89.6-13 from
+      // src/app/components/KebabMenu.js ("aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:focus-ring-inset").
       const ITEM_TAIL =
-        'py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
+        'py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:text-content-muted aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:focus-ring-inset';
       const ARMED_EXTRA = 'text-content-status-error bg-status-error-subtle font-semibold';
       const RESTING_EXTRA = 'text-content-primary enabled-hover:bg-surface-ghost-hover';
 
@@ -2296,10 +2302,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       // geometry-bearing here (the floor is `min-h-11`, the line box is `text-sm`), so leaving
       // it out keeps this replica from needing a re-derive every time the type sweep settles a
       // weight. Everything that DOES decide the box is present and byte-matched.
+      // AMENDED Phase 89.6-14: the ring part re-transcribed after plan 89.6-13 from
+      // src/app/components/RsvpSection.js ("last:rounded-r-[inherit] focus:outline-hidden focus-visible:focus-ring-inset").
       const buttonClass =
         'flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors ' +
         'first:rounded-l-[inherit] last:rounded-r-[inherit] ' +
-        'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ' +
+        'focus:outline-hidden focus-visible:focus-ring-inset ' +
         'bg-surface-card text-content-secondary';
 
       const heights: number[] = [];
@@ -2406,10 +2414,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       heading.textContent = 'Bringing';
       row.appendChild(heading);
 
+      // AMENDED Phase 89.6-14: the ring part re-transcribed after plan 89.6-13 from
+      // src/app/components/BringSummary.js ("hover:text-content-link-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring").
       const controlClass =
         'inline-flex items-center justify-end min-h-11 md:min-h-0 min-w-11 md:min-w-0 text-sm ' +
         'text-content-link hover:text-content-link-hover active:opacity-75 transition-colors ' +
-        'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+        'focus:outline-hidden focus-visible:focus-ring';
       const make = (label: string, className: string) => {
         const el = document.createElement('button');
         el.type = 'button';
@@ -3029,7 +3039,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
  *  file reds there. And if the base drifts in a way that matters HERE, proof 2's focused-vs-
  *  unfocused differential and proof 3's lg-vs-md comparison red rather than pass — neither is a
  *  string comparison against a transcribed value. */
-const BTN_RING = 'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+// AMENDED Phase 89.6-14: re-pinned to Button's ring line after plan 89.6-13,
+// src/components/ui/Button.tsx ("'focus:outline-hidden focus-visible:focus-ring',").
+const BTN_RING = 'focus:outline-hidden focus-visible:focus-ring';
 /** Everything in the base EXCEPT the elevation tokens, so each probe can supply its own pair
  *  and the resulting `box-shadow` composites stay comparable layer-for-layer. */
 const BTN_SKELETON = `btn btn-primary ${BTN_RING} min-h-11`;
@@ -3106,12 +3118,11 @@ async function removeProbes(page: Page): Promise<void> {
 
 interface ShadowRead {
   boxShadow: string;
-  ringColor: string;
 }
 
 /**
- * Read one probe's computed `box-shadow` plus its resolved ring colour, AFTER the transition
- * has settled.
+ * Read one probe's computed `box-shadow`, AFTER the transition has settled. (Phase 89.6-14: the
+ * ring colour is read by the shared ring reader now, so this read carries the box-shadow only.)
  *
  * THE SETTLE IS NOT DEFENSIVE — IT IS THE WHOLE CORRECTNESS OF THIS ARM, and it was found by
  * running the probes in a real Chromium rather than by reasoning. `.btn` carries
@@ -3151,7 +3162,6 @@ async function readShadow(locator: Locator): Promise<ShadowRead> {
           const cs = getComputedStyle(node as HTMLElement);
           return {
             boxShadow: cs.boxShadow,
-            ringColor: cs.getPropertyValue('--tw-ring-color').trim(),
           };
         });
         const stable = previous !== null && now.boxShadow === previous;
@@ -3263,7 +3273,7 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
     await plantProbes(page, [
       { name: 'ring default probe', className: `${BTN_SKELETON} ${BASE_ELEVATION}` },
       { name: 'ring gated probe', className: `${BTN_SKELETON} ${BASE_ELEVATION}`, ariaDisabled: true },
-      // NEGATIVE CONTROL: the same base MINUS the three ring utilities. It must FAIL the same
+      // NEGATIVE CONTROL: the same base MINUS the ring utilities. It must FAIL the same
       // predicate. A one-sided proof of a "the ring exists" rule is exactly the shape that
       // passes when the ring is gone.
       { name: 'ringless negative control probe', className: `btn btn-primary min-h-11 ${BASE_ELEVATION}` },
@@ -3275,49 +3285,43 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
        composite at rest and in every state and is never the string `none`. A `!== 'none'`
        assertion would therefore pass with `focus-visible:ring-2` deleted, with twMerge dropping
        it against a call-site `ring-0`, with `--color-focus-ring` transparent, and with plan 05's
-       `enabled-hover` scoping suppressing it. Three independent checks replace it. */
+       `enabled-hover` scoping suppressing it. Three independent checks replace it.
+       AMENDED Phase 89.6-14 (O-1 B): the focus proof reads the outline ring. The shared reader
+       (focusRingMeasurement) must RESOLVE on the focused probe as the house offset ring (a 2px
+       outline at offset 2 over a 2px band) whose two colours are the page pair read on html; at
+       rest the probe has no outline and no band layer; and the ringless control must not resolve. */
+    const pair = (await probeElement(page.locator('html'), ['--focus-ring-outer', '--focus-ring-inner'])).computed;
+    const ringOuter = pair['--focus-ring-outer']?.css ?? null;
+    const ringInner = pair['--focus-ring-inner']?.css ?? null;
+    expect(ringOuter, `D10 item 6: --focus-ring-outer did not resolve on html (${pair['--focus-ring-outer']?.raw})`).not.toBeNull();
+    expect(ringInner, `D10 item 6: --focus-ring-inner did not resolve on html (${pair['--focus-ring-inner']?.raw})`).not.toBeNull();
     const predicate = async (
       name: string,
-    ): Promise<{ differs: boolean; hasOpaqueRingLayer: boolean; unfocused: string; focused: string; ringColor: string }> => {
+    ): Promise<{ differs: boolean; ring: RingMeasurement | null; notHouse: string; unfocused: string; focused: string; restOutline: string; restBand: boolean }> => {
       const locator = page.getByRole('button', { name });
       await guardResolved(locator, `the planted probe "${name}"`);
       // Blur everything first so the "unfocused" read really is unfocused.
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       const unfocused = await readShadow(locator);
-      // The shipped keyboard-modality idiom (e2e/support/contrast.ts ("function focusByKeyboard")): a Tab
-      // press sets the heuristic to KEYBOARD, then `.focus()` lands on the target. Without the
-      // Tab, `:focus-visible` never matches a script-focused button in Chromium and the ring
-      // rules never apply — which would make this whole proof read as "the ring is gone".
-      await focusByKeyboard(page, locator);
+      const restOutline = await locator.evaluate((el) => getComputedStyle(el).outlineStyle);
+      const restBand = shadowLayersOf(unfocused.boxShadow).some(
+        (layer) => !/\binset\b/.test(layer) && layer.includes('0px 0px 0px 2px') && layerAlpha(layer) > 0
+      );
+      // The shared reader gives the keyboard focus itself, the shipped keyboard-modality idiom
+      // (e2e/support/contrast.ts ("function focusByKeyboard")): a Tab press sets the heuristic to
+      // KEYBOARD, then .focus() lands on the target. Without the Tab, :focus-visible never matches a
+      // script-focused button in Chromium and the ring rules never apply. It throws, by name, on
+      // any shape that is not the house ring.
+      let ring: RingMeasurement | null = null;
+      let notHouse = '';
+      try {
+        ring = await focusRingMeasurement(page, locator, `D10 item 6 "${name}"`);
+      } catch (error) {
+        notHouse = error instanceof Error ? error.message : String(error);
+        await focusByKeyboard(page, locator);
+      }
       const focused = await readShadow(locator);
-
-      // Normalise the ring colour THROUGH THE BROWSER rather than string-matching a format:
-      // `--tw-ring-color` may serialise as `oklch(...)` while `box-shadow` serialises as
-      // `rgb(...)`/`rgba(...)`. Painting it onto a throwaway element and reading `color` back
-      // gives the same normalised form the shadow uses. NEVER a hard-coded colour string.
-      const normalisedRing = await page.evaluate((raw) => {
-        if (raw === '') return '';
-        const probe = document.createElement('span');
-        probe.style.color = raw;
-        document.body.appendChild(probe);
-        const out = getComputedStyle(probe).color;
-        probe.remove();
-        return out;
-      }, focused.ringColor);
-
-      const layers = shadowLayersOf(focused.boxShadow);
-      const hasOpaqueRingLayer =
-        normalisedRing !== '' &&
-        layerAlpha(normalisedRing) > 0 &&
-        layers.some((layer) => layer.includes(normalisedRing) && layerAlpha(layer) > 0);
-
-      return {
-        differs: focused.boxShadow !== unfocused.boxShadow,
-        hasOpaqueRingLayer,
-        unfocused: unfocused.boxShadow,
-        focused: focused.boxShadow,
-        ringColor: normalisedRing,
-      };
+      return { differs: focused.boxShadow !== unfocused.boxShadow, ring, notHouse, unfocused: unfocused.boxShadow, focused: focused.boxShadow, restOutline, restBand };
     };
 
     for (const name of ['ring default probe', 'ring gated probe']) {
@@ -3325,13 +3329,22 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
       // (a) THE DIFFERENTIAL.
       expect(
         r.differs,
-        `D10 item 6: "${name}" computes the SAME box-shadow focused and unfocused (\`${r.focused}\`) — the focus-visible ring is not painting. Causes, in order of likelihood: the three ring utilities were dropped from the cva base (src/components/ui/Button.tsx); twMerge dropped them against a conflicting token; \`--color-focus-ring\` resolved transparent; or plan 05's \`enabled-hover\` scoping swallowed the ring line. NOT a \`--shadow-sm\` revert — that detector is plan 05's two Gate C pins in e2e/contrast.spec.ts`,
+        `D10 item 6: "${name}" computes the SAME box-shadow focused and unfocused (\`${r.focused}\`) — the focus-visible ring's band is not painting. Causes, in order of likelihood: the ring utility was dropped from the cva base (src/components/ui/Button.tsx); twMerge dropped it against a conflicting token; or plan 05's \`enabled-hover\` scoping swallowed the ring line. NOT a \`--shadow-sm\` revert — that detector is plan 05's two Gate C pins in e2e/contrast.spec.ts`,
       ).toBe(true);
-      // (b) A NON-TRANSPARENT LAYER CARRYING THE PAGE-RESOLVED RING COLOUR.
-      expect(
-        r.hasOpaqueRingLayer,
-        `D10 item 6: "${name}" focused, no box-shadow layer carries the page-resolved ring colour (\`${r.ringColor || '(--tw-ring-color is EMPTY, i.e. the element never matched :focus-visible)'}\`) at non-zero alpha. Layers: ${shadowLayersOf(r.focused).join(' || ')}. A differential alone is not enough — an all-transparent change would satisfy it`,
-      ).toBe(true);
+      // (b) THE HOUSE RING, read by the shared reader, in the page pair.
+      expect(r.ring, `D10 item 6: "${name}" focused does not wear the house ring: ${r.notHouse}`).not.toBeNull();
+      if (r.ring) {
+        const ring = describeRing(`D10 item 6 "${name}"`, r.ring);
+        expect(r.ring.ringGroundKind, ring).toBe('offset');
+        expect(r.ring.outlineWidth, ring).toBe(2);
+        expect(r.ring.outlineOffset, ring).toBe(2);
+        expect(r.ring.bandWidth, ring).toBe(2);
+        expect(r.ring.outer, `${ring}; the outer ring is not --focus-ring-outer ${ringOuter}`).toBe(ringOuter);
+        expect(r.ring.inner, `${ring}; the inner band is not --focus-ring-inner ${ringInner}`).toBe(ringInner);
+      }
+      // At rest: no outline and no band layer.
+      expect(r.restOutline, `D10 item 6: "${name}" unfocused paints an outline (${r.restOutline})`).toBe('none');
+      expect(r.restBand, `D10 item 6: "${name}" unfocused already paints a 2px band (${r.unfocused})`).toBe(false);
     }
 
     // (c) THE PAIRED NEGATIVE CONTROL. It must FAIL the same predicate, in the spirit of the two
@@ -3339,8 +3352,8 @@ test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pi
     // the predicate is measuring something else and the two passes above are worthless.
     const control = await predicate('ringless negative control probe');
     expect(
-      control.differs && control.hasOpaqueRingLayer,
-      `D10 item 6 (negative control): a probe wearing the base classes MINUS \`${BTN_RING}\` SATISFIED the ring predicate (differs=${control.differs}, opaqueRingLayer=${control.hasOpaqueRingLayer}, focused=\`${control.focused}\`). The predicate is therefore not measuring the ring, and the two positive results above prove nothing. Do not weaken the positive assertions — fix the predicate`,
+      control.differs && control.ring !== null,
+      `D10 item 6 (negative control): a probe wearing the base classes MINUS \`${BTN_RING}\` SATISFIED the ring predicate (differs=${control.differs}, house ring read=${control.ring !== null}, focused=\`${control.focused}\`). The predicate is therefore not measuring the ring, and the two positive results above prove nothing. Do not weaken the positive assertions — fix the predicate`,
     ).toBe(false);
   });
 
