@@ -847,7 +847,8 @@ describe('MemberChipStack — Phase 88.9-30 D1b fills and G halos', () => {
     fireEvent.click(trigger);
     const less = screen.getByRole('button', { name: 'Show less' });
     expectRingGround(less, 'group', 'Show less');
-    expect(COMPONENT_SRC.split('hostGround="group"').length - 1, 'the expanded name sits on the group ground').toBe(1);
+    // AMENDED Phase 89.6-38 (host-ground): the expanded name passed the group key; owner pick O-1 = B (2026-11-22) made the halo inert and plan 89.6-38 retired the host-ground key, so the component passes no host ground at all.
+    expect(COMPONENT_SRC.split('hostGround=').length - 1, 'the expanded name passes no host ground').toBe(0);
   });
 });
 

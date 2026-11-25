@@ -49,9 +49,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import ClickableMemberName from './ClickableMemberName';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 import { FriendshipContext } from './FriendshipStatusProvider';
 import { Modal } from './Modal';
-import type { HostGround } from '../../components/ui/hostGround';
 
 type Status = 'none' | 'accepted' | 'pending_sent' | 'pending_received' | 'self' | 'unknown';
 
@@ -62,7 +62,7 @@ const sendRequest = vi.fn<(id: string) => Promise<unknown>>(async () => ({ ok: t
 
 /** Mirrors keyboardOperability.test.tsx's harness: the name renders INSIDE a role="button"
  *  card, which is the nesting the component's stopPropagation decision is about. */
-function renderName(status: Status, props?: { showInlineIndicator?: boolean; hostGround?: HostGround }) {
+function renderName(status: Status, props?: { showInlineIndicator?: boolean }) {
   const value = { getStatus: () => status, sendRequest };
   return render(
     <FriendshipContext.Provider value={value as never}>
@@ -854,8 +854,10 @@ describe('popover inside a dialog (Test D follow-up)', () => {
 // Phase 88.9-30 pins (round 2):
 //   F6a       — owner pick F6a (88.9-PICKS-B5.json, 2026-11-07): the popover opens ABOVE the tapped
 //               name (top-start, offset 8 per UI-SPEC CR2-17), flip and shift kept for the viewport top.
-//   R012/R013 — owner picks B3a + B1a (88.9-PICKS-B1.json): the inline name and the + button take the
-//               HOST's ground through the hostGround key, merged after the shipped card key.
+//   R012/R013 — owner picks B3a + B1a (88.9-PICKS-B1.json) gave the inline name and the + button the
+//               HOST's ground as their halo. AMENDED Phase 89.6-38 (host-ground): owner
+//               pick O-1 = B (2026-11-22) made the halo inert and plan 89.6-38 retired the host-ground key,
+//               so both wear the two-tone ring and no halo token.
 const CMN_SRC = fs
   .readFileSync(path.join(__dirname, 'ClickableMemberName.js'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -870,36 +872,15 @@ describe('Phase 88.9-30 — F6a placement and the host-ground halo', () => {
     expect(CMN_SRC, 'no bottom-start placement in code').not.toContain("'bottom-start'");
   });
 
-  it('R012 / R013 (88.9): the inline name and the + button take the host ground through hostGround', () => {
-    const card = 'focus-visible:ring-offset-surface-card';
-    const both = () => [screen.getByRole('button', { name: 'ada' }), addFriendPlus()!];
-
-    let utils = renderName('none');
-    for (const el of both()) expect(el, 'default: the shipped card halo').toHaveClass(card);
-    utils.unmount();
-
-    utils = renderName('none', { hostGround: 'warning' });
-    for (const el of both()) {
-      expect(el, 'warning: the box halo').toHaveClass('focus-visible:ring-offset-status-warning-subtle');
-      expect(el, 'warning: the card halo is merged away').not.toHaveClass(card);
-    }
-    utils.unmount();
-
-    utils = renderName('none', { hostGround: 'group' });
-    for (const el of both()) {
-      expect(el, 'group: the group-halo key').toHaveClass('focus-visible:ring-offset-surface-group-halo');
-      expect(el, 'group: the card halo is merged away').not.toHaveClass(card);
-    }
-    utils.unmount();
-
-    // Re-pinned by plan 89.6-13: the unknown-key fallback was this component's own card halo
-    // literal, which the ring codemod deleted (owner pick O-1 = B retired the halo). hostGroundHalo
-    // names nothing for an unknown key, so no halo stands and the two-tone ring is unchanged.
-    // Plan 89.6-38 retires the rest of this it with hostGround.ts.
-    renderName('none', { hostGround: 'nonsense' as HostGround });
-    for (const el of both()) {
-      expect(el.className, 'an unknown key: no halo token stands').not.toMatch(/ring-offset-/);
-      expect(el, 'an unknown key: the ring stands').toHaveClass('focus-visible:focus-ring');
+  // 89.6-38 (O-1 B): this it once read the halo each host key selected (card by default, the
+  // warning box and the group key when passed, nothing for an unknown key); with the key retired
+  // it guards the same two controls for the ring and for the absence of any halo token.
+  it('89.6-38 (O-1 B): the inline name and the + button carry the two-tone ring and no halo token', () => {
+    renderName('none');
+    for (const el of [screen.getByRole('button', { name: 'ada' }), addFriendPlus()!]) {
+      const label = el.getAttribute('aria-label') ?? el.textContent ?? 'control';
+      expectFocusRing(el, label);
+      expectRingGround(el, 'card', `${label}: no halo token`);
     }
   });
 });

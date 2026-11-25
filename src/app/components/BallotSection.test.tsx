@@ -29,7 +29,7 @@ import * as React from 'react';
 import { act, render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { expectFocusRing } from '@/test-utils/focusRingAssert';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 // Plan 88.6.1-31 Task 3: the import-original spread, NOT a factory returning only ballotAPI. The
 // component now renders the house FetchErrorBanner through useFetchErrorState, which reads the
@@ -1048,8 +1048,9 @@ describe('BallotSection without an event id (IN-06)', () => {
 
 // Plan 88.9-35 (owner picks D10b, 88.9-PICKS-B3.json, and B1a, 88.9-PICKS-B1.json): the round-2
 // cues on the ballot cards. D10b: a visible, aria-hidden Saving… caption on the pressed organizer
-// pick only; the heard name stays the E14 template. R006-R008: the three option cards take the
-// ground their HOST paints as the focus halo, card by default, the page when the host passes it.
+// pick only; the heard name stays the E14 template. R006-R008: the three option cards took the
+// ground their HOST paints as the focus halo. AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B (2026-11-22) made
+// the halo inert and plan 89.6-38 retired the host-ground key, so the cards wear the two-tone ring and no halo token.
 describe('BallotSection — round-2 cues (88.9-35)', () => {
   const SAVING = 'Saving…';
 
@@ -1092,25 +1093,18 @@ describe('BallotSection — round-2 cues (88.9-35)', () => {
     });
   });
 
-  it('R006–R008 (88.9): the three option cards take the host ground through hostGround — card by default, the page when passed', async () => {
+  // 89.6-38 (O-1 B): this it once read the card halo by default and the page halo when the host
+  // passed it; with the key retired it guards the same three card kinds for the ring and for the
+  // absence of any halo token.
+  it('89.6-38 (O-1 B): the three option cards carry the two-tone ring and no halo token', async () => {
     for (const ballot of [TIE_BREAK, FALLBACK_PICK, OPEN_BALLOT]) {
       renderBallot(ballot);
       await screen.findByRole('heading', { name: 'Game Vote' });
       const cards = Array.from(document.querySelectorAll('button'));
       expect(cards.length).toBeGreaterThan(0);
       for (const card of cards) {
-        expect(card.className, `${card.textContent} default halo`).toContain('focus-visible:ring-offset-surface-card');
-      }
-      cleanup();
-
-      renderBallot(ballot, { hostGround: 'page' });
-      await screen.findByRole('heading', { name: 'Game Vote' });
-      const paged = Array.from(document.querySelectorAll('button'));
-      expect(paged.length).toBeGreaterThan(0);
-      for (const card of paged) {
-        expect(card.className, `${card.textContent} page halo`).toContain('focus-visible:ring-offset-surface-page');
-        expect(card.className, `${card.textContent} keeps the card halo on a page host`).not.toContain('focus-visible:ring-offset-surface-card');
         expectFocusRing(card, `${card.textContent}`);
+        expectRingGround(card, 'card', `${card.textContent}: no halo token`);
       }
       cleanup();
     }

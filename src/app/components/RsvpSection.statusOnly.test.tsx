@@ -28,27 +28,20 @@ import { SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // R-C3b (88
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { formatDateTime } from '@/lib/datetime';
-import type { HostGround } from '@/components/ui/hostGround';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 // The respondent list is not under test; a passthrough keeps the render light and
-// avoids the popover's own context requirements. The passthrough resolves the hostGround it is
-// handed through the REAL halo map (88.9-50), the call the real trigger makes, so a test can
-// read which ground RsvpSection forwards; the real component's own resolution is pinned in
-// its own test files.
-vi.mock('./ClickableMemberName', async () => {
-  const { hostGroundHalo } = await import('@/components/ui/hostGround');
-  return {
-    default: ({
-      children,
-      username,
-      hostGround,
-    }: {
-      children?: React.ReactNode;
-      username?: string;
-      hostGround?: HostGround;
-    }) => <span className={hostGroundHalo(hostGround)}>{children ?? username}</span>,
-  };
-});
+// avoids the popover's own context requirements. It renders the name with no class and records
+// the props it is handed, so a test can read what RsvpSection forwards; the real component's own
+// ring is pinned in its own test files. AMENDED Phase 89.6-38 (host-ground): it no longer imports
+// the retired host-ground map (O-1 = B (2026-11-22) made the halo inert and plan 89.6-38 retired the host-ground key).
+const cmnProps = vi.hoisted(() => ({ seen: [] as Array<Record<string, unknown>> }));
+vi.mock('./ClickableMemberName', () => ({
+  default: (props: { children?: React.ReactNode; username?: string }) => {
+    cmnProps.seen.push(props as Record<string, unknown>);
+    return <span>{props.children ?? props.username}</span>;
+  },
+}));
 
 // `rsvpAPI` MUST be mocked: the component fires `getEventRsvps` on mount, and an
 // unmocked `rsvpAPI` reaches the real `apiFetch` (a real jsdom fetch). The spread
@@ -85,7 +78,6 @@ const RsvpSection = RsvpSectionUntyped as unknown as React.ComponentType<{
   self?: { id: string };
   eventDate?: string;
   onRsvpChange?: (status: string) => void;
-  hostGround?: HostGround;
 }>;
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -1318,24 +1310,14 @@ describe('RsvpSection — round-2 cues (88.9-35)', () => {
     expect(polite).toHaveClass('sr-only');
   });
 
-  it("B063 (88.9): Save note's halo comes from hostGround — card by default, the page when passed", async () => {
+  // 89.6-38 (O-1 B): this it once read the card halo by default and the page halo when the host
+  // passed it; with the key retired it guards Save note for the ring and for the absence of any
+  // halo token, like its four siblings.
+  it('89.6-38 (O-1 B): Save note carries the two-tone ring and no halo token', async () => {
     renderSection();
     const save = await screen.findByRole('button', { name: 'Save note' });
-    expect(save.className).toContain('focus-visible:ring-offset-surface-card');
-    cleanup();
-
-    render(
-      <RsvpSection
-        eventId={EVENT_ID}
-        self={{ id: SELF_UUID }}
-        eventDate={EVENT_DATE}
-        onRsvpChange={vi.fn()}
-        hostGround="page"
-      />
-    );
-    const paged = await screen.findByRole('button', { name: 'Save note' });
-    expect(paged.className).toContain('focus-visible:ring-offset-surface-page');
-    expect(paged.className).not.toContain('focus-visible:ring-offset-surface-card');
+    expectFocusRing(save, 'Save note');
+    expectRingGround(save, 'card', 'Save note carries no halo token');
   });
 });
 
@@ -1355,26 +1337,16 @@ describe('RsvpSection — the RSVP name and the gameDetail mounts take their hos
     summary: { yes: 1, maybe: 0, no: 0 },
   });
 
-  it("R012/R013 (88.9-50): the RSVP name takes RsvpSection's host ground", async () => {
+  // 89.6-38 (O-1 B): this it once read which ground RsvpSection forwarded to the RSVP name (page
+  // when its host passed page, else card); with the key retired RsvpSection forwards none.
+  it('89.6-38 (O-1 B): the RSVP name is handed no host ground', async () => {
     getEventRsvps.mockResolvedValue(patSaysYes());
-    render(
-      <RsvpSection
-        eventId={EVENT_ID}
-        self={{ id: SELF_UUID }}
-        eventDate={EVENT_DATE}
-        onRsvpChange={vi.fn()}
-        hostGround="page"
-      />
-    );
-    const paged = await screen.findByText('Pat', { exact: true });
-    expect(paged.className).toContain('focus-visible:ring-offset-surface-page');
-    expect(paged.className).not.toContain('focus-visible:ring-offset-surface-card');
-    cleanup();
-
-    getEventRsvps.mockResolvedValue(patSaysYes());
+    cmnProps.seen.length = 0;
     renderSection();
-    const carded = await screen.findByText('Pat', { exact: true });
-    expect(carded.className).toContain('focus-visible:ring-offset-surface-card');
+    await screen.findByText('Pat', { exact: true });
+    const handed = cmnProps.seen.filter((p) => p.username === 'Pat');
+    expect(handed.length, 'the RSVP list mounted the name').toBeGreaterThan(0);
+    for (const p of handed) expect(Object.keys(p), 'RsvpSection hands the name no host ground').not.toContain('hostGround');
   });
 
   // Read with fs and a local comment strip, not the sourceScan import (that would register this

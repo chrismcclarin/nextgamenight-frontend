@@ -29,13 +29,13 @@ import { render, screen, cleanup, fireEvent, within, act, waitFor } from '@testi
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from '@/components/ui/useDelayedSpinner'; // AMENDED Phase 88.9-56 (R-C3b reach): the appear and hold budgets
 import KebabMenu from './KebabMenu';
-import { expectFocusRing } from '@/test-utils/focusRingAssert';
+import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 afterEach(() => {
   cleanup();
@@ -521,8 +521,9 @@ describe('KebabMenu busy item (rule 1, 88.9-46)', () => {
   });
 });
 
-// Plan 88.9-35 (owner pick B2a, 88.9-PICKS-B1.json): the trigger's focus halo is the ground its
-// HOST paints, passed as a typed hostGround key, card by default (every live phone host is a card).
+// Plan 88.9-35 (owner pick B2a, 88.9-PICKS-B1.json) gave the trigger the halo of the ground its
+// HOST paints, passed as a typed key. AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B (2026-11-22) made the halo inert and plan 89.6-38 retired the host-ground key,
+// so the trigger takes no ground from any host.
 describe('KebabMenu trigger host halo (88.9-35)', () => {
   const SHIPPED = [
     'min-h-11',
@@ -533,32 +534,14 @@ describe('KebabMenu trigger host halo (88.9-35)', () => {
   ];
   const trigger = () => screen.getByRole('button', { name: 'Member actions' });
 
-  it('R033 (88.9): the trigger halo comes from hostGround — card by default, the host\'s ground when passed', () => {
+  // 89.6-38 (O-1 B): this it once read which halo each host key selected (card by default, the
+  // page and the group halo when passed, nothing for an unknown key); with the key retired it
+  // guards the same trigger for the ring and for the absence of any halo token.
+  it('89.6-38 (O-1 B): the trigger carries the two-tone ring and no halo token', () => {
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
     for (const token of SHIPPED) expect(trigger()).toHaveClass(token);
     expectFocusRing(trigger(), 'the kebab trigger');
-    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-card');
-    cleanup();
-
-    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround="page" />);
-    for (const token of SHIPPED) expect(trigger()).toHaveClass(token);
-    expectFocusRing(trigger(), 'the kebab trigger');
-    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-page');
-    expect(trigger()).not.toHaveClass('focus-visible:ring-offset-surface-card');
-    cleanup();
-
-    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround="group" />);
-    expect(trigger()).toHaveClass('focus-visible:ring-offset-surface-group-halo');
-    expect(trigger()).not.toHaveClass('focus-visible:ring-offset-surface-card');
-    cleanup();
-
-    const unknown = 'not-a-ground' as unknown as 'card';
-    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} hostGround={unknown} />);
-    // Re-pinned by plan 89.6-13: the unknown-key fallback was the trigger's own card halo literal,
-    // which the ring codemod deleted (owner pick O-1 = B retired the halo); hostGroundHalo names
-    // nothing for an unknown key, so no halo stands. Plan 89.6-38 retires the rest of this it.
-    expect(trigger().className).not.toMatch(/ring-offset-/);
-    expectFocusRing(trigger(), 'the kebab trigger, unknown ground');
+    expectRingGround(trigger(), 'card', 'the kebab trigger carries no halo token');
   });
 
   // R033's desktop arm was a census false positive (88.9-50): the check-in kebab's nearest painting
@@ -589,6 +572,26 @@ describe('KebabMenu trigger host halo (88.9-35)', () => {
     expect(tags, 'OpenPollsList mounts exactly one KebabMenu').toHaveLength(1);
     expect(tags[0]).toContain('ariaLabel="Check-in actions"');
     expect(tags[0], 'the check-in kebab must not pass a host ground: its li paints card').not.toMatch(HOST_PROP);
+
+    // AMENDED Phase 89.6-38 (host-ground): the key is retired, so no KebabMenu mount anywhere in
+    // src passes a host ground (the walk finds at least the check-in kebab above).
+    const offenders: string[] = [];
+    let mountCount = 0;
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(js|jsx|ts|tsx)$/.test(entry.name) && !/\.(test|spec)\./.test(entry.name)) {
+          for (const tag of kebabTags(stripComments(readFileSync(full, 'utf8')))) {
+            mountCount += 1;
+            if (HOST_PROP.test(tag)) offenders.push(`${full}: ${tag.slice(0, 80)}`);
+          }
+        }
+      }
+    };
+    walk(resolve(process.cwd(), 'src'));
+    expect(mountCount, 'the walk read KebabMenu mounts').toBeGreaterThan(0);
+    expect(offenders, 'KebabMenu mounts that pass a host ground').toEqual([]);
 
     // Anti-vacuity: the same matcher sees a host prop when one is there.
     const probe = kebabTags('<KebabMenu ariaLabel="Check-in actions" hostGroundFromMd="page" />');
