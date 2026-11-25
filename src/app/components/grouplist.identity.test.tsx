@@ -465,6 +465,8 @@ describe('O22d (88.9-42), pinned by 88.9-52 A-19: the groups 401 report and the 
 // 768 the heading sat 2px from the button; on a narrow window a hovered card's lifted top edge was
 // cut by the scroll area. Class pins: jsdom lays nothing out, so the wrap itself is read in the
 // after-build pictures.
+// AMENDED 89.6-16: the title row is a bb-row; one wrapper added (the title's parent, which grows
+// beside the icon), so the block is now the title's grandparent.
 describe('W2 / W18 / W22 (88.9-52): the Your Groups header and the card title row give way by wrapping, not by breaking words', () => {
   const tokens = (el: Element) => el.className.split(/\s+/).filter(Boolean);
 
@@ -500,15 +502,28 @@ describe('W2 / W18 / W22 (88.9-52): the Your Groups header and the card title ro
     (groupsAPI.getUserGroups as Mock).mockResolvedValue([ALPHA]);
     render(<GroupList {...listProps} />);
     const title = await screen.findByRole('button', { name: 'Alpha Crew' });
-    const block = title.parentElement as HTMLElement;
+    const wrapper = title.parentElement as HTMLElement;
+    const block = wrapper.parentElement as HTMLElement;
     const row = block.parentElement as HTMLElement;
-    for (const t of ['flex', 'flex-wrap', 'justify-between', 'items-center', 'gap-2']) {
+    for (const t of ['bb-row', 'items-center', 'gap-2']) {
       expect(tokens(row), `the title row lacks ${t}`).toContain(t);
     }
-    expect(tokens(block), 'the title block has no 6rem basis').toContain('flex-[1_1_6rem]');
-    expect(tokens(block), 'the title block keeps the zero basis').not.toContain('flex-1');
+    for (const t of ['bb-row-text', 'flex-wrap']) {
+      expect(tokens(block), `the title block lacks ${t} (its 6rem basis comes from bb-row-text)`).toContain(t);
+    }
+    expect(tokens(block), 'the title block keeps a zero minimum, so the title can narrow past its longest word').not.toContain('min-w-0');
+    expect(tokens(block), 'the title block keeps its own 6rem flex token beside bb-row-text').not.toContain('flex-[1_1_6rem]');
+    for (const t of ['flex-1', 'max-w-full']) {
+      expect(tokens(wrapper), `the wrapper around the title lacks ${t}, so the title cannot move under the icon`).toContain(t);
+    }
+    for (const t of ['w-fit', 'max-w-full']) {
+      expect(tokens(title), `the title lacks ${t}, so its focus box does not hug the words (G3)`).toContain(t);
+    }
+    expect(tokens(title), 'the title still grows, so its focus box spans the empty row (G3)').not.toContain('flex-1');
     const pill = within(row).getByText('0 players');
-    expect(tokens(pill), 'the pill can shrink').toContain('shrink-0');
+    for (const t of ['bb-row-end', 'ml-0', 'shrink-0']) {
+      expect(tokens(pill), `the pill lacks ${t}`).toContain(t);
+    }
     expect(tokens(pill), 'the pill keeps a margin that would indent it on its own line').not.toContain('ml-2');
   });
 

@@ -826,9 +826,20 @@ const GroupList = ({
                       (the row's gap replaces the pill's ml-2), not right-justified as in the
                       stack F-8 removed. ARITHMETIC, not a rendered read: 6rem + 8px gap + the
                       73px pill = 177px at 100%, under the narrowest measured card (201px at 768);
-                      at 200% it is 354px against a 234px card. */}
-                  <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
-                    <div className="flex items-center gap-2 min-w-0 flex-[1_1_6rem]">
+                      at 200% it is 354px against a 234px card.
+                      AMENDED Phase 89.6-16 (home-title): now on bb-row; the pill still drops to the
+                      LEFT (ml-0), and the title also moves under the icon before it breaks. */}
+                  {/* DECISION Phase 89.6-16 (home-title): GR, the governing rule (owner, 2026-11-22: 'A row
+                      stays a row while everything in it fits whole. When it does not, items stack. Nothing
+                      is squeezed, shrunk, cut or broken to avoid stacking. Scrolling down is fine;
+                      scrolling sideways is not.'): the card title row is a bb-row; the players pill moves
+                      under the title first, then the title moves under the group icon, before any word
+                      breaks; the focusable hugs its words (ring geometry G3) inside a growing wrapper,
+                      chosen OVER a shrinkable title beside the icon (it broke 'Weekend' at 320 / 200% with
+                      an icon) and OVER w-fit on the focusable alone (a two-word title would drop under the
+                      icon at normal text). Changing this is a decision, not a cleanup. */}
+                  <div className="bb-row items-center gap-2 mb-3">
+                    <div className="bb-row-text flex flex-wrap items-center gap-2">
                       {profilePic && (
                         <div className="w-10 h-10 rounded-full bg-surface-muted flex items-center justify-center text-2xl shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
@@ -850,58 +861,60 @@ const GroupList = ({
                           is gone for the same reason it was always redundant here
                           — the no-colour half of the fork already resolves to
                           `var(--color-content-primary)`. */}
-                      <div
-                        ref={(node) => {
-                          if (node) cardTitleNodesRef.current.set(group.id, node);
-                          else cardTitleNodesRef.current.delete(group.id);
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        /* NO aria-label, deliberately — the EventDayModal remedy this applies
-                           carries the same rejection verbatim (EventDayModal's note, anchor "NO
-                           aria-label, deliberately (88.3 code-adversarial-review run 4"): on a
-                           role="button" an explicit label REPLACES the name computed from the
-                           subtree, and the subtree here IS the group name. Computing it means a
-                           quote-bearing name like `Bob's "Board" Crew` arrives intact with no
-                           escaping question to get wrong. Pinned by keyboardOperability.test.tsx
-                           (role plus name, never an attribute read). */
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleGroupClick(group, e);
-                          }
-                        }}
-                        className="flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:focus-ring"
-                      >
-                        {/* DECISION Phase 88.6-21 (W42, D-04): this heading sits INSIDE the
-                            `role="button"` block above, and that costs a real property rather than
-                            nothing. ARIA's children-presentational rule applies to `role="button"`,
-                            so the subtree is flattened and this heading is NOT exposed as a heading
-                            to assistive technology — group names are not reachable by heading
-                            navigation on the home surface. `typeScaleTouchedSurfaces.test.ts`'s
-                            `EXPECTED_LEVELS` pin for this file is therefore a SOURCE-TAG pin: green
-                            says the tag and its level survived the migration, never that the
-                            heading is announced.
-
-                            CONSIDERED AND REJECTED HERE: inverting the nesting so the HEADING
-                            WRAPS the control (`<Heading level={3}><div role="button">…`), which
-                            WOULD expose it — the button's name still computes from its subtree, so
-                            nothing else changes. Rejected for THIS plan because the SPEC's
-                            instruction is to apply the EventDayModal H1 remedy verbatim and that
-                            remedy nests the title inside the control; inverting it here alone would
-                            fork one interaction idiom into two across a family Phase 88.9 widens
-                            (EventDayModal's twin is plan 27's, CalendarListView's EventRow a third).
-                            It is worth doing for the WHOLE family at once, and it is registered as
-                            an owner-facing residual in `.planning/deferred/phase-88.6.md` rather
-                            than left implied. Inverting it here is a decision, not a cleanup. */}
-                        <Heading
-                          level={3}
-                          size="heading"
-                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
+                      <div className="flex-1 max-w-full">
+                        <div
+                          ref={(node) => {
+                            if (node) cardTitleNodesRef.current.set(group.id, node);
+                            else cardTitleNodesRef.current.delete(group.id);
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          /* NO aria-label, deliberately — the EventDayModal remedy this applies
+                             carries the same rejection verbatim (EventDayModal's note, anchor "NO
+                             aria-label, deliberately (88.3 code-adversarial-review run 4"): on a
+                             role="button" an explicit label REPLACES the name computed from the
+                             subtree, and the subtree here IS the group name. Computing it means a
+                             quote-bearing name like `Bob's "Board" Crew` arrives intact with no
+                             escaping question to get wrong. Pinned by keyboardOperability.test.tsx
+                             (role plus name, never an attribute read). */
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleGroupClick(group, e);
+                            }
+                          }}
+                          className="w-fit max-w-full rounded-sm focus:outline-hidden focus-visible:focus-ring"
                         >
-                          {group.name}
-                        </Heading>
+                          {/* DECISION Phase 88.6-21 (W42, D-04): this heading sits INSIDE the
+                              `role="button"` block above, and that costs a real property rather than
+                              nothing. ARIA's children-presentational rule applies to `role="button"`,
+                              so the subtree is flattened and this heading is NOT exposed as a heading
+                              to assistive technology — group names are not reachable by heading
+                              navigation on the home surface. `typeScaleTouchedSurfaces.test.ts`'s
+                              `EXPECTED_LEVELS` pin for this file is therefore a SOURCE-TAG pin: green
+                              says the tag and its level survived the migration, never that the
+                              heading is announced.
+
+                              CONSIDERED AND REJECTED HERE: inverting the nesting so the HEADING
+                              WRAPS the control (`<Heading level={3}><div role="button">…`), which
+                              WOULD expose it — the button's name still computes from its subtree, so
+                              nothing else changes. Rejected for THIS plan because the SPEC's
+                              instruction is to apply the EventDayModal H1 remedy verbatim and that
+                              remedy nests the title inside the control; inverting it here alone would
+                              fork one interaction idiom into two across a family Phase 88.9 widens
+                              (EventDayModal's twin is plan 27's, CalendarListView's EventRow a third).
+                              It is worth doing for the WHOLE family at once, and it is registered as
+                              an owner-facing residual in `.planning/deferred/phase-88.6.md` rather
+                              than left implied. Inverting it here is a decision, not a cleanup. */}
+                          <Heading
+                            level={3}
+                            size="heading"
+                            className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [paint-order:var(--t-paint-l,normal)] dark:[paint-order:var(--t-paint,normal)] [letter-spacing:var(--t-track-l,normal)] dark:[letter-spacing:var(--t-track,normal)]"
+                          >
+                            {group.name}
+                          </Heading>
+                        </div>
                       </div>
                     </div>
                     {/* DECISION Phase 88-22 (D-28): the players pill does NOT take
@@ -922,7 +935,7 @@ const GroupList = ({
                         (plan 88.6-19). The SIZE stays at 12: §4.2 names badge labels as a Caption
                         role, so this is not a sub-12px fold site. A decision, not a cleanup. */}
                     <span
-                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-bold shrink-0"
+                      className="bb-row-end ml-0 bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-bold shrink-0"
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
                     </span>
