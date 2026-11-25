@@ -253,19 +253,40 @@ const reachReplaceDialog: SurfaceRow['reach'] = async (page) => {
   return { root: dialog, dialog };
 };
 
+// The static pages, opened signed out from the footer or after signing out. None reads anything
+// that needs an answer.
+const reachStatic =
+  (path: string, heading: string): SurfaceRow['reach'] =>
+  async (page) => {
+    await signedOut(page);
+    await page.goto(path);
+    await page.getByRole('heading', { level: 1, name: heading }).waitFor({ state: 'visible', timeout: 15_000 });
+    return { root: page.locator('main') };
+  };
+const reachAbout = reachStatic('/about', 'About Next Game Night');
+// R06 has two copies: the default goodbye and the one after an account is deleted
+// (src/app/goodbye/page.tsx ("const ACCOUNT_DELETED = 'account_deleted';")).
+const reachGoodbye = reachStatic('/goodbye', 'Your account has been deleted');
+const reachGoodbyeDeleted = reachStatic('/goodbye?reason=account_deleted', 'This account has been deleted');
+// R12 is reached at /Privacy, the Footer's path (the capital P is required for Google auth; never
+// lower-case the link). next.config.js rewrites it to /privacy, the same page.
+const reachPrivacy = reachStatic('/Privacy', 'Privacy Policy');
+const reachTerms = reachStatic('/terms', 'Terms of Service');
+
 export const rows: SurfaceRow[] = [
   { id: 'R17', census: 'R17', kind: 'route', owner: '89.6-08', status: 'enforced', reach: reachNotFound },
-  { id: 'R02', census: 'R02', kind: 'route', owner: '89.6-23', status: 'pending' },
+  { id: 'R02', census: 'R02', kind: 'route', owner: '89.6-23', status: 'enforced', reach: reachAbout },
   { id: 'R03', census: 'R03', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'ready', reach: reachAvailability, answers: availabilityAnswers },
-  { id: 'R06', census: 'R06', kind: 'route', owner: '89.6-23', status: 'pending' },
+  { id: 'R06', census: 'R06', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'default', reach: reachGoodbye },
+  { id: 'R06-deleted', census: 'R06', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'account deleted', reach: reachGoodbyeDeleted },
   { id: 'R09', census: 'R09', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'signed out', reach: reachInviteAccept, answers: inviteInfoAnswers },
   { id: 'R10', census: 'R10', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'signed-out preview', reach: reachGameInvite, answers: gameInviteAnswers },
   { id: 'R11', census: 'R11', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'signed-out preview', reach: reachGroupInvite, answers: groupInviteAnswers },
   { id: 'R11-preview-failed', census: 'R11', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'preview failed', reach: reachGroupInviteFailed, extras: goHomeContrast },
-  { id: 'R12', census: 'R12', kind: 'route', owner: '89.6-23', status: 'pending' },
+  { id: 'R12', census: 'R12', kind: 'route', owner: '89.6-23', status: 'enforced', reach: reachPrivacy },
   { id: 'R13', census: 'R13', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'signed out', reach: reachRestore, answers: restoreAnswers },
   { id: 'R14', census: 'R14', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'recorded yes', reach: reachRsvp, answers: rsvpAnswers },
   { id: 'R14-used', census: 'R14', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'used link', reach: reachRsvpUsed },
-  { id: 'R15', census: 'R15', kind: 'route', owner: '89.6-23', status: 'pending' },
+  { id: 'R15', census: 'R15', kind: 'route', owner: '89.6-23', status: 'enforced', reach: reachTerms },
   { id: 'D35', census: 'D35', kind: 'dialog', owner: '89.6-23', status: 'enforced', reach: reachReplaceDialog, answers: availabilityAnswers },
 ];
