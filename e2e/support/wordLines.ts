@@ -554,8 +554,11 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     //      line has no earlier place to wrap, so this word was glued to what stands before it.
     //      What stands before it is not read (an element, generated content, nothing).
     //   9. Otherwise HELD by the first box, from its own up to the bound (the bound left out), that
-    //      is positioned absolute or fixed, or is narrower than its parent's content width less its
-    //      own side margins (an automatic margin is free space, not an edge). The entry names the box.
+    //      is narrower than what it is offered less its own side margins (an automatic margin is free
+    //      space, not an edge): its parent's content width, or, for a box positioned absolute or
+    //      fixed, its containing block's padding box (amended by ruling D14, plan 89.6-16: a
+    //      positioned box was held unconditionally, and a list filling its relative parent read
+    //      held). The entry names the box.
     //  10. Otherwise WIDE: the edges between the word and its bound take the room.
     //  11. The sheet list and every scroll offset are put back after each temporary sheet, in a
     //      finally (a throw part-way leaves nothing behind), and at the end the layout (the root's
@@ -620,6 +623,27 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     const contentWidth = (el: Element) => {
       const cs = getComputedStyle(el);
       return el.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight);
+    };
+    /**
+     * The width a positioned box is offered: the padding box of its containing block, the nearest ancestor
+     * that is positioned (for an absolute box) or that transforms, filters or contains its layout or paint
+     * (for either kind), else the viewport.
+     */
+    const containingWidthOf = (el: Element, position: string): number => {
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (cs.display === 'contents') continue;
+        const forms =
+          (position === 'absolute' && cs.position !== 'static') ||
+          [cs.transform, cs.translate, cs.rotate, cs.scale, cs.perspective, cs.filter, cs.backdropFilter].some((value) => value !== '' && value !== 'none') ||
+          /\b(layout|paint|strict|content)\b/.test(cs.contain) ||
+          cs.containerType !== 'normal' ||
+          /\b(transform|translate|rotate|scale|perspective|filter)\b/.test(cs.willChange);
+        if (!forms) continue;
+        if (cs.display !== 'inline') return a.clientWidth;
+        return a.getBoundingClientRect().width - px(cs.borderLeftWidth) - px(cs.borderRightWidth);
+      }
+      return document.documentElement.clientWidth;
     };
     /** A side margin in px, or 0 when it is automatic (the computed value, not the used one). */
     const sideMargin = (el: Element, property: 'margin-left' | 'margin-right', used: string): number => {
@@ -928,13 +952,18 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
         const natural = naturalWidth(w.text, w.el);
         for (let a: Element | null = own; a && a !== boundBox; a = parentBoxOf(a)) {
           const cs = getComputedStyle(a);
-          if (cs.position === 'absolute' || cs.position === 'fixed') return { verdict: 'held', text: `${quoted} ${w.lines} lines, held narrow by ${nameOf(a)} (${whyOf(a)})` };
+          // DECISION Phase 89.6-16 D14 (positioned): a positioned box holds a word only when it is narrower than
+          // its containing block's padding box offers, chosen OVER naming every positioned box as the holder (a
+          // list that fills its relative parent, Home's stacked groups list, read held: a false red) and OVER its
+          // DOM parent's content box (the T1 pop-up under a padded anchor then read wide). Changing it is a decision.
+          const positioned = cs.position === 'absolute' || cs.position === 'fixed';
           const parent = parentBoxOf(a);
-          if (!parent) break;
-          const offered = contentWidth(parent) - sideMargin(a, 'margin-left', cs.marginLeft) - sideMargin(a, 'margin-right', cs.marginRight);
+          if (!positioned && !parent) break;
+          const room = positioned ? containingWidthOf(a, cs.position) : contentWidth(parent as Element);
+          const offered = room - sideMargin(a, 'margin-left', cs.marginLeft) - sideMargin(a, 'margin-right', cs.marginRight);
           const used = a.getBoundingClientRect().width;
           if (used < offered - 0.5) {
-            return { verdict: 'held', text: `${quoted} ${w.lines} lines, held narrow by ${nameOf(a)} (${whyOf(a)}): ${round(used)}px of the ${round(offered)}px its parent offers` };
+            return { verdict: 'held', text: `${quoted} ${w.lines} lines, held narrow by ${nameOf(a)} (${whyOf(a)}): ${round(used)}px of the ${round(offered)}px ${positioned ? 'its containing block' : 'its parent'} offers` };
           }
         }
         return { verdict: 'wide', text: `${quoted} ${round(natural)}px: no box between it and ${nameOf(boundBox)} is narrower than its parent offers; the edges between them take the room` };
