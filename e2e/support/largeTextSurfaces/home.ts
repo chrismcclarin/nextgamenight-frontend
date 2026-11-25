@@ -1,4 +1,5 @@
-// Surface rows: Home, the Create a new Group dialog and the Calendar sheet. Owner: plan 89.6-16.
+// Surface rows: Home, the Create a new Group dialog and the Calendar sheet. Owner: plan 89.6-16;
+// the Calendar sheet rows (D04, D04-empty): plan 89.6-40.
 // One row per line, each with its census id.
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
@@ -10,9 +11,11 @@
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 
 import { focusRingMeasurement } from '../contrast';
+import { settleAnimations } from '../inFlight';
 import { scrubbedFetch } from '../scrubbedFetch';
 import { EMOJI_NAME, THIRTY_LETTER_WORD } from '../wordLines';
-import type { SurfaceRow } from './index';
+import { toDialogTop } from './dialogs';
+import type { SurfaceRow, SweepCell } from './index';
 
 // The browser calls the same-origin BFF, so the reads are /api/groups/user/<uuid> (the list's own
 // read and the page's parallel one) and /api/events/user/<uuid> (the upcoming card's read and the
@@ -305,6 +308,167 @@ const reachCreateBusy: SurfaceRow['reach'] = async (page) => {
   return { root: dialog, dialog };
 };
 
+// D04: the phone Calendar sheet (src/app/userHome/UserHomePage.js ("title=\"Calendar\"")), opened
+// from the phone button named Calendar. The button is hidden from md up (DECISION Phase 88.6-27
+// (W72)), so the row is reached at 375 x 667 (reachAt); the sheet carries no md:hidden of its own
+// (the Req 11b note in UserHomePage.js: an open dialog is never hidden by width), so it stays open
+// in the 768 cells, where it is read as a wider sheet. The list is loaded when its Upcoming events
+// header (a button, absent from the loading skeleton) shows.
+const calendarSheet = (page: Page): Locator => page.getByRole('dialog', { name: 'Calendar', exact: true });
+async function openCalendarSheet(page: Page): Promise<Locator> {
+  await openHome(page);
+  await page.getByRole('button', { name: /^Calendar(, .*)?$/ }).click();
+  const dialog = calendarSheet(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  return dialog;
+}
+const reachCalendarSheet: SurfaceRow['reach'] = async (page) => {
+  const dialog = await openCalendarSheet(page);
+  await dialog.getByRole('button', { name: 'Upcoming events', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: dialog, dialog };
+};
+
+// D04-empty (EMPTY_STATES, census D04): every upcoming-events read answered with an empty list (the
+// page's read and the calendar's; GETs answered in the browser), so the list shows its one empty
+// line and no Next game night card is mounted.
+const reachCalendarSheetEmpty: SurfaceRow['reach'] = async (page) => {
+  const dialog = await openCalendarSheet(page);
+  await dialog.getByText('No events', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await expect(dialog.getByText('Next game night', { exact: true }), 'D04-empty: a Next game night card is shown with no nights').toHaveCount(0);
+  return { root: dialog, dialog };
+};
+
+// An event row of the list is a button that holds a heading, inside one of the list's sections
+// (the two section headers sit inside a heading and hold none; the Next game night card is not in
+// a section), the selector of e2e/calendar-list-sections.spec.ts ("An event row is the role=button element that contains a heading").
+const calendarRows = (dialog: Locator): Locator => dialog.locator('section').getByRole('button').filter({ has: dialog.page().getByRole('heading') });
+
+// The sheet's close (x), read FIRST, before anything is scrolled (the panel is overflow-hidden, which
+// is still a scroll container: scrolling the x into view would bring an x pushed past the edge back
+// on screen before it is measured). The panel has not scrolled sideways; the x lies inside the
+// viewport and the panel (0.5px); its box is plan 89.6-06's held size icon box, 52 x 44 at every
+// text size (pick O-M4 Fixed+), and its icon follows the text: 20px at normal text, 32px at 200%
+// and font32.
+async function sheetCloseProblems(dialog: Locator, cell: SweepCell, tag: string): Promise<string[]> {
+  const read = await dialog.evaluate((panel) => {
+    const close = Array.from(panel.querySelectorAll('button')).find((button) => button.textContent?.trim() === 'Close') ?? null;
+    if (!close) return null;
+    const box = close.getBoundingClientRect();
+    const svg = close.querySelector('svg')?.getBoundingClientRect() ?? null;
+    const at = panel.getBoundingClientRect();
+    return {
+      scrollLeft: panel.scrollLeft,
+      viewport: { width: document.documentElement.clientWidth, height: window.innerHeight },
+      panel: { left: at.left, right: at.right, top: at.top, bottom: at.bottom },
+      box: { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height },
+      icon: svg ? { width: svg.width, height: svg.height } : null,
+    };
+  });
+  if (!read) return [`${tag}: the sheet has no Close button`];
+  const problems: string[] = [];
+  const { box, panel, viewport } = read;
+  if (read.scrollLeft !== 0) problems.push(`${tag}: the sheet panel is scrolled sideways by ${read.scrollLeft}px`);
+  if (box.left < -0.5 || box.right > viewport.width + 0.5 || box.top < -0.5 || box.bottom > viewport.height + 0.5) {
+    problems.push(`${tag}: the close is not inside the viewport (close ${box.left} to ${box.right} by ${box.top} to ${box.bottom}; viewport ${viewport.width} x ${viewport.height})`);
+  }
+  if (box.left < panel.left - 0.5 || box.right > panel.right + 0.5 || box.top < panel.top - 0.5 || box.bottom > panel.bottom + 0.5) {
+    problems.push(`${tag}: the close is not inside the sheet panel (close ${box.left} to ${box.right}; panel ${panel.left} to ${panel.right})`);
+  }
+  if (Math.abs(box.width - 52) > 0.5 || Math.abs(box.height - 44) > 0.5) problems.push(`${tag}: the close box is ${box.width} x ${box.height}, not 52 x 44`);
+  const iconPx = cell.mode === '100' ? 20 : 32;
+  if (!read.icon) problems.push(`${tag}: the close has no icon`);
+  else if (Math.abs(read.icon.width - iconPx) > 0.5 || Math.abs(read.icon.height - iconPx) > 0.5) problems.push(`${tag}: the close icon is ${read.icon.width} x ${read.icon.height}, not ${iconPx}`);
+  return problems;
+}
+
+interface ListReach {
+  rows: number;
+  firstRow: number;
+  scroller: string | null;
+  scrollerHeight: number;
+  last: { top: number; bottom: number; left: number; right: number } | null;
+  visible: { top: number; bottom: number; left: number; right: number } | null;
+  viewport: { width: number; height: number };
+}
+
+// Every night can be reached (pick CAL S2): the element that scrolls the list (the nearest ancestor
+// of the last row, the row included, whose overflow-y is auto or scroll) is at least one row tall,
+// and the last row, scrolled into view, lies inside that scroller's visible box and the viewport
+// (0.5px). A row inside a 0px region still reports a box after scrolling, hence both checks.
+async function readListReach(dialog: Locator): Promise<ListReach> {
+  return calendarRows(dialog).evaluateAll((found) => {
+    const viewport = { width: document.documentElement.clientWidth, height: window.innerHeight };
+    if (found.length === 0) return { rows: 0, firstRow: 0, scroller: null, scrollerHeight: 0, last: null, visible: null, viewport };
+    const last = found[found.length - 1] as HTMLElement;
+    let scroller: HTMLElement | null = last;
+    while (scroller) {
+      const overflow = getComputedStyle(scroller).overflowY;
+      if (overflow === 'auto' || overflow === 'scroll') break;
+      scroller = scroller.parentElement;
+    }
+    const firstRow = found[0].getBoundingClientRect().height;
+    last.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    const box = last.getBoundingClientRect();
+    const rect = scroller?.getBoundingClientRect() ?? null;
+    return {
+      rows: found.length,
+      firstRow,
+      scroller: scroller ? `${scroller.tagName.toLowerCase()}.${String(scroller.className).split(/\s+/).filter(Boolean).slice(0, 4).join('.')}` : null,
+      scrollerHeight: scroller?.clientHeight ?? 0,
+      last: { top: box.top, bottom: box.bottom, left: box.left, right: box.right },
+      visible: scroller && rect ? { top: rect.top + scroller.clientTop, bottom: rect.top + scroller.clientTop + scroller.clientHeight, left: rect.left, right: rect.right } : null,
+      viewport,
+    };
+  });
+}
+
+function listReachProblems(read: ListReach, tag: string): string[] {
+  if (read.rows === 0 || !read.last) return [`${tag}: the Calendar sheet shows no event row`];
+  if (!read.scroller || !read.visible) return [`${tag}: no element scrolls the list`];
+  const problems: string[] = [];
+  if (read.scrollerHeight < read.firstRow - 0.5) problems.push(`${tag}: the list's scroller (${read.scroller}) is ${read.scrollerHeight}px tall, under one row (${read.firstRow}px)`);
+  const { last, visible, viewport } = read;
+  if (last.top < visible.top - 0.5 || last.bottom > visible.bottom + 0.5) {
+    problems.push(`${tag}: the last row, scrolled into view, is outside its scroller (row ${last.top} to ${last.bottom}; scroller ${visible.top} to ${visible.bottom})`);
+  }
+  if (last.left < -0.5 || last.right > viewport.width + 0.5 || last.top < -0.5 || last.bottom > viewport.height + 0.5) {
+    problems.push(`${tag}: the last row, scrolled into view, is outside the viewport (row ${last.left} to ${last.right} by ${last.top} to ${last.bottom})`);
+  }
+  return problems;
+}
+
+// The owner's phone width, where the 12rem switch does not engage (430px is about 13.4rem at 200%).
+const OWNER_PHONE = { width: 430, height: 932 };
+
+// D04 extras, in every cell: the close first, then the list can be reached. In the 375 x 667 dark
+// 200% cell only, the same list read at 430 x 932 (no sweep cell is 430 wide), printed as one
+// 89.6-40 line (CI keeps nothing from a passing test), then 375 x 667 is set back. The dialog is
+// put back at its top so the next cell reads it as reached. Every problem throws as one line.
+const calendarSheetExtras: SurfaceRow['extras'] = async (page, cell) => {
+  const dialog = calendarSheet(page);
+  const tag = `D04 ${cell.id}`;
+  const problems = await sheetCloseProblems(dialog, cell, tag);
+  problems.push(...listReachProblems(await readListReach(dialog), tag));
+  if (cell.id === '375x667-dark-200') {
+    await page.setViewportSize(OWNER_PHONE);
+    await settleAnimations(dialog);
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    const wide = await readListReach(dialog);
+    process.stdout.write(`89.6-40 D04 430x932-dark-200: list scroller ${wide.scroller ?? 'none'} ${wide.scrollerHeight}px tall, first row ${wide.firstRow}px, ${wide.rows} rows\n`);
+    problems.push(...listReachProblems(wide, `${tag} at 430 x 932`));
+    await page.setViewportSize({ width: cell.width, height: cell.height });
+    await settleAnimations(dialog);
+  }
+  await toDialogTop(dialog);
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
+// D04-empty extras: the close alone (the list has no row to reach).
+const calendarSheetEmptyExtras: SurfaceRow['extras'] = async (page, cell) => {
+  const problems = await sheetCloseProblems(calendarSheet(page), cell, `D04-empty ${cell.id}`);
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R01', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', reach: reachHome, extras: homeExtras },
   { id: 'R01-one', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'one group', reach: reachWithGroups(oneGroup), extras: oneCardNotStretched },
@@ -317,5 +481,6 @@ export const rows: SurfaceRow[] = [
   { id: 'D01-error', census: 'D01', kind: 'dialog', owner: '89.6-16', status: 'enforced', state: 'the create failed', reach: reachCreateError },
   { id: 'D01-busy', census: 'D01', kind: 'dialog', owner: '89.6-16', status: 'enforced', state: 'the create in flight', reach: reachCreateBusy },
   // The Calendar sheet is the second half of the 89.6-16 block (orchestrator split, 2026-11-23).
-  { id: 'D04', census: 'D04', kind: 'dialog', owner: '89.6-40', status: 'pending' },
+  { id: 'D04', census: 'D04', kind: 'dialog', owner: '89.6-40', status: 'enforced', reachAt: { width: 375, height: 667 }, reach: reachCalendarSheet, extras: calendarSheetExtras },
+  { id: 'D04-empty', census: 'D04', kind: 'dialog', owner: '89.6-40', status: 'enforced', state: 'empty', reachAt: { width: 375, height: 667 }, reach: reachCalendarSheetEmpty, answers: (url) => (isEventsRead(url) ? [] : undefined), extras: calendarSheetEmptyExtras },
 ];
