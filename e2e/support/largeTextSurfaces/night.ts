@@ -180,7 +180,7 @@ async function openNight(page: Page): Promise<Locator> {
   await main.getByRole('button', { name: `Invite ${LONG_NAME} to the group`, exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
   await main.getByText('1 No', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
   await main.getByText('Voted', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
-  await main.getByText('Azul', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await main.getByRole('link', { name: 'Azul', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
   await settleAnimations(main);
   return main;
 }
@@ -330,6 +330,19 @@ const reachDeleteSession: SurfaceRow['reach'] = async (page) => {
 // module's read, imported when the extras run (the shell module imports the dialogs module).
 const deleteSessionExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
   const { readShell } = await import('./dialogShell');
+  // TEMPORARY DIAGNOSTIC (plan 89.6-19, removed before the plan closes): names the boxes outside the
+  // dialog that reach past the window when the page scrolls sideways (flip run 45637143022: 30px at
+  // 320 / 200%). It reads only; it fails nothing.
+  const wide = await page.evaluate(() => {
+    const limit = document.documentElement.clientWidth + 0.5;
+    if (document.documentElement.scrollWidth <= document.documentElement.clientWidth) return [];
+    const dialog = document.querySelector('[role="dialog"]');
+    const over = Array.from(document.body.querySelectorAll('*')).filter((el) => !dialog?.contains(el) && el.getBoundingClientRect().right > limit && el.getBoundingClientRect().width > 0);
+    const leaves = over.filter((el) => !over.some((other) => other !== el && el.contains(other)));
+    return leaves.slice(0, 6).map((el) => `${el.tagName.toLowerCase()}.${String(el.getAttribute('class') ?? '').slice(0, 90)} right=${Math.round(el.getBoundingClientRect().right)} text=${(el.textContent ?? '').trim().slice(0, 40)}`);
+  });
+  // eslint-disable-next-line no-console -- the temporary diagnostic is read from the CI log
+  for (const line of wide) console.log(`[89.6-19 D31 wide] ${cell.id} ${line}`);
   const read = await readShell(deleteSessionDialog(page));
   const footer = read.buttons.filter((button) => button.part === 'footer');
   const problems: string[] = [];
