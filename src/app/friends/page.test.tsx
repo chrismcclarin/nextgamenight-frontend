@@ -1046,6 +1046,10 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
   // action keeps to the right on a line of its own. jsdom lays nothing out, so this pins the
   // tokens; the rendered widths are in e2e/friends-page.spec.ts ("R4 B1 (88.9-52)").
   // The marker is at src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot").
+  // AMENDED 89.6-21: the rows are bb-rows. The friend row and the found row now lay out with the
+  // shared block (row bb-row, column bb-row-text, action bb-row-end): the action moves under the
+  // name, then the name under its checkbox, before a word breaks. The request and sent rows keep
+  // the 88.9-52 shape. The marker is at src/app/friends/page.js ("DECISION Phase 89.6-21 (friends-row)").
   it('R4 B1 (88.9-52): the friend, request, sent and found rows may wrap, their names break between words, and the action keeps to the right', async () => {
     const tokens = (el: Element | null | undefined) => (el?.className ?? '').split(/\s+/);
     const checkName = (name: HTMLElement, what: string) => {
@@ -1064,6 +1068,21 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
       expect(tokens(action), `${what}: the action keeps to the right`).toContain('ml-auto');
       return action;
     };
+    // 89.6-21: the friend and found rows on bb-row; no column holds the zero minimum.
+    const checkBbRow = (row: HTMLElement | null, what: string) => {
+      expect(row, `${what}: no row`).not.toBeNull();
+      expect(tokens(row), `${what}: the row is a bb-row`).toEqual(expect.arrayContaining(['bb-row', 'gap-3']));
+      const column = (row as HTMLElement).firstElementChild as HTMLElement;
+      expect(tokens(column), `${what}: the text column`).toContain('bb-row-text');
+      expect(tokens(column), `${what}: the text column may not shrink to nothing`).not.toContain('min-w-0');
+      for (const inner of Array.from(column.querySelectorAll('*'))) {
+        expect(tokens(inner), `${what}: a column descendant holds the zero minimum`).not.toContain('min-w-0');
+      }
+      const action = (row as HTMLElement).lastElementChild as HTMLElement;
+      expect(action, `${what}: the action is a second child`).not.toBe(column);
+      expect(tokens(action), `${what}: the action is the row's end`).toEqual(expect.arrayContaining(['bb-row-end', 'ml-auto']));
+      return action;
+    };
 
     providerCtx.receivedRequests = [SAM_REQUEST];
     renderFriends({ sent: [ALEX_SENT] });
@@ -1071,17 +1090,21 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
     const dana = await screen.findByText('Dana');
     checkName(dana, 'friend row');
     const friendRow = dana.closest('[data-friend-row]') as HTMLElement;
-    const remove = checkRow(friendRow, 'friend row');
+    const remove = checkBbRow(friendRow, 'friend row');
     expect(remove.tagName, 'friend row: the action is Remove').toBe('BUTTON');
+    // The busy spinner keeps the 8px the W38 marker tuned and never wraps above the word.
+    expect(tokens(remove), 'friend row: Remove keeps its own gap and one line').toEqual(expect.arrayContaining(['gap-0', 'flex-nowrap']));
+    // The column and the name are capped at their container, so the longest word is the floor.
+    expect(tokens(dana.parentElement?.parentElement), 'friend row: the name column').toEqual(expect.arrayContaining(['flex-1', 'max-w-full']));
+    expect(tokens(dana), 'friend row: the name').toContain('max-w-full');
     // The name and the already-in-group note share a line that may wrap.
     expect(tokens(dana.parentElement), 'friend row: the name line may wrap').toContain('flex-wrap');
 
     // The found row.
     const found = await searchShows(MORGAN_HIT, 'morgan@example.com');
     checkName(found, 'found row');
-    const foundAction = checkRow(found.closest('[data-found-row]') as HTMLElement, 'found row');
-    expect(tokens(foundAction), 'found row: the action is capped at the row').toContain('max-w-full');
-    expect(tokens(foundAction), 'found row: the action may shrink to the row').not.toContain('shrink-0');
+    const foundAction = checkBbRow(found.closest('[data-found-row]') as HTMLElement, 'found row');
+    expect(tokens(foundAction), 'found row: the action is the row end, which never shrinks').toContain('bb-row-end');
 
     // Requests tab: the request row. Accept and Decline may stack inside the row.
     fireEvent.click(screen.getByRole('button', { name: /^Requests/ }));
@@ -1098,6 +1121,18 @@ describe('friends — the Friends tab, the bulk invite and its outcome (88.6.1-4
     checkName(alex, 'sent row');
     const pill = checkRow(alex.closest('[data-sent-row]') as HTMLElement, 'sent row');
     expect(pill.textContent).toBe('Pending');
+  });
+
+  // Review M029 (UI-SPEC E2 partial): a friend with no username showed an empty name and its
+  // checkbox was heard as 'Select undefined'. The row now shows the house fallback, Member, and the
+  // checkbox is named after it. The marker is at
+  // src/app/friends/page.js ("DECISION Phase 89.6-21 (friend-fallback)").
+  it('89.6-21 M029: a friend with no username shows Member and its checkbox is named Select Member', async () => {
+    renderFriends({ friends: [{ id: 'fs-nameless', friend: { id: 'nameless-uuid', username: null } }] });
+    const checkbox = await screen.findByRole('checkbox', { name: 'Select Member' });
+    const row = checkbox.closest('[data-friend-row]') as HTMLElement;
+    expect(row, 'the checkbox sits in a friend row').not.toBeNull();
+    expect((row.querySelector('p')?.textContent ?? '').trim(), 'the visible name').toBe('Member');
   });
 
   // 88.9-52 R4 B1b (the round-4 re-shoot, 375 with text at 200%): the address field was squeezed

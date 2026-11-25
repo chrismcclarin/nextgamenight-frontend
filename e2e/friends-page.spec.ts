@@ -960,4 +960,54 @@ test.describe('friends page — what the Requests tab and the batch say (88.6.1-
       }
     }
   });
+
+  // 89.6-21 (friends-row), normal text. The friend row moved onto the shared bb-row block so that at
+  // large text the action drops under the name and the name under its checkbox before a word breaks
+  // (src/app/friends/page.js ("DECISION Phase 89.6-21 (friends-row)")). At ordinary text nothing may
+  // move: a short-named row keeps the checkbox, the name and Remove on one line, centred, with Remove
+  // at the row's right content edge. Phone first: 375 x 667, then 320 x 568. Nothing is pressed.
+  test('89.6-21 normal text: at 375 and 320 with 100% text a short-named friend row keeps checkbox, name and Remove on one line, centred', async ({ page }) => {
+    const friend = { id: 'e2e-friends-216-f', friend: { id: '8961a021-0000-4000-8000-0000000000e1', username: 'Dana' } };
+    await page.route(
+      (url) => url.pathname.endsWith('/friendships'),
+      async (route) => {
+        const params = new URL(route.request().url()).searchParams;
+        if (route.request().method() === 'GET' && params.get('status') === 'accepted') await route.fulfill({ status: 200, json: [friend] });
+        else await route.fallback();
+      },
+    );
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto('/friends');
+    const row = page.locator(`[data-friend-row="${friend.id}"]`);
+    await expect(row, '89.6-21: the routed friend row never rendered').toBeVisible({ timeout: 15_000 });
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize), '89.6-21: text is not at its ordinary size').toBe('16px');
+    for (const [width, height] of [
+      [375, 667],
+      [320, 568],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await expect.poll(() => page.evaluate(() => document.documentElement.clientWidth), { message: `89.6-21: the window did not become ${width}px wide` }).toBe(width);
+      await settleAnimations(row);
+      const read = await row.evaluate((el) => {
+        const style = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        const middle = (node: Element | null) => {
+          const r = (node as HTMLElement).getBoundingClientRect();
+          return r.top + r.height / 2;
+        };
+        const remove = el.querySelector(':scope > button') as HTMLElement;
+        return {
+          checkbox: middle(el.querySelector('input[type="checkbox"]')),
+          name: middle(el.querySelector('p')),
+          remove: middle(remove),
+          removeRight: remove.getBoundingClientRect().right,
+          contentRight: box.right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth),
+        };
+      });
+      const where = `89.6-21 at 100% text, ${width} wide`;
+      expect(Math.abs(read.checkbox - read.name), `${where}: the checkbox centre ${read.checkbox} vs the name centre ${read.name}`).toBeLessThanOrEqual(1);
+      expect(Math.abs(read.remove - read.name), `${where}: Remove's centre ${read.remove} vs the name centre ${read.name}`).toBeLessThanOrEqual(1);
+      expect(Math.abs(read.removeRight - read.contentRight), `${where}: Remove ends at ${read.removeRight}, the row's content edge at ${read.contentRight}`).toBeLessThanOrEqual(0.5);
+    }
+  });
 });

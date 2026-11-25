@@ -1178,15 +1178,16 @@ function FriendsPage() {
                         fits on two lines beside the buttons would push them down at ordinary
                         text). A 50-character unbroken name still breaks inside the row; held by
                         e2e/friends-long-address.spec.ts ("a friend request from a long name keeps Accept and Decline inside a 375 screen").
-                        At ordinary text with an ordinary name nothing moves. */}
+                        At ordinary text with an ordinary name nothing moves.
+                        AMENDED Phase 89.6-21 (friends-row): the floor-is-the-longest-word intent kept, now on bb-row; the pair also wraps and the action never shrinks. The friend row and the found row are bb-rows (the 89.6-21 friends-row marker sits on the friend row); the request and sent rows keep the shape above. */}
                     {searchResult && !searching && (
-                        <div data-found-row="" className="mt-4 p-edge-page border border-line rounded-lg flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex-1 max-w-full">
+                        <div data-found-row="" className="mt-4 p-edge-page border border-line rounded-lg bb-row items-center gap-3">
+                            <div className="bb-row-text">
                                 <p className="font-bold text-content-primary wrap-break-word">
                                     {searchResult.username}
                                 </p>
                             </div>
-                            <div className="ml-auto max-w-full">
+                            <div className="bb-row-end ml-auto">
                                 {(() => {
                                     const action = getSearchResultAction(searchResult);
                                     if (!action) return null;
@@ -1635,22 +1636,25 @@ function FriendsPage() {
                                                 const friendUserId = friend.id;
                                                 const isInGroup = selectedGroupId && groupMembers.includes(friendUserId);
                                                 const checkboxDisabled = !selectedGroupId || isInGroup;
+                                                // DECISION Phase 89.6-21 (friend-fallback): a friend with no username is shown and named 'Member', the house fallback (src/app/components/MemberSelector.js ("a username-less member falls back to 'Member', not their UUID."), 87.4 PR2-L5), chosen OVER an empty name read as 'Select undefined' and OVER 'this friend' (the Remove label's sentence fallback, which does not read as a name). Changing this is a decision, not a cleanup.
+                                                const friendDisplayName = friend.username || 'Member';
 
                                                 // DECISION Phase 88.9-58 (X14 family): Friends rows are white cards with no hover (owner 2026-11-14: Why not just turn them into white cards?), chosen OVER the unfilled bordered row with a hover wash (page-coloured at rest, a reaction on a row that is not clickable); row composition kept over the card utility (p-4 suits a list row).
                                                 // AMENDED Phase 89.6-39 (O-M1-bare): the row's 16px padding is the page edge token, the same 16px at normal text and held at 16px at 200% text (owner pick O-M1 = D, 2026-11-22: 'Edges stay thin'); still a list row, not the card utility.
+                                                // DECISION Phase 89.6-21 (friends-row): GR, the governing rule (owner, 2026-11-22: 'A row stays a row while everything in it fits whole. When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking. Scrolling down is fine; scrolling sideways is not.'): the friend row is a bb-row; the action moves under the name, then the name moves under its checkbox, before any word breaks, chosen OVER a shrinkable name column (the letter-stack 'Weeken / d / Warriors' at 320 / 200%) and OVER a fixed name width. Changing this is a decision, not a cleanup.
                                                 return (
                                                     <div
                                                         key={friendship.id}
                                                         data-friend-row={friendship.id}
-                                                        className="flex flex-wrap items-center justify-between gap-3 p-edge-page bg-surface-card border border-line rounded-card"
+                                                        className="bb-row items-center gap-3 p-edge-page bg-surface-card border border-line rounded-card"
                                                     >
-                                                        {/* 88.9-52 R4 B1 (marker above the found-person row): the column's floor is the checkbox plus the longest word, capped at the row. */}
-                                                        <div className="flex items-center gap-3 flex-1 max-w-full">
+                                                        {/* 88.9-52 R4 B1 (marker above the found-person row): the column's floor is the checkbox plus the longest word, capped at the row. AMENDED Phase 89.6-21 (friends-row): the floor-is-the-longest-word intent kept, now on bb-row; the pair also wraps and the action never shrinks. */}
+                                                        <div className="bb-row-text flex flex-wrap items-center gap-3">
                                                             <input
                                                                 id={`bulk-invite-${friendship.id}`}
                                                                 name={`bulk-invite-${friendship.id}`}
                                                                 type="checkbox"
-                                                                aria-label={`Select ${friend.username}`}
+                                                                aria-label={`Select ${friendDisplayName}`}
                                                                 // Read by the members load's focus hand-off (A-55).
                                                                 data-bulk-invite-friend={friendUserId}
                                                                 checked={isInGroup || selectedFriends.has(friendUserId)}
@@ -1661,10 +1665,10 @@ function FriendsPage() {
                                                                     checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                                 }`}
                                                             />
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="flex flex-wrap items-center gap-x-2 min-w-0">
-                                                                    <p className="font-bold text-content-primary min-w-0 wrap-break-word">
-                                                                        {friend.username}
+                                                            <div className="flex-1 max-w-full">
+                                                                <div className="flex flex-wrap items-center gap-x-2">
+                                                                    <p className="font-bold text-content-primary max-w-full wrap-break-word">
+                                                                        {friendDisplayName}
                                                                     </p>
                                                                     {isInGroup && (
                                                                         <span className="text-xs text-content-muted italic">(already in group)</span>
@@ -1716,7 +1720,7 @@ function FriendsPage() {
                                                                     // shrink-0, with NO border in any state, so the armed state speaks
                                                                     // in weight alone. REJECTED: the outlined box it drew when armed
                                                                     // (the only one of the three with a box).
-                                                                    className={`ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring ${
+                                                                    className={`bb-row-end gap-0 flex-nowrap ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring ${
                                                                         armed ? 'font-semibold' : ''
                                                                     }`}
                                                                 >
