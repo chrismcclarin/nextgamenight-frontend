@@ -1558,7 +1558,14 @@ function FriendsPage() {
                                                         onChange={(e) => setSelectedGroupId(e.target.value)}
                                                         className="flex-1 min-w-[180px] max-w-xs"
                                                     >
-                                                        <option value="" disabled>Select a group...</option>
+                                                        {/* DECISION Phase 89.6-21 (A): the placeholder reads Choose... over
+                                                            Select a group... (owner, 2026-11-25: "We can use choose...").
+                                                            The old text needs 246px and the select has 178px at 320 and
+                                                            233px at 375 at 200% text; Pick a group was at the limit, and
+                                                            smaller text is not allowed (P1). The visible label Invite to
+                                                            Group: already names what is chosen, so the shorter text loses
+                                                            nothing. Changing this wording is the owner's call. */}
+                                                        <option value="" disabled>Choose...</option>
                                                         {userGroups.map(group => (
                                                             <option key={group.id} value={group.id}>
                                                                 {group.name}
