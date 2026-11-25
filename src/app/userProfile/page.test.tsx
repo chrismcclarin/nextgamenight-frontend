@@ -2362,7 +2362,7 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
       const classes = card.className.split(/\s+/);
       expect(classes.filter((c) => c.startsWith('hover:shadow-'))).toEqual([]);
       expect(classes).not.toContain('transition-shadow');
-      for (const kept of ['border', 'border-line', 'rounded-lg', 'p-4']) expect(classes).toContain(kept);
+      for (const kept of ['border', 'border-line', 'rounded-lg', 'p-edge-page']) expect(classes).toContain(kept);
     } finally {
       owned.mockReset().mockResolvedValue([]);
     }
@@ -7200,7 +7200,7 @@ describe('phone layout of the availability panels and the inline two-tap control
         // bottom padding is back (the 70px one-line row is unchanged). Exact padding set, so a
         // returned all-round p-3 goes red here.
         expect(row.className.split(/\s+/).filter((token) => /^(sm:)?p[xytblr]?-/.test(token)).sort()).toEqual(
-          ['pb-0', 'pt-3', 'px-3', 'sm:pb-3']
+          ['pb-0', 'pt-3', 'px-edge-card', 'sm:pb-3']
         );
         // Three cells, in reading order: the hours, the dates, the control.
         expect(Array.from(row.children).map((child) => child.tagName)).toEqual(['P', 'P', 'BUTTON']);

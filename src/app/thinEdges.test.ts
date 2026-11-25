@@ -19,6 +19,9 @@
 // control call, and plan 89.6-39 makes those calls. Until then each file's count of sites sits in
 // PENDING, and test 5 holds it EXACT: a higher count is a new rem edge (red), a lower one must
 // lower the entry in the same commit (red until it does). An entry can only fall.
+// AMENDED Phase 89.6-39 (O-M1-bare): PENDING is closed; a new card or bar edge in rem fails test 4
+// directly. Test 5 holds the map empty and test 7 holds every exclusion to a class rule, so the
+// waiver cannot grow again by either door.
 //
 // AMENDED Phase 89.6-39 (O-M1-bare): the card rule reaches elevated, sunken and accent-subtle fills
 // and a breakpoint radius; a bar is pinned to the top or bottom; a grid label pinned to the left is
@@ -80,10 +83,10 @@ function BAR_RULE(tokens: string[]): boolean {
 
 /** A control's own padding is not an edge. A NAMED_CARDS entry outranks every rule here. */
 const CONTROL_RULES: { test: (tokens: string[]) => boolean; reason: string }[] = [
-  { test: (t) => t.includes('rounded-btn'), reason: 'a button-shaped control (rounded-btn)' },
+  { test: (t) => t.includes('rounded-btn'), reason: 'a button-shaped control, marked by the rounded-btn class' },
   { test: (t) => t.includes('rounded-full'), reason: 'a pill, chip or round control (rounded-full)' },
-  { test: (t) => t.includes('btn'), reason: 'the btn class: a button' },
-  { test: (t) => t.includes('min-h-11') && t.includes('inline-flex'), reason: 'a 44px inline control' },
+  { test: (t) => t.includes('btn'), reason: 'the btn class marks a button, a control' },
+  { test: (t) => t.includes('min-h-11') && t.includes('inline-flex'), reason: 'a 44px tall inline control, its padding part of the tap target' },
   { test: (t) => t.includes('min-h-11') && t.includes('min-w-11'), reason: 'a 44 x 44 tap floor: a toggle or icon control' },
   {
     test: (t) => t.includes('border-2') && t.includes('rounded-lg') && t.includes('text-3xl'),
@@ -111,15 +114,10 @@ const SIDE_PADDING = /^(?:p|px|pl|pr|ps|pe)-(.+)$/;
 const EDGE_VALUE = /^(?:edge-(?:card|page|wide|roomy)|\[[^\]]*--spacing-edge-[^\]]*\]|0|px)$/;
 
 /**
- * The files still holding rem edges, each with its exact count of offending class strings.
- * Owner 89.6-15 entries are this plan's; owner 89.6-39 entries are the bare-padding card calls.
+ * Closed by plan 89.6-39: no file holds a rem card or bar edge, so no file is waived. Test 5
+ * holds this map empty; a new rem edge is fixed, or excluded by a CONTROL_RULES class rule.
  */
-const PENDING: Record<string, { count: number; owner: '89.6-15' | '89.6-39' }> = {
-  'app/userProfile/page.js': { count: 10, owner: '89.6-39' },
-};
-
-/** The number of PENDING entries owned by 89.6-15 may only fall; it reached 0 when plan 89.6-15 closed, so every entry left is plan 89.6-39's. */
-const PENDING_OWNED_BY_15_CEILING = 0;
+const PENDING: Record<string, { count: number; owner: string }> = {};
 
 /** The page roots on the page token pair: pinned by a snippet once converted, a PENDING entry until then. */
 const PAGE_ROOTS: { file: string; snippet: string | null }[] = [
@@ -297,18 +295,8 @@ describe('Phase 89.6-15 (O-M1 D, HR-9): every page gutter, card and bar edge is 
     expect(found, 'these cards or bars carry rem side padding; a control is excluded only by a CONTROL_RULES entry').toEqual([]);
   });
 
-  it('5. PENDING is exact and one-way: each file\'s count equals its entry, and every entry has an owner', () => {
-    const wrong: string[] = [];
-    for (const file of new Set([...byFile.keys(), ...Object.keys(PENDING)])) {
-      const measured = countOf(byFile.get(file) ?? []);
-      const entry = PENDING[file]?.count ?? 0;
-      if (measured > entry) wrong.push(`src/${file}: ${measured} rem-edge class strings, PENDING allows ${entry} (a new rem edge): ${(byFile.get(file) ?? []).map(say).join(' | ')}`);
-      if (measured < entry) wrong.push(`src/${file}: ${measured} rem-edge class strings, PENDING says ${entry}; lower the entry (or remove it at 0) in this commit`);
-    }
-    for (const [file, entry] of Object.entries(PENDING)) {
-      if (entry.owner !== '89.6-15' && entry.owner !== '89.6-39') wrong.push(`src/${file}: owner ${String(entry.owner)} is neither 89.6-15 nor 89.6-39`);
-    }
-    expect(wrong).toEqual([]);
+  it('5. PENDING is empty: no card or bar edge in src is waived', () => {
+    expect(Object.keys(PENDING), 'PENDING is closed (plan 89.6-39): put the edge on a token, or exclude a control by a CONTROL_RULES class rule').toEqual([]);
   });
 
   it('6. the page roots read the page token pair (pinned by snippet once converted)', () => {
@@ -325,8 +313,17 @@ describe('Phase 89.6-15 (O-M1 D, HR-9): every page gutter, card and bar edge is 
     expect(wrong).toEqual([]);
   });
 
-  it('7. the PENDING entries owned by 89.6-15 are at most PENDING_OWNED_BY_15_CEILING', () => {
-    const owned = Object.entries(PENDING).filter(([, e]) => e.owner === '89.6-15').map(([f]) => f);
-    expect(owned.length, `PENDING entries owned by 89.6-15: ${owned.join(', ')}`).toBeLessThanOrEqual(PENDING_OWNED_BY_15_CEILING);
+  it('7. Exclusions are class rules, never files', () => {
+    const PATH = /(?:^|[\s'"`(/])(?:src|app|components|lib|e2e)\/|\.(?:jsx?|tsx?|mjs|cjs)\b/;
+    const wrong: string[] = [];
+    for (const rule of CONTROL_RULES) {
+      const text = String(rule.test);
+      if (PATH.test(text)) wrong.push(`a CONTROL_RULES test names a file or a path: ${text}`);
+      if (PATH.test(rule.reason)) wrong.push(`a CONTROL_RULES reason names a file or a path: ${rule.reason}`);
+      if (rule.reason.trim().split(/\s+/).length < 6) wrong.push(`a CONTROL_RULES reason is not a sentence of at least six words: ${rule.reason}`);
+    }
+    // The one directory not read is the removal-owned tutorial (decision D-07); it cannot grow.
+    expect(SKIP_DIRS, 'SKIP_DIRS holds only the removal-owned tutorial directory').toEqual(['app/components/tutorial/']);
+    expect(wrong).toEqual([]);
   });
 });

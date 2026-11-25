@@ -2506,7 +2506,7 @@ function Profile(){
                     including this banner. Banner clears automatically when user
                     re-adds a phone. Tokens: the B3a status-warning family (owner pick B3a, plan 88.9-32). */}
                 {userData?.sms_enabled && phoneJustRemoved && !userData?.phone && !smsDisabledBannerDismissed && (
-                    <div className="mb-4 p-3 rounded-lg bg-status-warning-subtle border border-status-warning flex items-start gap-3">
+                    <div className="mb-4 p-edge-card rounded-lg bg-status-warning-subtle border border-status-warning flex items-start gap-3">
                         <p ref={smsDisabledBannerTextRef} className="flex-1 text-sm text-content-status-warning">
                             SMS disabled — add a phone number to re-enable.
                         </p>
@@ -2594,7 +2594,7 @@ function Profile(){
                     marker in `groupHomePage/page.js` ("deliberately NOT added"); SPEC Requirement 11
                     (R7-M7) rules the change, and plan 88.6.1-55 amends that marker in place.
                     Dropping any of the three is a decision, not a cleanup. */}
-                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
+                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-edge-card py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
                     <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
                     <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                     {/* DECISION Phase 88.6-17 (D-03 emphasis / T-88.6-138): the current-page span
@@ -3569,7 +3569,7 @@ function Profile(){
 
                     {/* SMS Consent Disclosure (TCPA / carrier compliance) */}
                     {userData?.sms_enabled && (
-                        <div className="mb-4 p-3 rounded-card border border-line bg-surface-sunken">
+                        <div className="mb-4 p-edge-card rounded-card border border-line bg-surface-sunken">
                             {/* DECISION Phase 88.6-17 (D-01 / T-88.6-42): legal text moves OFF the
                                 caption rung — label 14/700, body 14/400. Caption's closed role list is
                                 chips, counters, timestamps, eyebrows, dense-grid cells and helper text;
@@ -3837,7 +3837,7 @@ function Profile(){
                             </div>
 
                             {showRecurringForm && (
-                                <div id={recurringFormPanelId} className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
+                                <div id={recurringFormPanelId} className="mb-6 p-edge-page border border-line rounded-lg bg-surface-page">
                                     <Heading level={4} size="body" className="mb-3 text-content-primary">New Schedule</Heading>
                                     <div className="space-y-3">
                                         <div>
@@ -4123,7 +4123,7 @@ function Profile(){
                                                now the outset two-tone utility (2px offset plus 2px band, reach 4px), so it lies over
                                                the bottom edge line and 3px into the 8px gap between rows, still whole (read at 320
                                                and 375 in light by plan 89.6-13). */
-                                            <div key={pattern.id} className="px-3 pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
+                                            <div key={pattern.id} className="px-edge-card pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
                                                 <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
                                                     {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                 </p>
@@ -4197,7 +4197,7 @@ function Profile(){
                             </div>
 
                             {showSpecificForm && (
-                                <div id={specificFormPanelId} className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
+                                <div id={specificFormPanelId} className="mb-6 p-edge-page border border-line rounded-lg bg-surface-page">
                                     <Heading level={4} size="body" className="mb-3 text-content-primary">New Specific Override</Heading>
                                     <div className="space-y-3">
                                         <div>
@@ -4297,7 +4297,7 @@ function Profile(){
                                         .map(pattern => (
                                             // W37 (88.9-52): the two-line phone grid of the schedule rows (their DECISION marker).
                                             // R17 (88.9-52): 82px on a phone, no padding under the control line (the AMENDED line there).
-                                            <div key={pattern.id} className="px-3 pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
+                                            <div key={pattern.id} className="px-edge-card pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
                                                 <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
                                                     {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                 </p>
@@ -4971,10 +4971,10 @@ const CollectionCard = memo(function CollectionCard({
     <div
         className={
             isThirdPeek
-                ? 'border border-line rounded-lg p-4 dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none max-lg:hidden'
+                ? 'border border-line rounded-lg p-edge-page dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none max-lg:hidden'
                 : isPeek
-                    ? 'border border-line rounded-lg p-4 dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none'
-                    : 'border border-line rounded-lg p-4 dark:bg-surface-elevated'
+                    ? 'border border-line rounded-lg p-edge-page dark:bg-surface-elevated max-h-[72px] overflow-hidden pointer-events-none select-none'
+                    : 'border border-line rounded-lg p-edge-page dark:bg-surface-elevated'
         }
         inert={isPeek ? '' : undefined}
         aria-hidden={isPeek ? 'true' : undefined}
