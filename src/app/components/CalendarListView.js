@@ -181,6 +181,19 @@ const CONTAINER_HEIGHT_FULL = 600;
    allocating a throwaway Set per render, not about dependency checks.) */
 const EMPTY_ID_SET = new Set();
 
+/**
+ * The element that scrolls the list: the region itself, or the nearest ancestor whose computed
+ * overflow-y is auto or scroll (the Calendar sheet's body below a 14rem sheet width, Phase 89.6-40
+ * CAL-fold). Falls back to the region when nothing above it scrolls (jsdom computes no class CSS).
+ */
+function scrollerOf(region) {
+  for (let node = region; node; node = node.parentElement) {
+    const overflowY = getComputedStyle(node).overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll') return node;
+  }
+  return region;
+}
+
 export default function CalendarListView({
   events,
   onEventClick,
@@ -548,26 +561,41 @@ export default function CalendarListView({
      fold commits, if the folded section starts above the visible part, the region scrolls to the
      section's top: its header is back in view with the next section's header directly under it.
      A layout effect, so the corrected position is the first one painted. It runs only for a
-     fold the person just made (the pending ref), never on mount and never on an unfold. */
+     fold the person just made (the pending ref), never on mount and never on an unfold.
+     AMENDED Phase 89.6-40 (CAL-fold): below a 14rem sheet the region no longer scrolls; the
+     fold-scroll and the observer use the element that does (the sheet body there, the region
+     everywhere else, src/components/ui/BottomSheet.tsx ("DECISION Phase 89.6-40 (CAL)")). When
+     that element is the region the offsetTop path below is unchanged; otherwise the section's top
+     is measured against the scroller. Still a scroll, never a focus move (the X25a DECISION). */
   useIsomorphicLayoutEffect(() => {
     const section = pendingFoldRef.current;
     if (!section) return;
     pendingFoldRef.current = null;
     const container = containerRef.current;
     if (!container) return;
-    // The region is `position: relative`, so it is the offset parent of both sections.
-    if (section.offsetTop < container.scrollTop) container.scrollTop = section.offsetTop;
+    const scroller = scrollerOf(container);
+    if (scroller === container) {
+      // The region is `position: relative`, so it is the offset parent of both sections.
+      if (section.offsetTop < container.scrollTop) container.scrollTop = section.offsetTop;
+      return;
+    }
+    const top = section.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    if (top < scroller.scrollTop) scroller.scrollTop = top;
   }, [upcomingExpanded, pastExpanded]);
 
   // Past-window IntersectionObserver: when the sentinel at the BOTTOM of the open Past region
   // enters the SCROLL CONTAINER's viewport AND there are more past events to load, reveal
   // another page of them. We use the scroll container as the IO root so the
   // sentinel triggers inside the card, not the page.
+  // AMENDED Phase 89.6-40 (CAL-fold): below a 14rem sheet the region no longer scrolls; the
+  // fold-scroll and the observer use the element that does. A root that does not scroll clips
+  // nothing, so the sentinel would always intersect and every past page would load at once.
   const sentinelRef = useRef(null);
   useEffect(() => {
     const node = sentinelRef.current;
-    const root = containerRef.current;
-    if (!node || !root) return;
+    const region = containerRef.current;
+    if (!node || !region) return;
+    const root = scrollerOf(region);
     if (allMorePastLoaded) return; // No more to load — observer is a no-op.
 
     const observer = new IntersectionObserver(

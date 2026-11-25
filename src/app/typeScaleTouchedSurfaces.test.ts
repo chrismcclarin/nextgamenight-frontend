@@ -1364,8 +1364,9 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // AMENDED Phase 88.9-61 (X25a + X29 A): the CalendarListView entry moved 1077 -> 1027 because the desktop feed, the Today delineator and the mount-time centre-scroll left that file and the SectionHeader component and the X29 amendment sentences were added above it; the skipped element (the EventRow call in DateGroup) is unchanged.
       // AMENDED Phase 88.9-61 (X25a sticky): the CalendarListView entry moved 1027 -> 1072 because the fold-scroll layout effect, the isomorphic layout-effect const and the two X25a DECISION markers were added above it; the skipped element (the EventRow call in DateGroup) is unchanged.
       // AMENDED Phase 89.6-40 (CAL): the CalendarListView entry moved 1100 -> 1107 because the seven-line AMENDED Phase 89.6-40 (CAL) note was added to the FLEX FILL comment above it; the skipped element (the EventRow call in DateGroup) is unchanged.
+      // AMENDED Phase 89.6-40 (CAL-fold): the CalendarListView entry moved 1107 -> 1135 because the scrollerOf helper and the two CAL-fold amendments were added above it; the skipped element (the EventRow call in DateGroup) is unchanged.
     ).toEqual([
-      'app/components/CalendarListView.js:1107',
+      'app/components/CalendarListView.js:1135',
       'components/ui/EmptyState.tsx:182',
     ]);
   });
