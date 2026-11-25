@@ -2360,8 +2360,13 @@
      `--color-focus-ring` is INERT there, because `--ring` resolves its `var()` on `:root`. See
      that plan's markers at those two sites before touching either.
      Moving this back to purple-600 or purple-400, or "simplifying" the header override onto
-     `--color-focus-ring`, is a decision, not a cleanup. */
+     `--color-focus-ring`, is a decision, not a cleanup.
+     AMENDED Phase 89.6-12 (focus-ring): the two-tone ring reads the runtime pair focus-ring-outer
+     and focus-ring-inner for the same reason; the header scopes them the same way it scopes ring
+     today. */
   --color-focus-ring: var(--purple-700);
+  --focus-ring-outer: var(--purple-900);
+  --focus-ring-inner: #ffffff;
 
   /* Transitions */
   --theme-transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
@@ -2712,6 +2717,8 @@
 
   /* Focus ring */
   --color-focus-ring: var(--amber-400);
+  --focus-ring-outer: var(--amber-400);
+  --focus-ring-inner: var(--purple-950);
 }
 
 /* ===== shadcn/ui token bridge (introduced Phase 84; mapped onto the existing --color-* palette)
@@ -3100,6 +3107,41 @@ body {
     var(--color-avail-if-need-be-stripe) 0 2px,
     transparent 2px 6px
   );
+}
+
+/* DECISION Phase 89.6-12 (focus-ring): owner pick O-1 = B, 2026-11-22 ('Two-colour ring, 2px: a
+   thin inner band plus a darker outer ring; passes all 96'; ring overlap onto neighbours: 'There is
+   no issue with B.'): one two-tone ring, a 2px outer ring in --focus-ring-outer 2px off the control
+   and a 2px inner band in --focus-ring-inner, so one band clears 3:1 on any ground, fill or photo
+   (W3C technique C40: the bands are at least 9:1 apart, pinned in tokenContrast.test.ts).
+   Chosen OVER the 88.9 halo contract (a ring over a surface-coloured halo, which needs a per-ground
+   halo token at every site and measured 1.38 on a filled button; it AMENDS AMENDED Phase 88.9-05 in
+   Button.tsx and owner picks A3d and A10c, whose Button.tsx marker plan 89.6-13 amends at the swap)
+   and OVER a see-through gap (option A, 24 failures of 96, photos 1.00).
+   The utilities read runtime properties, not an @theme key, for the reason the CONSEQUENCE marker
+   at the light focus-ring line records.
+   The inner band rides Tailwind's ring slot (the slot today's focus-visible ring-2 occupies) and
+   box-shadow repeats Tailwind's five-slot composite, chosen OVER a box-shadow that replaces the
+   composite (the research recipe), which erased the Friends tab's inset underline band on focus
+   (found by plan 89.6-14's run).
+   The inset form draws both bands as inset box-shadows inside the border, with a transparent 2px
+   outline at -2px for forced colours, chosen OVER an inset outline in --focus-ring-outer, which
+   paints above borders and box-shadows and hid the active-tab underline, the Friends R4 D7 band
+   (AMENDED Phase 88.9-52 R4 D7 rejected the ring drawn over the underline) and the RSVP selected
+   border while focused.
+   Changing this is a decision, not a cleanup. */
+@utility focus-ring {
+  outline: 2px solid var(--focus-ring-outer);
+  outline-offset: 2px;
+  --tw-ring-shadow: 0 0 0 2px var(--focus-ring-inner);
+  box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+}
+
+@utility focus-ring-inset {
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  --tw-ring-shadow: inset 0 0 0 2px var(--focus-ring-outer), inset 0 0 0 4px var(--focus-ring-inner);
+  box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
 }
 
 /* DECISION Phase 88.6-05 (W19): `.btn`'s `border: none` RESET — and ONLY that one declaration —

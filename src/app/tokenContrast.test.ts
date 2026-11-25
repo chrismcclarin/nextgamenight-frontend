@@ -704,7 +704,9 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       light: { outer: '#232d3e', inner: '#ffffff' },
       dark: { outer: '#fbbf24', inner: '#161d29' },
     } as const;
+    // The ratio is read first, so a re-tint that breaks the floor prints both colours and the ratio.
     for (const theme of ['light', 'dark'] as const) {
+      expectRatio(theme, '--focus-ring-outer', '--focus-ring-inner', 9.0, req);
       expect(
         resolve(theme, '--focus-ring-outer'),
         `C40: [${theme}] --focus-ring-outer must resolve to the picked ${picked[theme].outer}`,
@@ -713,7 +715,6 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
         resolve(theme, '--focus-ring-inner'),
         `C40: [${theme}] --focus-ring-inner must resolve to the picked ${picked[theme].inner}`,
       ).toBe(picked[theme].inner);
-      expectRatio(theme, '--focus-ring-outer', '--focus-ring-inner', 9.0, req);
     }
   });
 
