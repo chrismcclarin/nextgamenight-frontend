@@ -12,7 +12,8 @@
 //      returns the root to read (and the dialog's content box when the surface is a dialog);
 //   2. where needed add answers (reads answered in the browser), reachAt (the viewport the surface
 //      is reached at, when it exists only at some widths), extras (the row's own assertions per
-//      cell), or one more row with the same census id and a state;
+//      cell), clock: 'held' (a reach that leaves the page clock paused; plan 89.6-25), or one more
+//      row with the same census id and a state;
 //   3. push that commit BEFORE the fix, so the row is shown red in CI, then the fix commit green.
 // No floor, registry row or ci.yml line is edited to turn a row on: the coverage script
 // (scripts/large-text-sweep-coverage.mjs) expects every cell of every enforced row from the
@@ -90,6 +91,14 @@ export interface SurfaceRow {
   answers?: (url: URL) => unknown;
   /** The row's own assertions, run after each cell's read. */
   extras?: (page: Page, cell: SweepCell) => Promise<void>;
+  /**
+   * 'held': the row's reach leaves the page clock paused (page.clock.pauseAt), so each cell's settle
+   * advances the paused clock instead of waiting on animation frames, which a paused clock never
+   * fires (e2e/large-text-sweep.spec.ts ("DECISION Phase 89.6-25 (held-clock)")). The clock is the
+   * context's, shared by the font32 page, so such a reach resumes it before it navigates again.
+   * Absent: the frame settle, unchanged. Added by plan 89.6-25 (orchestrator ruling D10).
+   */
+  clock?: 'held';
 }
 
 const cell = (width: number, height: number, theme: 'light' | 'dark', mode: '100' | '200' | 'font32', zoom = false): SweepCell => ({

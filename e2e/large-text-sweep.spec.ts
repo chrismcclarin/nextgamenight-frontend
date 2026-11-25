@@ -102,13 +102,33 @@ interface CellRecord {
 
 const firstLine = (error: unknown): string => String(error instanceof Error ? error.message : error).split('\n')[0];
 
-/** Wait until the page's size and text stop changing from one frame to the next. */
+/**
+ * Wait until the page's size and text stop changing from one frame to the next. With clock 'held'
+ * (a row whose reach leaves the page clock paused) each step advances the paused clock instead.
+ */
+// DECISION Phase 89.6-25 (held-clock): an opt-in held settle, chosen OVER waiting on animation
+// frames for every row (a paused page clock fires none, so the settle never returns: measured in
+// the row-list test's held-clock control), OVER a test seam inside FeedbackForm (a production change
+// made only for a test) and OVER wrapping the page's setTimeout (a hack). Each step advances the
+// paused clock by two 32ms frames (page.clock.runFor runs the frame callbacks and the timers due)
+// and then lets 32ms of real rendering pass (layout observers ride the browser's own frames, which
+// the clock does not hold). Rows without clock: 'held' take the frame branch exactly as before.
+// Orchestrator ruling D10 (plan 25, D11). Changing this is a decision, not a cleanup.
 async function settleLayout(page: Page, root: Locator, clock: 'frames' | 'held' = 'frames'): Promise<void> {
-  if (clock === 'held') {
-    // Not built yet (plan 89.6-25 builds it in the next commit): falls through to the frame wait.
-  }
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await settleAnimations(root);
+  if (clock === 'held') {
+    const snapshot = () => page.evaluate(() => `${document.documentElement.scrollWidth}x${document.documentElement.scrollHeight}:${document.body.innerText.length}`);
+    let before = await snapshot();
+    for (let tries = 0; tries < 30; tries += 1) {
+      await page.clock.runFor(32);
+      await page.waitForTimeout(32);
+      const now = await snapshot();
+      if (now === before) return;
+      before = now;
+    }
+    return;
+  }
   await page.evaluate(async () => {
     const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const snapshot = () => `${document.documentElement.scrollWidth}x${document.documentElement.scrollHeight}:${document.body.innerText.length}`;
@@ -154,7 +174,7 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
     const tag = `${row.id} ${cell.id}`;
     await target.setViewportSize({ width: cell.width, height: cell.height });
     await setTextMode(target, cell.mode, tag);
-    await settleLayout(target, reached.root);
+    await settleLayout(target, reached.root, row.clock ?? 'frames');
     // A dialog's own box eases to its new height after a viewport change (its height cap is in
     // dvh and the box carries a max-height transition), and the root of a dialog row may sit
     // INSIDE that box, where the wait above does not look. So the box itself is settled too.
