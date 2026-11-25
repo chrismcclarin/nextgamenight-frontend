@@ -1224,7 +1224,7 @@ async function measureDayModalQr(page: Page, read: () => O19Day, theme: 'light' 
   await dayTarget.click();
   const dialog = page.getByRole('dialog');
   await expect(dialog, `O-19 (${theme}): the day modal did not open`).toBeVisible({ timeout: 15_000 });
-  const row = dialog.locator('div.p-4.rounded-lg').filter({ hasText: O19_TINTED });
+  const row = dialog.locator('div.p-edge-page.rounded-lg').filter({ hasText: O19_TINTED });
   await expect(row, `O-19 (${theme}): exactly one tinted row`).toHaveCount(1);
   const share = row.getByRole('button', { name: 'Share Game QR', exact: true });
   await expect(share, `O-19 (${theme}): the tinted row's Share Game QR is not visible`).toBeVisible();

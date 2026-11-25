@@ -1498,7 +1498,7 @@ export default function EventScheduler({
       )}
 
       {selectedSlot && (
-        <div className="p-4 bg-surface-sunken rounded-card border border-line-accent">
+        <div className="p-edge-page bg-surface-sunken rounded-card border border-line-accent">
           {/* The label takes UI-SPEC 4.5's EMPHASIS outcome — text-content-primary against the
               value's text-content-accent below it already carries the pairing, and the value is
               about to be 20/700 against this 14/400, which is hierarchy enough for a two-line box.

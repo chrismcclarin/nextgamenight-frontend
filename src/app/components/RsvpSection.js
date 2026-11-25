@@ -333,7 +333,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
   if (loading) {
     return (
-      <div className="mt-4 p-4 bg-surface-elevated rounded-card">
+      <div className="mt-4 p-edge-page bg-surface-elevated rounded-card">
         <p className="text-sm text-content-muted">Loading RSVPs...</p>
       </div>
     );

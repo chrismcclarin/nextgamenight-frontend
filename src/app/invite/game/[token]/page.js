@@ -494,7 +494,7 @@ function GameInvitePage() {
               {JOINED_HEADLINE}
             </Heading>
             {eventInfo && (
-              <div className="mb-6 p-4 bg-surface-elevated rounded-lg">
+              <div className="mb-6 p-edge-page bg-surface-elevated rounded-lg">
                 <p className="font-bold text-content-primary">{gameName}</p>
                 <p className="text-sm text-content-muted mt-1">{eventDateLabel}</p>
               </div>
@@ -534,7 +534,7 @@ function GameInvitePage() {
               {ALREADY_JOINED_DETAIL}
             </p>
             {eventInfo && (
-              <div className="mb-6 p-4 bg-surface-elevated rounded-lg">
+              <div className="mb-6 p-edge-page bg-surface-elevated rounded-lg">
                 <p className="font-bold text-content-primary">{gameName}</p>
                 <p className="text-sm text-content-muted mt-1">{eventDateLabel}</p>
               </div>

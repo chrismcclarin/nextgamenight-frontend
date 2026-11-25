@@ -841,7 +841,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 )}
 
                 {!canManageMembers && (
-                    <div className="bg-surface-sunken border border-line rounded-lg p-4 mb-4">
+                    <div className="bg-surface-sunken border border-line rounded-lg p-edge-page mb-4">
                         <p className="text-content-secondary text-sm">
                             You're viewing the member list. Only owners and admins can change roles or remove members.
                         </p>
@@ -911,7 +911,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     88.9-51. */}
                                 <div className="space-y-3">
                                     {members.filter(m => m.UserGroup?.role === 'pending').map((member) => (
-                                        <div key={member.id} className="flex flex-wrap items-center justify-between gap-y-2 p-4 border border-status-warning rounded-lg bg-status-warning-subtle">
+                                        <div key={member.id} className="flex flex-wrap items-center justify-between gap-y-2 p-edge-page border border-status-warning rounded-lg bg-status-warning-subtle">
                                             {/* G4 (88.9-52): this row follows the active row's wrap rule (the DECISION marker there); its name block starts at 6rem, not 10rem, so the row stays on one line beside Approve and Reject at normal text on a 375 phone. */}
                                             <div className="flex items-center gap-3 flex-[1_1_6rem] min-w-0">
                                                 <div className="flex-1 min-w-0">
@@ -994,7 +994,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                        this is a decision, not a cleanup. */
                                     <div
                                         key={member.id}
-                                        className="flex flex-wrap items-center justify-between gap-y-2 p-4 border border-line rounded-lg hover:bg-surface-hover"
+                                        className="flex flex-wrap items-center justify-between gap-y-2 p-edge-page border border-line rounded-lg hover:bg-surface-hover"
                                     >
                                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 flex-[1_1_10rem] min-w-0">
                                             {/* DECISION Phase 88.9-30 D4a (owner pick D4a, 88.9-PICKS-B3.json, votes-b3 v12 + chat
@@ -1245,7 +1245,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             {pendingInvites.map((invite) => (
                                 <div
                                     key={invite.id}
-                                    className="flex items-center justify-between p-4 border border-status-warning rounded-lg bg-status-warning-subtle"
+                                    className="flex items-center justify-between p-edge-page border border-status-warning rounded-lg bg-status-warning-subtle"
                                 >
                                     {/* G4 (88.9-52): the invited address and its pill wrap and break like a member's name (the DECISION marker at the active row). */}
                                     <div className="flex items-center gap-3 flex-1 min-w-0">

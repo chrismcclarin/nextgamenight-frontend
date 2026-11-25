@@ -457,7 +457,7 @@ export default function EventDayModal({
                        ground pair and the row and Share Game QR take ring-offset-surface-group-halo, which
                        falls back to the card ground when unset, chosen OVER the card offset on a tinted
                        ground; the modal is portalled, so no ancestor's --group-halo reaches it. */
-                    className={`p-4 ${isPastEvent ? 'border border-line-control' : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]' : 'bg-surface-card'}`}
+                    className={`p-edge-page ${isPastEvent ? 'border border-line-control' : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] [--group-halo:var(--group-ground-light)] dark:[--group-halo:var(--group-ground)]' : 'bg-surface-card'}`}
                     style={{
                       ...(tinted && {
                         '--group-ground': ground,

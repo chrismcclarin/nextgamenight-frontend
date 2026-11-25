@@ -303,8 +303,8 @@ function HeatmapTooltip({
   // tooltip, covered by V-6. Restoring 500 is a decision, not a cleanup.
   const toneClassName =
     tone === 'mobile'
-      ? 'bg-surface-elevated text-content-primary rounded-card px-4 py-3 text-base shadow-theme-lg max-w-[calc(100vw-2rem)] ring-1 ring-line'
-      : 'bg-surface-elevated text-content-primary rounded-card px-4 py-2.5 text-base shadow-theme-lg max-w-xs';
+      ? 'bg-surface-elevated text-content-primary rounded-card px-edge-page py-3 text-base shadow-theme-lg max-w-[calc(100vw-2rem)] ring-1 ring-line'
+      : 'bg-surface-elevated text-content-primary rounded-card px-edge-page py-2.5 text-base shadow-theme-lg max-w-xs';
 
   // Arrow positioning per floating-ui's arrow-middleware contract.
   // The arrow div is absolutely positioned by middlewareData.arrow.x/y on the

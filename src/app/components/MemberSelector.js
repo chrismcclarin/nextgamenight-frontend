@@ -46,7 +46,7 @@ export default function MemberSelector({
         role="group"
         aria-labelledby="member-selector-label"
         aria-describedby={error ? 'member-selector-error' : undefined}
-        className="border border-line rounded-card p-3 max-h-48 overflow-y-auto"
+        className="border border-line rounded-card p-edge-card max-h-48 overflow-y-auto"
       >
         {/* Select All */}
         <label className="flex items-center mb-2 pb-2 border-b border-line">

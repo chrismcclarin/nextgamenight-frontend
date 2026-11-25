@@ -1358,7 +1358,10 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
           `p-3 md:p-6` or the R2 75px budget arithmetic above breaks.
           AMENDED Phase 89.6-15 (O-M1-sites): the primitive default is now
           p-edge-card md:p-edge-wide, the same 12px / 24px at normal text, so the
-          arithmetic above still holds and nothing needs re-asserting here. */}
+          arithmetic above still holds and nothing needs re-asserting here.
+          AMENDED Phase 89.6-39 (O-M1-bare): the nested heatmap box's p-3 is now p-edge-card,
+          the same 12px a side at normal text and held at 12px at 200% text (owner pick
+          O-M1 = D, 2026-11-22: 'Edges stay thin (16px page edge, 12px card edge)'). */}
       <Modal.Body>
         {/* Plan 88.6.1-68 (#233): a layout-neutral region this component owns (Modal.Body forwards
             className only), marked busy while the gate is closed.
@@ -1615,7 +1618,7 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                     stays anchored to the poll's weekStart; no nav UI. */}
                 {(heatmapData || heatmapLoading) && (
                   <div
-                    className="bg-surface-page rounded-lg p-3 border border-line"
+                    className="bg-surface-page rounded-lg p-edge-card border border-line"
                     onTouchStart={!promptId ? swipeHandlers.onTouchStart : undefined}
                     onTouchMove={!promptId ? swipeHandlers.onTouchMove : undefined}
                     onTouchEnd={!promptId ? swipeHandlers.onTouchEnd : undefined}

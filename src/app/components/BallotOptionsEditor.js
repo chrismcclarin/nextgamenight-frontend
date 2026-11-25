@@ -6,7 +6,7 @@ import { Heading } from '../../components/ui/Heading';
 
 export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, ballotError, groupId, userId }) {
   return (
-    <div className="bg-surface-elevated rounded-card p-4 border border-line">
+    <div className="bg-surface-elevated rounded-card p-edge-page border border-line">
       <div className="mb-3">
         <Heading level={3} size="label" className="text-content-primary">Game Ballot (optional)</Heading>
         <p className="text-xs text-content-muted">Add 2-10 games for your group to vote on</p>

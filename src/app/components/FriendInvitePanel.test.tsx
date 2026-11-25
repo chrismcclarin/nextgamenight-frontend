@@ -1391,7 +1391,7 @@ describe('FriendInvitePanel — the friend batch is heard, and the header scale 
     const after = batchStatus();
     expect(after).toBe(status);
     expect(after).not.toHaveClass('sr-only');
-    for (const cls of ['p-3', 'rounded-lg', 'bg-status-success-subtle', 'text-content-status-success', 'border-status-success']) {
+    for (const cls of ['p-edge-card', 'rounded-lg', 'bg-status-success-subtle', 'text-content-status-success', 'border-status-success']) {
       expect(after).toHaveClass(cls);
     }
   });

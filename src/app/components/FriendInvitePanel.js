@@ -659,7 +659,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     return (
                                         <label
                                             key={friendship.id}
-                                            className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                                            className={`flex items-center gap-3 p-edge-card rounded-lg border transition-colors ${
                                                 isInGroup
                                                     ? 'border-line bg-surface-page cursor-default'
                                                     : selectedFriends.has(friend.id)
@@ -770,7 +770,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     srOnlyWhenEmpty
                                     message={batchStatusText}
                                     className={batchStatusText
-                                        ? `mt-2 p-3 rounded-lg text-sm ${inviteResult.failCount === 0
+                                        ? `mt-2 p-edge-card rounded-lg text-sm ${inviteResult.failCount === 0
                                             ? 'bg-status-success-subtle text-content-status-success border border-status-success'
                                             : 'bg-status-warning-subtle text-content-status-warning border border-status-warning'}`
                                         : 'mt-2'}
@@ -781,7 +781,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                                     srOnlyWhenEmpty
                                     message={batchErrorText}
                                     className={batchErrorText
-                                        ? 'mt-2 p-3 rounded-lg text-sm bg-status-error-subtle text-content-status-error border border-status-error'
+                                        ? 'mt-2 p-edge-card rounded-lg text-sm bg-status-error-subtle text-content-status-error border border-status-error'
                                         : 'mt-2'}
                                 />
                             </div>
@@ -947,7 +947,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, openedFrom = '
                             className="mt-2 text-content-status-success"
                         />
                         {friendPrompt && !friendRequestSent && (
-                            <div data-add-friend-prompt="" className="mt-3 p-3 bg-surface-sunken border border-line rounded-lg flex flex-wrap items-center justify-between gap-3">
+                            <div data-add-friend-prompt="" className="mt-3 p-edge-card bg-surface-sunken border border-line rounded-lg flex flex-wrap items-center justify-between gap-3">
                                 {/* PRIM-04 adoption: render the resolved found-user identity
                                     via the shared UserChip primitive.
                                     AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the found-person row may wrap,

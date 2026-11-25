@@ -16,7 +16,7 @@ export type AnnounceHost = object;
 
 /**
  * The longest the words wait for a closing dialog to leave the page (88.9-52, A-47). The house
- * exit animation is 200 ms (src/components/ui/dialog.tsx ("gap-4 border border-line bg-background p-6 shadow-theme-lg duration-200")),
+ * exit animation is 200 ms (src/components/ui/dialog.tsx ("gap-4 border border-line bg-background p-edge-wide shadow-theme-lg duration-200")),
  * so this only bounds a dialog whose exit never reports its end: the words then land anyway.
  */
 export const LEAVING_WAIT_CAP_MS = 1000;

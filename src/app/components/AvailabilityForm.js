@@ -486,7 +486,7 @@ export default function AvailabilityForm({
             with an explanatory hint when the user has no saved availability
             overlapping this week (a hidden button read as a bug — it should
             instead advertise that saving a schedule unlocks the shortcut). */}
-      <div className="bg-surface-elevated border border-line rounded-card p-4 space-y-2">
+      <div className="bg-surface-elevated border border-line rounded-card p-edge-page space-y-2">
         {/* DECISION Phase 88.6.1-26 (Req 8, D-22): an always-mounted, initially EMPTY, sr-only-for-
             life polite region that speaks the outcome sentence already on screen (no new words) —
             chosen OVER the visible-when-set D-22 shape on the visible line (as the card's LAST
@@ -569,7 +569,7 @@ export default function AvailabilityForm({
       </div>
 
       {/* Unavailable Toggle Section */}
-      <div className="bg-surface-elevated border border-line rounded-card p-4">
+      <div className="bg-surface-elevated border border-line rounded-card p-edge-page">
         {/* DECISION Phase 88.6-59 (review MEDLOW-26, WCAG 4.1.2): `role="checkbox"` +
             `aria-checked` on the toggle, chosen OVER `aria-pressed` — the same idiom and the same
             reasoning as the Bring-a-game rows (DECISION Phase 88.6-44, `BringGamePicker.js`

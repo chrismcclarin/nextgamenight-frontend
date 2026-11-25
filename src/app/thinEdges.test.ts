@@ -115,20 +115,7 @@ const EDGE_VALUE = /^(?:edge-(?:card|page|wide|roomy)|\[[^\]]*--spacing-edge-[^\
  * Owner 89.6-15 entries are this plan's; owner 89.6-39 entries are the bare-padding card calls.
  */
 const PENDING: Record<string, { count: number; owner: '89.6-15' | '89.6-39' }> = {
-  'app/components/AvailabilityForm.js': { count: 2, owner: '89.6-39' },
-  'app/components/BallotOptionsEditor.js': { count: 1, owner: '89.6-39' },
-  'app/components/BallotSection.js': { count: 5, owner: '89.6-39' },
-  'app/components/ClickableMemberName.js': { count: 2, owner: '89.6-39' },
-  'app/components/EventScheduler.tsx': { count: 1, owner: '89.6-39' },
-  'app/components/FriendInvitePanel.js': { count: 3, owner: '89.6-39' },
-  'app/components/HeatmapTooltip.js': { count: 2, owner: '89.6-39' },
-  'app/components/ManageMembers.js': { count: 4, owner: '89.6-39' },
-  'app/components/MemberSelector.js': { count: 1, owner: '89.6-39' },
-  'app/components/RsvpSection.js': { count: 1, owner: '89.6-39' },
-  'app/components/createEvent.js': { count: 1, owner: '89.6-39' },
-  'app/invite/game/[token]/page.js': { count: 2, owner: '89.6-39' },
   'app/userProfile/page.js': { count: 10, owner: '89.6-39' },
-  'components/ui/dialog.tsx': { count: 1, owner: '89.6-39' },
 };
 
 /** The number of PENDING entries owned by 89.6-15 may only fall; it reached 0 when plan 89.6-15 closed, so every entry left is plan 89.6-39's. */

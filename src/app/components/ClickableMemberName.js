@@ -1035,7 +1035,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
                 style={floatingStyles}
                 {...getFloatingProps({ onFocus: armNameRecovery })}
                 data-member-popover=""
-                className="bg-surface-card rounded-card shadow-theme-lg border border-line px-3 py-2 z-60"
+                className="bg-surface-card rounded-card shadow-theme-lg border border-line px-edge-card py-2 z-60"
               >
                 {renderTooltipContent()}
               </div>
@@ -1046,7 +1046,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
               style={floatingStyles}
               {...getFloatingProps({ onFocus: armNameRecovery })}
               data-member-popover=""
-              className="bg-surface-card rounded-card shadow-theme-lg border border-line px-3 py-2 z-60"
+              className="bg-surface-card rounded-card shadow-theme-lg border border-line px-edge-card py-2 z-60"
             >
               {renderTooltipContent()}
             </div>

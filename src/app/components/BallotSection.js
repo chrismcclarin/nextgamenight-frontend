@@ -417,7 +417,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
 
   if (loading) {
     return (
-      <div className="mt-4 p-4 bg-surface-elevated rounded-card">
+      <div className="mt-4 p-edge-page bg-surface-elevated rounded-card">
         <p className="text-sm text-content-muted">Loading ballot...</p>
       </div>
     );
@@ -491,7 +491,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
             <Heading ref={gameVoteHeadingRef} level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
-            <div ref={winnerCardRef} className="bg-status-success-subtle border border-status-success rounded-card p-4 mb-3">
+            <div ref={winnerCardRef} className="bg-status-success-subtle border border-status-success rounded-card p-edge-page mb-3">
               <div className="flex items-center gap-2">
                 {/* UI-SPEC §4.3: non-heading `text-lg` residue. Resolves to `text-xl` (20) under rule
                     R2's primary-string clause. NOT a `<Heading>` — P4 forbids inventing a semantic
@@ -587,8 +587,9 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                      fixed card halo (band 1.31 / 1.22 on the game page's two page paths; the page host now reads
                      5.97 / 10.13, band 1.00).
                      AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key is retired, so this site passes or reads no ground. */
+                  /* DECISION Phase 89.6-39 (O-M1-bare): the ballot option buttons are pressable cards, so their side padding is the page edge token, chosen OVER treating them as controls whose padding stays rem: they wear the card radius and a card face holding a game title (a control here wears rounded-btn, rounded-full, btn or the 44px floor pair), and at 200% text rem padding took 32px a side from the title on a phone. Pixel-identical at normal text (owner pick O-M1 = D, HR-9 per SPEC A9). Changing this is a decision, not a cleanup. */
                   className={cn(
-                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:focus-ring'
+                    'w-full text-left px-edge-page py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:focus-ring'
                   )}
                 >
                   <PickContent name={opt.game_name} saving={resolvingOptionId === opt.id} />
@@ -645,7 +646,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   aria-label={resolvingOptionId === opt.id ? savingPickLabel(opt.game_name) : undefined}
                   aria-describedby={error ? 'ballot-fallback-error' : undefined}
                   className={cn(
-                    'w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:focus-ring'
+                    'w-full text-left px-edge-page py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:focus-ring'
                   )}
                 >
                   <PickContent name={opt.game_name} saving={resolvingOptionId === opt.id} />
@@ -729,7 +730,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   disabled={!!votingOptionId && !isToggling}
                   aria-disabled={isToggling ? 'true' : undefined}
                   aria-describedby={error ? 'ballot-vote-error' : undefined}
-                  className={`${cn('w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:focus-ring')}
+                  className={`${cn('w-full text-left px-edge-page py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:focus-ring')}
                     ${isVoted
                       ? 'border-accent bg-surface-accent-subtle text-content-primary'
                       : 'border-line bg-surface-card text-content-primary hover:bg-surface-hover hover:border-line-strong'
@@ -761,7 +762,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
               {(options || []).map(opt => (
                 <div
                   key={opt.id}
-                  className="px-4 py-3 rounded-card border border-line bg-surface-elevated text-sm text-content-secondary"
+                  className="px-edge-page py-3 rounded-card border border-line bg-surface-elevated text-sm text-content-secondary"
                 >
                   {opt.game_name}
                 </div>

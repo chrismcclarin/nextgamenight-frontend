@@ -391,7 +391,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
     // <div> whose ancestors up to the form card all carry zero horizontal
     // padding), chosen OVER the original "Start with:" anchor and OVER
     // shrinking the sibling card or excepting the ceiling. The old anchor
-    // (src/app/components/AvailabilityForm.js ("Start with:")) sits inside the src/app/components/AvailabilityForm.js ("bg-surface-elevated border border-line rounded-card p-4 space-y-2") pre-fill card — a p-4
+    // (src/app/components/AvailabilityForm.js ("Start with:")) sits inside the src/app/components/AvailabilityForm.js ("bg-surface-elevated border border-line rounded-card p-edge-page space-y-2") pre-fill card — a 16px
     // SIBLING of the grid section, not a grid ancestor — so post-plan-07 it
     // measured 88px (gutter 16 + form card 12 + sibling card 16 per side)
     // while the surface this spec claims to measure, the availability GRID,
