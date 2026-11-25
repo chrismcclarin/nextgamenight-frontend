@@ -534,8 +534,15 @@ export default function AvailabilityFormPage() {
             <Heading level={1} size="display" className="text-content-primary mb-2" ref={settledHeadingRef}>
               Submit Your Availability
             </Heading>
+            {/* DECISION Phase 89.6 R14 (owner 2026-11-25, "Follow your suggestion"; orchestrator decision D21):
+                no game name reads "the upcoming session", chosen OVER "Game TBD", because the backend never
+                sends the game (backend:Sonnet/routes/magicAuth.js ("// Success response with info needed by frontend"))
+                so "TBD" was wrong on every link; the real fix is the Phase 91 contract, and a name, once sent,
+                shows here unchanged. The other "Game TBD" labels (ScheduleForm, ScheduleList,
+                UpcomingEventsCard) are a real saved state and stay. */}
             <p className="text-content-secondary">
-              Select the times you&apos;re available for the upcoming {tokenData?.gameName || 'Game TBD'} session.
+              Select the times you&apos;re available for the upcoming{' '}
+              {tokenData?.gameName ? `${tokenData.gameName} session` : 'session'}.
             </p>
 
             {/* Token expiry warning */}
