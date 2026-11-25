@@ -41,7 +41,7 @@ import { test, expect, type Locator, type Page, type TestInfo } from '@playwrigh
 
 import { assertTheme, forceLightMode } from './support/contrast';
 import { expectNoApiWrites, settleAnimations } from './support/inFlight';
-import { EXCEPTIONS, EXCEPTION_SELECTORS, readCellUnderExceptions, type ClearedBySurface } from './support/largeTextExceptions';
+import { EXCEPTIONS, readCellUnderExceptions, readPageZoomCellUnderExceptions, type ClearedBySurface } from './support/largeTextExceptions';
 import {
   ALL_ROWS,
   CENSUS_IDS,
@@ -60,7 +60,6 @@ import {
   expectLargeTextCell,
   expectPageZoomUsable,
   readLargeTextCell,
-  readPageZoomCell,
   setTextMode,
   type LargeTextCellRead,
   type PageZoomRead,
@@ -186,9 +185,11 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
     const at = await target.evaluate(() => ({ fontSize: getComputedStyle(document.documentElement).fontSize, window: document.documentElement.clientWidth }));
     // A page-zoom cell only records split and held words, so only the cut exceptions matter there.
     const matrix = cell.zoom ? null : await readCellUnderExceptions(reached.root, { dialog: reached.dialog });
-    const read = matrix ? matrix.read : await readPageZoomCell(reached.root, { exceptions: EXCEPTION_SELECTORS, dialog: reached.dialog });
+    const zoom = matrix ? null : await readPageZoomCellUnderExceptions(reached.root, { dialog: reached.dialog });
+    const read = matrix ? matrix.read : zoom!.read;
     const record: CellRecord = { cell: cell.id, verdict: 'pass', fontSize: at.fontSize, window: at.window, read };
     if (matrix && matrix.cleared.split.length + matrix.cleared.held.length + matrix.cleared.spill.length > 0) record.cleared = matrix.cleared;
+    if (zoom && zoom.cleared.length > 0) record.cleared = { split: [], held: [], spill: [], lost: zoom.cleared };
     try {
       expectCell(record, cell, tag);
     } catch (error) {
@@ -332,6 +333,18 @@ const SPILLS =
   `<div class="grid grid-cols-7">${spillBox('Gloomhaven')}</div>` +
   `<div id="game-description">${spillBox('Wingspan')}</div>` +
   '<nav><a href="/" style="display:block;width:30px"><span class="whitespace-nowrap">Nextgamenight</span></a></nav>';
+// The page-zoom clamp control (orchestrator ruling D27, plan 89.6-40): three titles at 215 wide, each
+// with more words than its box shows. Alpha is an A3-3 list-row title cut by its OWN two-line clamp
+// (the clamp the exception names); Bravo carries the same classes and clamp outside a row button, so
+// no exception selector matches it; Charlie is an A3-3 title cut by a 20px parent box, not by itself.
+const clampTitle = (word: string) => `<h5 class="font-bold text-base line-clamp-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin:0">${word} Jaws of the Lion with every expansion box and the whole long subtitle</h5>`;
+const CLAMP_CONTROL =
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
+  '<body style="margin:0;font:16px/1.4 sans-serif"><main style="width:200px">' +
+  `<div role="button" tabindex="0">${clampTitle('Alpha')}</div>` +
+  clampTitle('Bravo') +
+  `<div role="button" tabindex="0"><div style="height:20px;overflow:hidden"><h5 class="font-bold text-base line-clamp-2" style="margin:0">Charlie Jaws of the Lion with every expansion box</h5></div></div>` +
+  '</main></body></html>';
 const SPILL_CONTROL = (body: string) =>
   '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
   `<body style="margin:0;font:16px/1.4 sans-serif"><main style="width:300px">${body}</main></body></html>`;
@@ -410,6 +423,19 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
   expect(wordsOf(spillOnly.read.spill), 'a spill alone does not start the second read: the month-grid spill is not cleared').toEqual(['Carcassonne', 'Nextgamenight', 'Wingspan']);
   expect(wordsOf(spillOnly.cleared.spill), 'the spill-only page did not write down the cleared spill').toEqual(['Gloomhaven']);
   expect(await page.locator('style').count(), 'the spill read left its hiding style on the page').toBe(0);
+
+  // The page-zoom clamp (orchestrator ruling D27): a loss is cleared only when the clipped text and
+  // the box that clips it both match one surface exception (the clamp is the exception's own).
+  await page.setViewportSize({ width: 215, height: 466 });
+  await page.setContent(CLAMP_CONTROL);
+  const zoomed = await readPageZoomCellUnderExceptions(control);
+  const titled = (entries: readonly string[], word: string) => entries.filter((entry) => entry.includes(`h5 "${word} `));
+  expect(titled(zoomed.read.lost, 'Alpha'), 'an A3-3 title clipped by its own clamp at a page-zoom width is not lost').toEqual([]);
+  expect(titled(zoomed.cleared, 'Alpha'), 'the A3-3 title clipped by its own clamp is written down as cleared').toEqual([expect.stringContaining('is clipped by its h5')]);
+  expect(titled(zoomed.read.lost, 'Bravo'), 'the same clamp outside the exception selector is still lost').toEqual([expect.stringContaining('is clipped by its h5')]);
+  expect(titled(zoomed.read.lost, 'Charlie'), 'an A3-3 title clipped by a parent box is still lost').toEqual([expect.stringContaining('is clipped by its div')]);
+  expect(titled(zoomed.cleared, 'Bravo').concat(titled(zoomed.cleared, 'Charlie')), 'nothing but the own clamp is cleared').toEqual([]);
+  await page.setViewportSize({ width: 320, height: 568 });
 
   // Every backend GET that writes is named, with what the guard does about it.
   const named = WRITE_GET_HANDLERS.map((entry) => `${entry.file} ${entry.path}`).sort();

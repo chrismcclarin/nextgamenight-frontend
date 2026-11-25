@@ -33,7 +33,7 @@
 // Changing this is a decision, not a cleanup.
 import type { Locator } from '@playwright/test';
 
-import { readLargeTextCell, type LargeTextCellRead } from './wordLines';
+import { readLargeTextCell, readPageZoomCell, type LargeTextCellRead, type PageZoomRead } from './wordLines';
 
 export interface LargeTextException {
   id: string;
@@ -106,6 +106,8 @@ export interface ClearedBySurface {
   held: string[];
   /** Words that spill out of their box inside one of the three surfaces (ruling D12, plan 89.6-16). */
   spill: string[];
+  /** Page-zoom losses that are a surface's own clamp (orchestrator ruling D27, plan 89.6-40). */
+  lost?: string[];
 }
 
 /** a minus b as lists: each entry of b takes away one equal entry of a. */
@@ -153,4 +155,13 @@ export async function readCellUnderExceptions(root: Locator, options: { dialog?:
     read: { ...read, split, held, spill },
     cleared: { split: minus(read.split, split), held: minus(read.held, held), spill: minus(read.spill, spill) },
   };
+}
+
+/**
+ * Read one page-zoom cell under the exceptions list: the cut check skips all five texts. cleared
+ * holds the losses a surface accounted for.
+ */
+export async function readPageZoomCellUnderExceptions(root: Locator, options: { dialog?: Locator } = {}): Promise<{ read: PageZoomRead; cleared: string[] }> {
+  const read = await readPageZoomCell(root, { dialog: options.dialog, exceptions: EXCEPTION_SELECTORS });
+  return { read, cleared: [] };
 }
