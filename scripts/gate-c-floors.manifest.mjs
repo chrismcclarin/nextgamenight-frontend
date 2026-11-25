@@ -72,6 +72,8 @@ export const floors = [
   { spec: 'e2e/header-main-nav.spec.ts', project: 'journeys', floor: 5, why: '5 of 7 listed run in journeys; 2 skipped here by an isMobile predicate' },
   { spec: 'e2e/header-main-nav.spec.ts', project: 'phone', floor: 2, why: '2 of 7 listed run in phone; 5 skipped here by an isMobile predicate' },
   { spec: 'e2e/home-group-list-refresh.spec.ts', project: 'phone', floor: 3, why: '3 of 3 listed run in phone; the other project is skipped by an isMobile predicate' },
+  { spec: 'e2e/home-large-text.spec.ts', project: 'journeys', floor: 1, why: '1 of 1 listed run in journeys; no conditional skip: floored so a green CI run prints a per-spec line for Home at normal text after the large-text work (added by 89.6-16, outside the skip population on purpose)' },
+  { spec: 'e2e/home-large-text.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; no conditional skip: floored so a green CI run prints a per-spec line for Home at normal text after the large-text work (added by 89.6-16, outside the skip population on purpose)' },
   { spec: 'e2e/home-removed-notice.spec.ts', project: 'phone', floor: 3, why: '3 of 3 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/input-date-phone.spec.ts', project: 'phone', floor: 1, why: '1 of 1 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/lane-a-tap-floors-desktop.spec.ts', project: 'journeys', floor: 14, why: '14 of 14 listed run in journeys; the other project is skipped by an isMobile predicate' },

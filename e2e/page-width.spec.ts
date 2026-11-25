@@ -136,10 +136,15 @@ test.describe('page width at desktop — X5 (88.9-59)', () => {
           const list = el.closest('.rounded-card');
           const column = list?.parentElement?.parentElement ?? null;
           if (!list || !column) return null;
+          // 89.6-16 (H-01): the first group card fills the list's content box.
+          const card = list.querySelector('[data-testid="group-card"]');
+          const style = getComputedStyle(list);
           return {
             list: list.getBoundingClientRect().width,
             column: column.getBoundingClientRect().width,
             inner: window.innerWidth,
+            card: card ? card.getBoundingClientRect().width : null,
+            content: list.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
           };
         });
         expect(read, 'the group list card or its column was not found').not.toBeNull();
@@ -148,6 +153,11 @@ test.describe('page width at desktop — X5 (88.9-59)', () => {
         const where = `at ${width}: column ${read.column.toFixed(2)}, list ${read.list.toFixed(2)}, expected ${expected.toFixed(2)} (42vw of ${read.inner})`;
         expect(Math.abs(read.column - expected), where).toBeLessThanOrEqual(TOLERANCE);
         expect(Math.abs(read.list - read.column), where).toBeLessThanOrEqual(TOLERANCE);
+        expect(read.card, `at ${width}: no group card in the list`).not.toBeNull();
+        expect(
+          Math.abs((read.card ?? 0) - read.content),
+          `at ${width}: the group cards do not fill the list (register H-01): card ${read.card?.toFixed(2)}, list content box ${read.content.toFixed(2)}`,
+        ).toBeLessThanOrEqual(TOLERANCE);
       }).toPass({ timeout: 5_000 });
     }
   });

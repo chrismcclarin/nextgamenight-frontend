@@ -7,8 +7,9 @@
 // thirty-letter group name beside the icon, no groups, nothing on the calendar, a failed groups
 // read and a groups read that never settles. Every answered read is a GET answered in the
 // browser: nothing is written, and the sweep's write guard holds every write all the same.
-import { expect, type Page, type Route } from '@playwright/test';
+import { expect, type Locator, type Page, type Route } from '@playwright/test';
 
+import { focusRingMeasurement } from '../contrast';
 import { scrubbedFetch } from '../scrubbedFetch';
 import { EMOJI_NAME, THIRTY_LETTER_WORD } from '../wordLines';
 import type { SurfaceRow } from './index';
@@ -172,8 +173,67 @@ const upcomingEmptyShown: SurfaceRow['extras'] = async (page, cell) => {
   if (!visible) throw new Error('R01-upcoming-empty: Nothing on the calendar is not on screen at 768 with 200% text');
 };
 
+/**
+ * The focus ring of locator is drawn whole: focused by keyboard, its ring reaches reach px past the
+ * border box (focusRingMeasurement, plan 89.6-14), and no ancestor up to html whose overflow is not
+ * visible has a padding box that cuts that grown box (0.5px). The page and body clip only sideways
+ * (their vertical overflow is the page's own scroll). Used by e2e/home-large-text.spec.ts and by
+ * R01's extras (one helper, never a copy).
+ */
+export async function expectRingWhole(page: Page, locator: Locator, label: string): Promise<void> {
+  const { reach } = await focusRingMeasurement(page, locator, label);
+  const clipped = await locator.evaluate((element, grow) => {
+    const box = element.getBoundingClientRect();
+    const ring = { left: box.left - grow, right: box.right + grow, top: box.top - grow, bottom: box.bottom + grow };
+    const found: string[] = [];
+    const doc = document.documentElement;
+    for (let a = element.parentElement; a; a = a.parentElement) {
+      const style = getComputedStyle(a);
+      const clipsX = style.overflowX !== 'visible';
+      const clipsY = style.overflowY !== 'visible';
+      if (!clipsX && !clipsY) continue;
+      const page = a === doc || a === document.body;
+      const rect = a.getBoundingClientRect();
+      const left = page ? 0 : rect.left + a.clientLeft;
+      const right = page ? doc.clientWidth : left + a.clientWidth;
+      const top = rect.top + a.clientTop;
+      const bottom = top + a.clientHeight;
+      const cuts: string[] = [];
+      if (clipsX && ring.left < left - 0.5) cuts.push(`left by ${(left - ring.left).toFixed(2)}px`);
+      if (clipsX && ring.right > right + 0.5) cuts.push(`right by ${(ring.right - right).toFixed(2)}px`);
+      if (!page && clipsY && ring.top < top - 0.5) cuts.push(`top by ${(top - ring.top).toFixed(2)}px`);
+      if (!page && clipsY && ring.bottom > bottom + 0.5) cuts.push(`bottom by ${(ring.bottom - bottom).toFixed(2)}px`);
+      if (cuts.length > 0) found.push(`${a.tagName.toLowerCase()}.${String(a.className).split(/\s+/).filter(Boolean).join('.')} cuts it ${cuts.join(', ')}`);
+    }
+    return found;
+  }, reach);
+  expect(clipped, `${label}: its focus ring (reach ${reach}px) is cut by an ancestor that clips`).toEqual([]);
+}
+
+// R01 extras (owner pick O-M4 = Fixed+, 2026-11-22: 'The box stays 44px, and the icon inside grows
+// with the text up to 32px'; outline rule 10 at the Create button): in every cell the first card's
+// gear box is 46 x 44 (0.5px) and its icon 20px at normal text (the page-zoom cells), 32px at 200%
+// and font32; and the Create button's ring is drawn whole. No gear fails the cell, never passes it.
+const homeExtras: SurfaceRow['extras'] = async (page, cell) => {
+  const gears = page.getByRole('button', { name: /^Customize / });
+  const count = await gears.count();
+  if (count < 1) throw new Error('R01: no group card gear (Customize <group>) on Home');
+  const read = await gears.first().evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const svg = element.querySelector('svg')?.getBoundingClientRect() ?? null;
+    return { width: box.width, height: box.height, icon: svg ? { width: svg.width, height: svg.height } : null };
+  });
+  const problems: string[] = [];
+  if (Math.abs(read.width - 46) > 0.5 || Math.abs(read.height - 44) > 0.5) problems.push(`the gear box is ${read.width} x ${read.height}, not 46 x 44`);
+  const iconPx = cell.mode === '100' ? 20 : 32;
+  if (!read.icon) problems.push('the gear has no icon');
+  else if (Math.abs(read.icon.width - iconPx) > 0.5 || Math.abs(read.icon.height - iconPx) > 0.5) problems.push(`the gear icon is ${read.icon.width} x ${read.icon.height}, not ${iconPx}`);
+  if (problems.length > 0) throw new Error(`R01: ${problems.join('; ')}`);
+  await expectRingWhole(page, page.getByRole('button', { name: 'Create new group' }).first(), 'R01: the Create button');
+};
+
 export const rows: SurfaceRow[] = [
-  { id: 'R01', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', reach: reachHome },
+  { id: 'R01', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', reach: reachHome, extras: homeExtras },
   { id: 'R01-one', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'one group', reach: reachWithGroups(oneGroup), extras: oneCardNotStretched },
   { id: 'R01-long', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'a thirty-letter group name', reach: reachWithGroups(longFirstName) },
   { id: 'R01-empty', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'no groups', reach: reachNoGroups, answers: (url) => (isGroupsRead(url) ? [] : undefined) },
