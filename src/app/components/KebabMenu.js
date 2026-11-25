@@ -327,8 +327,9 @@ export default function KebabMenu({
      portalled list sits at the end of the body and needs a focus trap or a roving order built
      for it, on six sites. (3) Two of the six sites are inside the Radix dialog, which makes
      everything outside its content inert and aria-hidden: a list portalled to the body there
-     cannot be focused or read at all, and one portalled into the dialog shell is still clipped
-     by the shell's own clip (overflow-y-auto since Phase 89.6-11). A list that scrolls inside itself changes none of
+     cannot be focused or read at all, and one portalled into the dialog shell is still held
+     inside the shell's box: the shell scrolls (overflow-y-auto, plan 89.6-11's O-8 C), so the
+     list would scroll with it, never overlay the page. A list that scrolls inside itself changes none of
      that: same element, same place, same order, so Escape, the focus return to the trigger, the
      armed and busy states and keepOpen are untouched on all six sites, and a Tab to an item
      below the fold scrolls it into view natively. Its cost is said plainly: at 320 with 200%

@@ -744,7 +744,10 @@ const GroupList = ({
                  group-halo ring-offset key, chosen OVER the card halo on a tint (band against the tint,
                  UI-SPEC R2-63) — the same one-variable idiom as the group page header. Each control spells
                  one FULL literal per arm (the 88.9 halo fleet rule), never one arm's halo interpolated for
-                 both. Dropping the host pair empties the key to its card fallback, a decision, not a cleanup. */
+                 both. Dropping the host pair empties the key to its card fallback, a decision, not a cleanup.
+                 AMENDED Phase 89.6-13: owner pick O-1 = B retired the halo, so the arms were identical and
+                 collapsed into one literal; the collapse IS this decision. The host's --group-halo pair
+                 stays for plan 89.6-38, which owns the hostGround halo key that still reads it. */
               <div
                 key={group.id}
                 ref={(node) => {
@@ -856,11 +859,7 @@ const GroupList = ({
                             handleGroupClick(group, e);
                           }
                         }}
-                        className={
-                          tinted
-                            ? 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:focus-ring'
-                            : 'flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:focus-ring'
-                        }
+                        className="flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:focus-ring"
                       >
                         {/* DECISION Phase 88.6-21 (W42, D-04): this heading sits INSIDE the
                             `role="button"` block above, and that costs a real property rather than
@@ -1405,11 +1404,7 @@ const GroupList = ({
                          the hovered card and 2.00-2.72 on the eight preset grounds. The G2 fill pair
                          does not move; light keeps the transparent edge. */
                       <button
-                        className={
-                          tinted
-                            ? 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:focus-ring'
-                            : 'min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:focus-ring'
-                        }
+                        className="min-h-11 min-w-11 px-3 py-1 bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:focus-ring"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);

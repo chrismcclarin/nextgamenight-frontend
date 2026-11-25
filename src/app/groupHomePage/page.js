@@ -1440,11 +1440,9 @@ function GroupHomePage(){
                                 // One FULL literal per arm (the 88.9 halo fleet rule cascadeOrder test 12 reads):
                                 // the tinted arm's halo is the host's --group-halo, the untinted arm's the elevated
                                 // header it sits on.
-                                className={
-                                    tinted
-                                        ? 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring'
-                                        : 'inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring'
-                                }
+                                // AMENDED Phase 89.6-13: owner pick O-1 = B retired the halo, so the arms were
+                                // identical and collapsed into one literal; the collapse IS this decision.
+                                className="inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring"
                             >
                                 <Icon name="Settings" size={20} />
                             </button>

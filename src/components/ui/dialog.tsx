@@ -26,7 +26,11 @@ import { cn } from '@/lib/cn';
    the surface-overlay theme key, one semantic-token class in this bridge-vocabulary file, inside
    this charter's spirit: the bridge names stay, and only the overlay's raw black alpha, which was
    raw palette, moves to the ONE scrim token every dialog, sheet and the tutorial now share, chosen
-   OVER the shipped black at 0.8 in both themes (now 0.5 light / 0.7 dark). */
+   OVER the shipped black at 0.8 in both themes (now 0.5 light / 0.7 dark).
+
+   AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22: the halo this marker chose is
+   retired; the ring is the focus-ring utility. The shadcn close's ring follows the one ring rule; the
+   colour and text vocabulary stays, as 88-05 decided. */
 
 const Dialog = DialogPrimitive.Root;
 

@@ -334,6 +334,10 @@ const HIT_EXTENSION = "relative after:absolute after:-inset-1.5 after:content-['
  *
  * AMENDED Phase 88.9-30 (owner pick B2a, 88.9-PICKS-B1.json, 2026-11-04): both rings' halo key is
  * now surface-group-halo (R034 / R035), each string still written out in full here.
+ *
+ * AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22, retired the halo; the ring stays
+ * written out in full at each of the two controls, now as the focus-ring utility, for the same gate
+ * reason.
  */
 
 // Terminal fallback mirrors UserChip's FALLBACK_LABEL idiom: a member row with

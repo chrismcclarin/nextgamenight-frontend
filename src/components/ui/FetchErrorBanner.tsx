@@ -467,7 +467,10 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix, host
           re-run here). The NO-weight marker in the full branch is honoured: the ring is not a
           weight utility.
           AMENDED Phase 88.6.1-70 (one row): the same ring now covers every small notice's `Retry`
-          through this one shared row. */}
+          through this one shared row.
+          AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22: the halo this marker chose is
+          retired; the ring is the focus-ring utility. Its rounding reason (consistency) is now given by
+          ring geometry G1; plan 89.6-31 measures it. */}
       <button
         type="button"
         onClick={handleRetry}
@@ -770,7 +773,9 @@ export function FetchErrorBanner({
           AMENDED Phase 88.9-26 (owner pick B1a, 88.9-PICKS-B1.json, 2026-11-04): the compact
           Retry's halo is its HOST's ground through src/components/ui/hostGround.ts ("export const HOST_GROUND_HALO"),
           default card, chosen OVER round 1's fixed card halo of the host majority (a 1.31 / 1.22
-          band on the 48 page paths). Try again, Report this and Sign in stay elevated. */}
+          band on the 48 page paths). Try again, Report this and Sign in stay elevated.
+          AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22: the halo this marker chose is
+          retired; the ring is the focus-ring utility. */}
       {/* DECISION Phase 88.9-26 (O22d, owner pick page 9, 88.9-PICKS-B9.json): for code unauthorized
           the full banner's action is a Sign in link IN PLACE OF Try again (a 401 cannot be
           retried), chosen OVER F8a's Sign in BESIDE Try again (88.9-PICKS-B5.json, superseded in

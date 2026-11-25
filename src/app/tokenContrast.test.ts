@@ -2842,11 +2842,17 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     const end = pageSrc.indexOf('<Icon name="Settings"', at);
     if (end < 0) throw new TokenContrastParseError('the gear icon does not follow the Group settings opener');
-    const fork = /tinted\s*\?\s*'([^']*)'\s*:\s*'([^']*)'/.exec(pageSrc.slice(at, end));
-    if (!fork) throw new TokenContrastParseError('the gear className no longer forks on the tinted flag into two whole literals');
+    // AMENDED Phase 89.6-13: owner pick O-1 = B retired the halo, so the gear's two arms became
+    // identical and were collapsed into one literal; one literal now serves both arms, so all 18
+    // arms are still measured. A fork on the tinted flag is still read if one comes back.
+    const gearSlice = pageSrc.slice(at, end);
+    const fork = /tinted\s*\?\s*'([^']*)'\s*:\s*'([^']*)'/.exec(gearSlice);
+    const single = fork ? null : /className="([^"]*)"/.exec(gearSlice);
+    if (!fork && !single) throw new TokenContrastParseError('the gear className is neither one whole literal nor a fork on the tinted flag into two whole literals');
+    const [tintedLiteral, plainLiteral] = fork ? [fork[1], fork[2]] : [single![1], single![1]];
     const armTokens = {
-      tinted: fork[1].split(/\s+/).filter((token) => token.length > 0),
-      plain: fork[2].split(/\s+/).filter((token) => token.length > 0),
+      tinted: tintedLiteral.split(/\s+/).filter((token) => token.length > 0),
+      plain: plainLiteral.split(/\s+/).filter((token) => token.length > 0),
     } as const;
 
     const SHAPE = /^(hover:)?(bg|text)-([a-z0-9-]+)$/;
@@ -3048,9 +3054,17 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       if (end < 0 || src.indexOf(opener, end + opener.length) >= 0) {
         throw new TokenContrastParseError(`${file.join('/')}: the gear anchor is not in the source exactly once`);
       }
-      const forks = [...src.slice(0, end).matchAll(/tinted\s*\?\s*'([^']*)'\s*:\s*'([^']*)'/g)];
-      const fork = forks[forks.length - 1];
-      if (!fork) throw new TokenContrastParseError(`${file.join('/')}: no tinted fork precedes the gear anchor`);
+      // AMENDED Phase 89.6-13: the gear's className is the LAST className before the anchor, read as
+      // one whole literal (the halo's retirement collapsed the two identical arms, owner pick O-1 = B)
+      // or as a fork on the tinted flag; one literal serves both arms.
+      const head = src.slice(0, end);
+      const at = head.lastIndexOf('className=');
+      if (at < 0) throw new TokenContrastParseError(`${file.join('/')}: no className precedes the gear anchor`);
+      const rest = head.slice(at);
+      const single = /^className="([^"]*)"/.exec(rest);
+      if (single) return [single[1], single[1]];
+      const fork = /^className=\{\s*tinted\s*\?\s*'([^']*)'\s*:\s*'([^']*)'\s*\}/.exec(rest);
+      if (!fork) throw new TokenContrastParseError(`${file.join('/')}: the gear className is neither one whole literal nor a fork on the tinted flag`);
       return [fork[1], fork[2]];
     };
     const key = (tokens: string[], re: RegExp, what: string): string => {

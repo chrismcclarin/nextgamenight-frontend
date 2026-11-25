@@ -1013,8 +1013,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
         // lock or aria-modal); (c) changing the house Modal (a fleet-wide behaviour change, and
         // plan 88.6.1-20's file this wave); (d) a modal FloatingFocusManager (moves focus but
         // leaves the pointer lock and aria-modal). Visible delta, disclosed: inside a dialog the
-        // popover is kept within the dialog's box (the content clips, with overflow-y-auto since Phase 89.6-11, and
-        // flip / shift keep it inside) instead of overlaying the page around the dialog;
+        // popover is kept within the dialog's box (the content scrolls, overflow-y-auto since plan
+        // 89.6-11's O-8 C, so it holds the popover inside its box, and flip / shift keep it inside)
+        // instead of overlaying the page around the dialog;
         // placement and offset are unchanged, so the NOT SWEPT (Phase 88.9) note still holds.
         // AMENDED Phase 88.9-30 (owner pick F6a, 88.9-PICKS-B5.json, 2026-11-07): placement and offset
         // are now top-start / 8 (marker above useFloating); the dialog-clipping behaviour described

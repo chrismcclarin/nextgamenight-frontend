@@ -2566,7 +2566,9 @@ function Profile(){
                                holds for the glyph size and the 44 floor. Putting a dark variant back on this halo is a
                                decision, not a cleanup.
                                AMENDED Phase 88.9-58 (X21b): light box now amber-200 (the X21b pick); ring vs halo
-                               re-measured 6.26 light / 6.37 dark, band 1.00. */
+                               re-measured 6.26 light / 6.37 dark, band 1.00.
+                               AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22: the halo this marker chose is
+                               retired; the ring is the focus-ring utility. */
                             className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-status-warning hover:text-content-primary text-lg leading-none shrink-0 focus:outline-hidden focus-visible:focus-ring"
                             aria-label="Dismiss"
                         >
@@ -3198,7 +3200,11 @@ function Profile(){
                                                 the schedule Delete, the override Delete and the Friends Remove read as bare red
                                                 words; the four removes read alike. Kept as its own: its place (-mx-2 ml-3), the
                                                 left-anchored label reserve (W39) and the trailing spinner above. The ink is the
-                                                same token as before, so its contrast on the card is unchanged. */}
+                                                same token as before, so its contrast on the card is unchanged.
+                                                AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22; the ring is now
+                                                the outset two-tone utility (2px offset plus 2px band, reach 4px),
+                                                so it fills the 4px gap to Change number; the overlap is ruled acceptable
+                                                (89.6-PICKS-READ.md ring overlap: 'There is no issue with B.'). */}
                                             <button
                                                 {...removePhoneTriggerProps}
                                                 onClick={handleRemovePhone}
@@ -4112,7 +4118,11 @@ function Profile(){
                                                splitting it (the hours would sit closer to the edge than the dates line). From sm
                                                the bottom padding is back (sm:pb-3) and the 70px one-line row is unchanged. On a
                                                phone the Delete focus ring now lies over the row's bottom edge line (2px ring, 1px
-                                               line): seen whole, in the 8px gap between rows. */
+                                               line): seen whole, in the 8px gap between rows.
+                                               AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22; the Delete ring is
+                                               now the outset two-tone utility (2px offset plus 2px band, reach 4px), so it lies over
+                                               the bottom edge line and 3px into the 8px gap between rows, still whole (read at 320
+                                               and 375 in light by plan 89.6-13). */
                                             <div key={pattern.id} className="px-3 pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
                                                 <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
                                                     {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}

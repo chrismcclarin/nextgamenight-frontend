@@ -182,7 +182,12 @@ function QRCodeModal({ isOpen, onClose, url, title }) {
             1-3 above still decide that it stays a bare control: the Button migration stays
             forbidden. The 88-33 Task 3 correction (1) above (leading-none) leaves with the text
             glyph: the icon is a fixed 20px box centred by inline-flex, with no line box to ride;
-            correction (2), the fleet-header insets, is unchanged. */}
+            correction (2), the fleet-header insets, is unchanged.
+
+            AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22: the ring is the focus-ring
+            utility. Only the ring sentence of 88.9-29 changes: its no-offset ring is now the outset
+            two-tone ring (2px off the box, measured whole at 320 and 375 in light). The × stays bare;
+            reasons 1-3 stand. */}
         <button
           onClick={onClose}
           className="absolute top-2 right-3 md:top-3 md:right-6 inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:focus-ring"
