@@ -1367,8 +1367,9 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // AMENDED Phase 89.6-40 (CAL): the CalendarListView entry moved 1100 -> 1107 because the seven-line AMENDED Phase 89.6-40 (CAL) note was added to the FLEX FILL comment above it; the skipped element (the EventRow call in DateGroup) is unchanged.
       // AMENDED Phase 89.6-40 (CAL-fold): the CalendarListView entry moved 1107 -> 1135 because the scrollerOf helper and the two CAL-fold amendments were added above it; the skipped element (the EventRow call in DateGroup) is unchanged.
       // AMENDED Phase 89.6-40 (W1): the CalendarListView entry moved 1135 -> 1131 because the list view's legend became one memoised formatTzLegend call (its local try / catch removed) above it; the skipped element (the EventRow call in DateGroup) is unchanged.
+      // AMENDED Phase 89.6-40 (CAL, stuck header): the CalendarListView entry moved 1131 -> 1138 because the seven-line amendment on the stuck header below 14rem was added to the X25a note above it; the skipped element (the EventRow call in DateGroup) is unchanged.
     ).toEqual([
-      'app/components/CalendarListView.js:1131',
+      'app/components/CalendarListView.js:1138',
       'components/ui/EmptyState.tsx:182',
     ]);
   });

@@ -1031,6 +1031,13 @@ export default function CalendarListView({
  * Removing either is a decision, not a cleanup. The heading sticks at the top of the scroll
  * region, above the rows (a row paints at z-index 1) and on the card ground, which is the ground
  * of the sheet and of both desktop cards, so a row passing under it does not show through.
+ * AMENDED Phase 89.6-40 (CAL, the stuck header below 14rem): where the sheet body is the one scroll
+ * (below a 14rem sheet, src/components/ui/BottomSheet.tsx ("DECISION Phase 89.6-40 (CAL)")), a
+ * sticky top of 0 sticks at the body's CONTENT edge, 16px under its top (the p-edge-page padding),
+ * and rows showed through that strip above the stuck header (measured in CI run 45727100568: the
+ * Past header was not at the scroller's top). There the header sticks at minus the page edge, at the
+ * body's top, chosen OVER dropping the body's top padding (the hero card would touch the sheet
+ * header). Normal text is untouched (the region scrolls and has no top padding).
  *
  * DECISION Phase 88.9-52 (W9, after-build look page, no objection from the owner 2026-11-16): the
  * heading is a size container and, under 14rem of its width (about 200% text on a 375 phone), the
@@ -1044,7 +1051,7 @@ export default function CalendarListView({
  */
 function SectionHeader({ headingId, panelId, expanded, onToggle, buttonRef, children }) {
   return (
-    <Heading level={3} size="heading" id={headingId} className="@container sticky top-0 z-10 bg-surface-card">
+    <Heading level={3} size="heading" id={headingId} className="@container sticky top-0 @max-[14rem]/sheet:-top-edge-page z-10 bg-surface-card">
       {/* DECISION Phase 88.9-61 (X25a focus ring): the header button draws the house ring INSET,
           chosen OVER Button's default ring-offset-2, whose 4px outside ring the scroll region
           cuts on the left (overflow clips both axes, no left pad), at scrollTop 0, and above a
