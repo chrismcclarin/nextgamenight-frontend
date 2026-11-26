@@ -15,6 +15,7 @@ import {
   SIZE_CLASS,
 } from '../src/app/components/Modal';
 import { Icon, iconTextSize } from '../src/components/ui/Icon';
+import { readCellUnderExceptions, readPageZoomCellUnderExceptions } from './support/largeTextExceptions';
 import { readShell, shellProblems, type ShellGeometry } from './support/largeTextSurfaces/dialogShell';
 import {
   THIRTY_LETTER_WORD,
@@ -1586,6 +1587,148 @@ test('check: A8 (89.6-02): reports its bad twin and passes its good twin', async
     'a link scrolled out of its scrolling body reads as overlapping the button under that body, where it draws nothing',
   ).toEqual([]);
   expect(links.lost, 'the inline-links twin lost something other than the shifted pair').toEqual(['overlap: a "Ticket" and a "Azul"']);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// R16 (2026-11-26): the findings of the independent narrow check of the seven changes made to the
+// read after its freeze: planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/F1-NARROW-CHECK.md ("Findings").
+// One twin per finding, each passed by the read as it stood.
+// ---------------------------------------------------------------------------------------------
+
+test('check: held, an inline anchor (R16, F1 2-A): a word in a pop-up that hangs from an inline relative anchor is held by the pop-up, filling the anchor, wider than it, and anchored by its right edge', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const fills = await splitCase(page, 'held-inline-anchor');
+  const ownWidth = await splitCase(page, 'held-inline-anchor-own-width');
+  const badge = await splitCase(page, 'held-inline-anchor-badge');
+  await testInfo.attach('twin-read', { body: JSON.stringify({ fills, ownWidth, badge }, null, 2), contentType: 'application/json' });
+  expectHeld(fills, 'a word in a pop-up as wide as its inline anchor, in a paragraph with room for it', 'position absolute');
+  expectHeld(ownWidth, 'a word in a 60px pop-up under an inline anchor, in a paragraph with room for it', 'position absolute');
+  expectHeld(badge, 'a word in a badge anchored by its right edge to an inline anchor, in a paragraph with room for it', 'position absolute');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: held, a pop-up under a squeezed padded anchor (R16, F1 2-B): a word in a pop-up that takes the width of its padded anchor, which a row squeezes, is held by the pop-up although it is whole once the row stacks', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const found = await splitCase(page, 'held-popup-anchor-squeezed');
+  // The shape, measured after the read with the row stacked by hand: the word is then whole, and it starts left of its anchor's content.
+  const shape = await page.evaluate(() => {
+    const row = document.querySelector('.lt-row') as HTMLElement;
+    const anchor = document.querySelector('.lt-anchor') as HTMLElement;
+    const name = document.querySelector('.lt-name') as HTMLElement;
+    const squeezed = anchor.getBoundingClientRect().width;
+    row.style.flexDirection = 'column';
+    const range = document.createRange();
+    range.selectNodeContents(name);
+    const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0);
+    return {
+      squeezed,
+      stackedLines: new Set(rects.map((r) => Math.round(r.top))).size,
+      wordLeft: Math.min(...rects.map((r) => r.left)),
+      anchorContentLeft: anchor.getBoundingClientRect().left + parseFloat(getComputedStyle(anchor).paddingLeft),
+    };
+  });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ found, shape }, null, 2), contentType: 'application/json' });
+  expect(shape.stackedLines, `the word is not whole once the row stacks: the harness is not the shape it says (${JSON.stringify(shape)})`).toBe(1);
+  expect(shape.wordLeft, `the stacked word does not lie in its anchor's padding: the harness is not the shape it says (${JSON.stringify(shape)})`).toBeLessThan(shape.anchorContentLeft - 1);
+  expectHeld(found, 'a word in a pop-up as wide as its padded anchor, the anchor squeezed in a row', 'position absolute');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: held, a query container between a pop-up and its anchor (R16, F1 2-C): whether container-type forms the containing block of an absolute box is measured in this browser, and the read follows the measurement', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const found = await splitCase(page, 'held-container-type');
+  const shape = await page.evaluate(() => {
+    const width = (selector: string) => (document.querySelector(selector) as HTMLElement).getBoundingClientRect().width;
+    return {
+      containerType: getComputedStyle(document.querySelector('.lt-container') as HTMLElement).containerType,
+      probe: width('.lt-probe'),
+      relativePaddingBox: (document.querySelector('.lt-rel') as HTMLElement).clientWidth,
+      container: width('.lt-container'),
+      popup: width('.lt-menu'),
+    };
+  });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ found, shape }, null, 2), contentType: 'application/json' });
+  expect(shape.containerType, 'the box between is not a query container: the harness is not the shape it says').toBe('inline-size');
+  expect(shape.popup, `the pop-up is not wider than the query container and narrower than the relative box: the harness is not the shape it says (${JSON.stringify(shape)})`).toBeGreaterThan(shape.container + 0.5);
+  expect(shape.popup, `the pop-up is not narrower than the relative box: the harness is not the shape it says (${JSON.stringify(shape)})`).toBeLessThan(shape.relativePaddingBox - 0.5);
+  // WHAT THE BROWSER DOES, measured: the probe (left 0, right 0) is as wide as its containing block.
+  const formsContainingBlock = Math.abs(shape.probe - shape.container) <= 0.5;
+  expect(formsContainingBlock || Math.abs(shape.probe - shape.relativePaddingBox) <= 0.5, `the probe is as wide as neither box (${JSON.stringify(shape)})`).toBe(true);
+  // Pinned as measured on the Chromium this suite runs on (148): a query container forms NO containing block for an
+  // absolute child. When a browser update turns this line red the read still follows the browser (the branches below);
+  // re-pin the line, do not change the read.
+  expect(formsContainingBlock, `container-type now forms the containing block of an absolute child in this browser (${JSON.stringify(shape)})`).toBe(false);
+  if (formsContainingBlock) expectWide(found, 'a pop-up as wide as its containing block, the query container');
+  else expectHeld(found, 'a 100px pop-up whose containing block, the relative box past the query container, offers 256px', '.lt-menu');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: spill, an overflow that clips nothing (R16, F1 5-A and 5-B): a label that paints out of its button past an inline span with the truncate classes, past a clip box wider than the button, and a word in a scroll box that sticks out of its filled card, all read as spill', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const inline = await readLargeTextCell(await renderTwin(page, 'spill-inline-overflow'));
+  const inlineShape = await page.locator('.lt-label').evaluate((el) => ({ display: getComputedStyle(el).display, overflowX: getComputedStyle(el).overflowX }));
+  const clipBox = await readLargeTextCell(await renderTwin(page, 'spill-clip-box-sticks-out'));
+  const clipShape = await page.locator('.lt-label').evaluate((el) => ({ label: el.getBoundingClientRect().width, button: (el.parentElement as HTMLElement).getBoundingClientRect().width, cut: el.scrollWidth - el.clientWidth }));
+  const scrollBox = await readLargeTextCell(await renderTwin(page, 'spill-scroll-box-sticks-out'));
+  const scrollShape = await page.locator('.lt-xscroller').evaluate((el) => ({ overflowX: getComputedStyle(el).overflowX, box: el.getBoundingClientRect().width, card: (el.parentElement as HTMLElement).getBoundingClientRect().width }));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ inline, inlineShape, clipBox, clipShape, scrollBox, scrollShape }, null, 2), contentType: 'application/json' });
+  expect(inlineShape, 'the label is not an inline box with overflow hidden: the harness is not the shape it says').toEqual({ display: 'inline', overflowX: 'hidden' });
+  expect(inline.spill.join(' | '), `a label painting out of its button past an inline overflow-hidden span does not read as spill (${JSON.stringify(inline)})`).toContain('"Member" spills');
+  expect(inline.spill.join(' | '), 'the spill read did not name the button').toContain('out of its button');
+  expect(clipShape.label, `the clip box is not wider than its button: the harness is not the shape it says (${JSON.stringify(clipShape)})`).toBeGreaterThan(clipShape.button + 1);
+  expect(clipShape.cut, `the clip box cuts its label: the harness is not the shape it says (${JSON.stringify(clipShape)})`).toBeLessThanOrEqual(1);
+  expect(clipBox.spill.join(' | '), `a label in a clip box wider than its button does not read as spill (${JSON.stringify(clipBox)})`).toContain('"Member" spills');
+  expect(scrollShape.overflowX, 'the inner box does not scroll sideways: the harness is not the shape it says').toBe('auto');
+  expect(scrollShape.box, `the scroll box is not wider than its card: the harness is not the shape it says (${JSON.stringify(scrollShape)})`).toBeGreaterThan(scrollShape.card + 1);
+  expect(scrollBox.spill.join(' | '), `a word in a scroll box that sticks out of its filled card does not read as spill (${JSON.stringify(scrollBox)})`).toContain('"Weekend" spills');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: cut, a cut-only exception (R16, F1 5-C): the game description is excused its three-line clamp and nothing else: a word its own box cuts sideways reads as cut', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const sideways = await readCellUnderExceptions(await renderTwin(page, 'cut-exception-sideways'));
+  const sidewaysShape = await page.locator('#game-description').evaluate((el) => ({ past: el.scrollWidth - el.clientWidth, overflowX: getComputedStyle(el).overflowX }));
+  const clampOnly = await readCellUnderExceptions(await renderTwin(page, 'cut-exception-clamp-only'));
+  const clampShape = await page.locator('#game-description').evaluate((el) => ({ pastX: el.scrollWidth - el.clientWidth, pastY: el.scrollHeight - el.clientHeight }));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ sideways, sidewaysShape, clampOnly, clampShape }, null, 2), contentType: 'application/json' });
+  expect(sidewaysShape.overflowX, 'the description does not hide its overflow: the harness is not the shape it says').toBe('hidden');
+  expect(sidewaysShape.past, `the long word is not cut sideways by the description's box: the harness is not the shape it says (${JSON.stringify(sidewaysShape)})`).toBeGreaterThan(1);
+  expect(sideways.read.cut, `a word cut sideways by the excepted description's own box is not read as cut (${JSON.stringify(sideways.read)})`).toEqual(['hidden: "A Grandmasterboardgamecollecti"']);
+  expect(clampShape.pastY, `the second description is not cut by its clamp: the harness is not the shape it says (${JSON.stringify(clampShape)})`).toBeGreaterThan(1);
+  expect(clampShape.pastX, `the second description is cut sideways: the harness is not the shape it says (${JSON.stringify(clampShape)})`).toBeLessThanOrEqual(1);
+  expect(clampOnly.read.cut, `the description's own three-line clamp, which SPEC A10 excuses, reads as cut (${JSON.stringify(clampOnly.read)})`).toEqual([]);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: A8, a clip that is not the own clamp (R16, F1 6-A and 6-B): a list-row title cut further than its own clamp cuts it is lost, and so is whatever a surface container itself cuts; only a title cut by its own clamp alone is cleared', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const titles = await readPageZoomCellUnderExceptions(await renderTwin(page, 'zoom-own-clamp', ZOOM_CHECK_CELL));
+  const containers = await readPageZoomCellUnderExceptions(await renderTwin(page, 'zoom-surface-container-clip', ZOOM_CHECK_CELL));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ titles, containers }, null, 2), contentType: 'application/json' });
+  const about = (entries: readonly string[], word: string) => entries.filter((entry) => entry.includes(`"${word}`));
+  expect(about(titles.cleared, 'Alpha'), 'a title cut by its own clamp and nothing else is not cleared').toEqual([expect.stringContaining('is clipped by its h5')]);
+  expect(about(titles.read.lost, 'Alpha'), 'a title cut by its own clamp and nothing else is lost').toEqual([]);
+  expect(about(titles.read.lost, 'Delta'), `a clamped title that a 10px parent cuts further is not lost (${JSON.stringify(titles)})`).toContainEqual(expect.stringContaining('is clipped by its div'));
+  expect(about(titles.read.lost, 'Echo'), `a truncate title that a 40px parent cuts further is not lost (${JSON.stringify(titles)})`).toContainEqual(expect.stringContaining('is clipped by its div'));
+  expect(about(titles.cleared, 'Delta').concat(about(titles.cleared, 'Echo')), 'a title cut further than its own clamp cuts it is cleared').toEqual([]);
+  expect(about(containers.read.lost, 'Next'), `a button the tutorial overlay's own box cuts is not lost (${JSON.stringify(containers)})`).toContainEqual(expect.stringContaining('unreachable: button "Next" is clipped by its div'));
+  expect(about(containers.read.lost, '+3 more'), `a link the month grid's own box cuts is not lost (${JSON.stringify(containers)})`).toContainEqual(expect.stringContaining('unreachable: a "+3 more" is clipped by its div'));
+  expect(containers.cleared, 'a clip by a surface container itself is cleared').toEqual([]);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: shrunk, a stretched SVG text (R16, F1 7-A): an SVG text drawn tall and a tenth of its width reads as shrunk by the smaller of its two screen scales', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const read = await readLargeTextCell(await renderTwin(page, 'cut-svg-stretched'));
+  const scale = await page.locator('svg text').evaluate((el) => {
+    const m = (el as SVGGraphicsElement).getScreenCTM();
+    return m ? { across: Math.hypot(m.a, m.b), down: Math.hypot(m.c, m.d) } : null;
+  });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ read, scale }, null, 2), contentType: 'application/json' });
+  expect(scale?.down ?? 0, `the text is not stretched tall: the harness is not the shape it says (${JSON.stringify(scale)})`).toBeGreaterThan(5);
+  expect(scale?.across ?? 1, `the text is not squeezed narrow: the harness is not the shape it says (${JSON.stringify(scale)})`).toBeLessThan(0.2);
+  expect(read.cut, `a 20-unit SVG text drawn a tenth of its width is not read as shrunk (${JSON.stringify(read.cut)})`).toContain('shrunk: "Weekend"');
   expect(requests, 'the page made a request').toEqual([]);
 });
 

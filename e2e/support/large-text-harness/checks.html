@@ -1335,3 +1335,131 @@
     </div>
   </main>
 </section>
+
+<!--
+  R16 (2026-11-26): the proof cases of the independent narrow check of the seven changes made to
+  the read after its freeze, one twin per finding. Each was passed by the read as it stood.
+-->
+
+<!-- 2-A: a pop-up that takes the width of an INLINE relative anchor (an emoji in a paragraph). The paragraph has room for the word. HELD by the pop-up; the read walked from box to box, skipped the inline anchor and called it wide. -->
+<section data-case="held-inline-anchor">
+  <main data-frame class="lt-frame px-4 py-4">
+    <p class="text-base text-content-primary">Pick <span class="lt-anchor relative">&#x1F3B2;<span class="lt-name absolute left-0 right-0 top-full [overflow-wrap:anywhere]">Weekend</span></span> night</p>
+  </main>
+</section>
+
+<!-- 2-A: a pop-up 60px wide, wider than its inline relative anchor and narrower than its word. HELD by the pop-up. -->
+<section data-case="held-inline-anchor-own-width">
+  <main data-frame class="lt-frame px-4 py-4">
+    <p class="text-base text-content-primary">Pick <span class="lt-anchor relative">&#x1F3B2;<span class="lt-name absolute left-0 top-full w-[60px] [overflow-wrap:anywhere]">Weekend</span></span> night</p>
+  </main>
+</section>
+
+<!-- 2-A: a badge anchored by its right edge to an inline relative anchor: it shrinks to the anchor's width. HELD by the badge. -->
+<section data-case="held-inline-anchor-badge">
+  <main data-frame class="lt-frame px-4 py-4">
+    <p class="text-base text-content-primary">Pick <span class="lt-anchor relative">&#x1F3B2;<span class="lt-name absolute right-0 top-full [overflow-wrap:anywhere]">Weekend</span></span> night</p>
+  </main>
+</section>
+
+<!-- 2-B: a pop-up that takes the width of its PADDED anchor (left 0, right 0), the anchor squeezed in a row by a fixed neighbour. With the row stacked the word is whole, lying in the anchor's padding, where a positioned box is placed. HELD by the pop-up; the read called it wide. -->
+<section data-case="held-popup-anchor-squeezed">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-row flex h-[200px]">
+      <div class="lt-fixed w-[150px] flex-none text-base text-content-primary">x</div>
+      <button type="button" class="lt-anchor relative min-w-0 flex-1 px-[20px] text-base text-content-primary">Go<span class="lt-name absolute left-0 right-0 top-full text-left [overflow-wrap:anywhere]">Weekend</span></button>
+    </div>
+  </main>
+</section>
+
+<!--
+  2-C: a 100px pop-up in a relative box whose side padding leaves 96px, with a query container
+  (container-type inline-size) between the two. The probe beside the pop-up (left 0, right 0) is as
+  wide as the box that really is their containing block: the test MEASURES which one that is in
+  this browser. When it is the relative box (256px), the pop-up is HELD: narrower than its
+  containing block offers. The read took the query container for the containing block by rule and
+  called it wide.
+-->
+<section data-case="held-container-type">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-rel relative h-[200px] px-[80px]">
+      <div class="lt-container @container">
+        <span class="text-base text-content-primary">Menu</span>
+        <div class="lt-probe absolute left-0 right-0 h-px"></div>
+        <div class="lt-menu absolute left-0 top-[60px] w-[100px] [overflow-wrap:anywhere]">
+          <p class="lt-name font-semibold text-base text-content-primary">Weekend</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- 5-A: the truncate classes on a plain INLINE span, where overflow does nothing: the label paints out of its 110px button. SPILL; the read stopped at the span and saw nothing. -->
+<section data-case="spill-inline-overflow">
+  <main data-frame class="lt-frame px-4 py-4">
+    <p class="text-base text-content-primary">Row <button type="button" class="lt-button w-[110px] bg-surface-card p-0"><span class="lt-label overflow-hidden text-ellipsis whitespace-nowrap">Invite Member</span></button></p>
+  </main>
+</section>
+
+<!-- 5-B: a clip box that is itself wider than the filled button around it (a flex item that does not shrink): nothing is clipped, and the label paints out of the button. SPILL. -->
+<section data-case="spill-clip-box-sticks-out">
+  <main data-frame class="lt-frame px-4 py-4">
+    <button type="button" class="lt-button flex w-[110px] bg-surface-card p-0 text-base text-content-primary"><span class="lt-label flex-none overflow-hidden text-ellipsis whitespace-nowrap">Invite Member</span></button>
+  </main>
+</section>
+
+<!-- 5-B: a box that scrolls sideways, 240px wide, inside a filled card 120px wide: the word is whole inside the scroll box, and the scroll box paints out of the card. SPILL. -->
+<section data-case="spill-scroll-box-sticks-out">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card w-[120px] bg-surface-card p-1">
+      <div class="lt-xscroller w-[240px] overflow-x-auto text-base text-content-primary">Weekend Warriors</div>
+    </div>
+  </main>
+</section>
+
+<!-- 5-C: the game description (a cut-only exception: its three-line clamp is excused) holding a word wider than its card, which may not break: the clamp's own box cuts the word SIDEWAYS. That is not the clamp: CUT, hidden. The second description is clamped at three lines and nothing else: excused. -->
+<section data-case="cut-exception-sideways">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card w-[200px] bg-surface-card p-2">
+      <p id="game-description" class="lt-name line-clamp-3 [overflow-wrap:normal] text-base text-content-primary">A Grandmasterboardgamecollective night</p>
+    </div>
+  </main>
+</section>
+
+<section data-case="cut-exception-clamp-only">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card w-[200px] bg-surface-card p-2">
+      <p id="game-description" class="lt-name line-clamp-3 text-base text-content-primary">A night of games for everyone who likes to play all evening long</p>
+    </div>
+  </main>
+</section>
+
+<!--
+  6-A, page zoom: three calendar list-row titles (the A3-3 selector). Alpha is cut by its OWN
+  two-line clamp and by nothing else: cleared. Delta has the same clamp inside a parent 10px tall
+  that hides all but the top of its first line; Echo is a truncate title inside a 40px parent that
+  hides the rest sideways: each is cut further than its own clamp cuts it. LOST; the read looked
+  at the nearest clipper only, the clamp, and cleared both.
+-->
+<section data-case="zoom-own-clamp">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div role="button" tabindex="0"><h5 class="font-bold text-base line-clamp-2 text-content-primary">Alpha Jaws of the Lion with every expansion box and the whole long subtitle of the game</h5></div>
+    <div role="button" tabindex="0" class="mt-8"><div class="lt-low h-[10px] overflow-hidden"><h5 class="font-bold text-base line-clamp-2 text-content-primary">Delta Jaws of the Lion with every expansion box and the whole long subtitle of the game</h5></div></div>
+    <div role="button" tabindex="0" class="mt-8"><div class="lt-thin w-[40px] overflow-hidden"><h5 class="font-bold text-base truncate w-[150px] text-content-primary">Echo Jaws of the Lion with every expansion</h5></div></div>
+  </main>
+</section>
+
+<!-- 6-B, page zoom: the two surface CONTAINERS as clippers. The tutorial overlay's box hides its own Next button, and the month grid's box hides its +3 more link. Neither is a title's own clamp. LOST; the read cleared whatever a surface container cut. -->
+<section data-case="zoom-surface-container-clip">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="fixed inset-0 z-60 overflow-hidden"><p class="text-base text-content-primary">Step 2 of 6</p><button type="button" class="btn btn-secondary min-h-11 ml-[260px]">Next</button></div>
+    <div class="grid grid-cols-7 mt-[120px] w-[100px] overflow-hidden whitespace-nowrap text-base text-content-primary"><span class="col-span-7">Catan Gloomhaven Wingspan <a href="#more">+3 more</a></span></div>
+  </main>
+</section>
+
+<!-- 7-A: an SVG text in a viewBox stretched tall and squeezed narrow (preserveAspectRatio none): 20 units drawn 200px tall and a tenth of their width. SHRUNK; the read took the vertical scale only. -->
+<section data-case="cut-svg-stretched">
+  <main data-frame class="lt-frame px-4 py-4">
+    <svg width="30" height="300" viewBox="0 0 300 30" preserveAspectRatio="none" role="img" aria-label="Stretched icon"><text x="0" y="22" font-size="20">Weekend</text></svg>
+  </main>
+</section>
