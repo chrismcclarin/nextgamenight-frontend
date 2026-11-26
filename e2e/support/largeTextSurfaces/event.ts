@@ -1,4 +1,4 @@
-// Surface rows: Create Event and Edit Event. Owner: plan 89.6-24.
+// Surface rows: Create Event and Edit Event, and the member picker inside Create Schedule (D25-members). Owner: plan 89.6-24.
 // One row per line, each with its census id.
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
@@ -16,7 +16,7 @@ import { routeMemberRoster } from '../memberRoster';
 import { setTextMode } from '../wordLines';
 import { toDialogTop } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
-import { actionPairProblems, recordInputFit } from './profileA';
+import { actionPairProblems, answerSettings, reachRecurring, recordInputFit, SETTINGS_EMPTY } from './profileA';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
 // owns. No fallback id: a row that opened some other group would read a dialog the fixtures do not own.
@@ -333,9 +333,70 @@ const schedulerExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, ce
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
+// D25-members: the member picker of Create Schedule (census D25; MemberSelector renders only inside
+// ScheduleForm), with three staged members: a 40-character name with spaces, a 50-character name
+// with no break, and E2E Ana. The planning page is reached by plan 89.6-41's one helper, its
+// prompt-settings read (a GET that writes) answered with the empty body plus the three members; with
+// no schedule the card's empty state offers Create a schedule, the same action as + New Schedule
+// (src/app/components/ScheduleList.js ("same action, so the same touch target")). The root is the
+// group named Send to Members. Create Schedule is NEVER pressed.
+const UNBROKEN_MEMBER = 'Grandmasterboardgamecollectiveofthenorthernvalleys';
+const PICKER_MEMBERS = [
+  { id: '89624000-0000-4000-8000-000000000011', user_id: 'auth0|e2e-89-6-24-long', username: LONG_MEMBER },
+  { id: '89624000-0000-4000-8000-000000000012', user_id: 'auth0|e2e-89-6-24-unbroken', username: UNBROKEN_MEMBER },
+  { id: '89624000-0000-4000-8000-000000000013', user_id: 'auth0|e2e-89-6-24-ana', username: 'E2E Ana' },
+];
+const createScheduleDialog = (page: Page): Locator => page.getByRole('dialog', { name: 'Create Schedule', exact: true });
+const memberPicker = (dialog: Locator): Locator => dialog.getByRole('group', { name: 'Send to Members', exact: true });
+const reachMemberPicker: SurfaceRow['reach'] = async (page) => {
+  await reachRecurring(page);
+  await page.getByRole('button', { name: 'Create a schedule', exact: true }).click();
+  const dialog = createScheduleDialog(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  await memberPicker(dialog).getByText(UNBROKEN_MEMBER, { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(dialog);
+  await toDialogTop(dialog);
+  return { root: memberPicker(dialog), dialog };
+};
+
+// D25-members extras, in cell 320x568-dark-200 only (the PR lane has no normal-text cell): after the
+// cell's own reads, the picker is read at normal text at 375 x 667: the first member's name starts
+// 8px (within 0.5px) after its checkbox ends, and level (within 0.5px) with the Select All text,
+// today's look; the cell's size and text are put back after. One joined line is thrown.
+const memberPickerExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  if (cell.id !== '320x568-dark-200') return;
+  const tag = `D25-members ${cell.id}`;
+  const dialog = createScheduleDialog(page);
+  await setTextMode(page, '100', `${tag} normal-text pass`);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await settle(page, dialog);
+  const read = await memberPicker(dialog).evaluate((group, first) => {
+    const named = Array.from(group.querySelectorAll('label span')).find((span) => span.textContent?.trim() === first);
+    const box = named?.closest('label')?.querySelector('input[type="checkbox"]');
+    const all = Array.from(group.querySelectorAll('label span')).find((span) => span.textContent?.trim() === 'Select All');
+    return {
+      name: named ? named.getBoundingClientRect().left : null,
+      checkbox: box ? box.getBoundingClientRect().right : null,
+      selectAll: all ? all.getBoundingClientRect().left : null,
+    };
+  }, LONG_MEMBER);
+  const problems: string[] = [];
+  say(`D25-members normal-375 name-left=${read.name ?? 'none'} checkbox-right=${read.checkbox ?? 'none'} select-all-left=${read.selectAll ?? 'none'}`);
+  if (read.name === null || read.checkbox === null || read.selectAll === null) problems.push(`${tag}: the first member's name, its checkbox or the Select All text was not found`);
+  else {
+    if (Math.abs(read.name - read.checkbox - 8) > 0.5) problems.push(`${tag}: at 375 with normal text the first member's name starts ${r1(read.name - read.checkbox)}px after its checkbox, expected 8`);
+    if (Math.abs(read.name - read.selectAll) > 0.5) problems.push(`${tag}: at 375 with normal text the first member's name (${r1(read.name)}) is not level with the Select All text (${r1(read.selectAll)})`);
+  }
+  await page.setViewportSize({ width: cell.width, height: cell.height });
+  await setTextMode(page, '200', `${tag} back to 200%`);
+  await settle(page, dialog);
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'D21', census: 'D21', kind: 'dialog', owner: '89.6-24', status: 'enforced', state: 'one custom row added', reach: reachCreateEvent, extras: createEventExtras },
   { id: 'D21-readonly', census: 'D21', kind: 'dialog', owner: '89.6-24', status: 'enforced', state: 'a group member row with the name Alice and a member with a 40-letter name', reach: reachReadonly, extras: readonlyExtras },
   { id: 'D21-scheduler', census: 'D21', kind: 'dialog', owner: '89.6-24', status: 'enforced', state: 'visual calendar, the week holding today, phone strip and day column', reach: reachScheduler, extras: schedulerExtras },
+  { id: 'D25-members', census: 'D25', kind: 'dialog', owner: '89.6-24', status: 'enforced', state: 'three members: a 40-character name with spaces, a 50-character unbroken name, E2E Ana', reach: reachMemberPicker, answers: answerSettings({ ...SETTINGS_EMPTY, members: PICKER_MEMBERS }), extras: memberPickerExtras },
   { id: 'D22', census: 'D22', kind: 'dialog', owner: '89.6-24', status: 'enforced', reach: reachEditEvent, extras: editEventExtras },
 ];
