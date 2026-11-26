@@ -286,8 +286,9 @@ test('89.6-40 keyboard: a focused row\'s day heading is not behind the stuck sec
         if (!active || !root.contains(active)) return { inside: false as const };
         const group = active.closest('section');
         const day = group?.firstElementChild ?? null;
-        // Only the first row of its day group has its day heading directly above it.
-        const firstRow = group ? Array.from(group.querySelectorAll('button')).find((button) => button.querySelector('h1,h2,h3,h4,h5,h6')) : null;
+        // Only the first row of its day group has its day heading directly above it. A row is a
+        // div with role button (CalendarListView EventRow), never a button element.
+        const firstRow = group ? Array.from(group.querySelectorAll('button, [role="button"]')).find((row) => row.querySelector('h1,h2,h3,h4,h5,h6')) : null;
         const stuck = Array.from(document.querySelectorAll('h3')).find((h3) => h3.textContent?.trim().startsWith(headerName)) ?? null;
         const box = (element: Element | null) => {
           const r = element?.getBoundingClientRect();
@@ -344,7 +345,8 @@ test('89.6-40 fold: with one scroll below 14rem, a Past header folded by keyboar
       if (overflow === 'auto' || overflow === 'scroll') break;
       node = node.parentElement;
     }
-    const rows = Array.from(document.getElementById(panelId)?.querySelectorAll('button') ?? []).filter((row) => row.querySelector('h1,h2,h3,h4,h5,h6'));
+    // A row is a div with role button (CalendarListView EventRow), never a button element.
+    const rows = Array.from(document.getElementById(panelId)?.querySelectorAll('button, [role="button"]') ?? []).filter((row) => row.querySelector('h1,h2,h3,h4,h5,h6'));
     if (!node || rows.length < 4) return { ok: false, rows: rows.length, above: 0, stuck: false };
     // Scroll until the third Past row's bottom is above the scroller's visible top.
     const top = node.getBoundingClientRect().top + node.clientTop;
