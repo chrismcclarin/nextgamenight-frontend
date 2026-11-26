@@ -117,6 +117,10 @@ function Header(){
     // the stylesheet decided, so the 40rem rule lives in one place. The watcher exists only
     // while the menu is open. Focus is not moved: the button it would go back to is not drawn.
     // Removing this while the dim layer has no md class brings that stuck dim layer back.
+    // AMENDED Phase 89.6-26 (S-9): checked at 800 x 900, doubled text dropped to normal with the menu
+    // open: the menu and the dim layer close, because the strip's h-16 is rem and resizes. The strip's
+    // height follows text on purpose; a px height would bring the stuck dim layer back (and plan
+    // 89.6-03's 4.5rem toast offsets are derived from it). e2e/chrome-large-text.spec.ts ("S-9 (89.6-26)").
     useEffect(() => {
         if (typeof ResizeObserver === 'undefined' || !mobileMenuOpen) return;
         const strip = stripRef.current;
@@ -549,9 +553,16 @@ function Header(){
                         opened the menu. Once the session is known the panel is mounted for good,
                         closed and inert, exactly as before.
                         88.9-52 R4 S2: drawn again from md while the strip is under 40rem (the
-                        marker on the strip). */}
+                        marker on the strip).
+
+                        DECISION Phase 89.6-26 (menu-scroll): the open menu scrolls inside itself below
+                        the strip, chosen OVER a panel taller than the screen (at 320 x 568 with doubled
+                        text the settings rows sat below the screen inside the sticky strip, unreachable)
+                        and OVER smaller text in the menu (GR: nothing is shrunk to fit). The strip is
+                        4rem, so the cap is 100dvh less 4rem; at 100% the panel is shorter than any phone
+                        screen and nothing changes. Changing this is a decision, not a cleanup. */}
                     {sessionKnown && <div
-                        className={`md:hidden absolute top-16 left-0 right-0 md:@max-[40rem]/header:block bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg transition-all duration-200 ease-out [--focus-ring-outer:var(--amber-400)] [--focus-ring-inner:var(--purple-950)] ${
+                        className={`md:hidden absolute top-16 left-0 right-0 md:@max-[40rem]/header:block bg-surface-header border-t border-line-header border-b border-line-accent shadow-theme-lg max-h-[calc(100dvh_-_4rem)] overflow-y-auto overscroll-contain scroll-p-2 transition-all duration-200 ease-out [--focus-ring-outer:var(--amber-400)] [--focus-ring-inner:var(--purple-950)] ${
                             mobileMenuOpen
                                 ? 'translate-y-0 opacity-100'
                                 : '-translate-y-full opacity-0 pointer-events-none'
@@ -582,51 +593,58 @@ function Header(){
                                 </li>
                             ))}
                         </ul>
-                        {/* Mobile notification bell — full-row tap surface (MOB-02 + MOB-03).
-                            variant="row" makes the entire button the hit target with
-                            press-state via an instant opacity dim (Phase 87.8 D-12
-                            converged idiom). Outer div is just a
-                            non-interactive border container; the inner <button> is the
-                            actual tap surface. */}
-                        {user && (
-                            <div className="border-t border-line-header">
-                                <NotificationBell user={user} variant="row" label="Invites" />
-                            </div>
-                        )}
-                        {/* Mobile theme toggle — full-row tap target for parity with Invites row */}
+                        {/* DECISION Phase 89.6-26 (O-5): one line between the page links and the settings
+                            rows (owner pick O-5 = C, 2026-11-22), chosen OVER a line above each settings
+                            row (as built), a line between every row and no lines; one wrapper carries it so
+                            it is right signed in or out. The lines are decoration (2.28 light, 1.72 dark;
+                            WCAG 1.4.11 does not apply). Changing this is a decision, not a cleanup. */}
                         <div className="border-t border-line-header">
-                            <ThemeToggle variant="row" label="Theme" />
-                        </div>
-                        {/* Mobile feedback entry point (Phase 87.8 D-09) — full-row
-                            tap surface for parity with Invites/Theme. Only the
-                            TRIGGER lives here: the modal deliberately does NOT
-                            render in this dropdown (its computed `translate` would
-                            capture a fixed-position overlay as its containing
-                            block) — the row drives the modal instance mounted at
-                            the layout root via FeedbackModalProvider. onOpen closes
-                            this menu in the SAME transition that opens the modal,
-                            the close-on-tap idiom the nav links above use. Gated on
-                            user like the Invites row — feedback is auth-only. */}
-                        {user && (
-                            <div className="border-t border-line-header">
-                                {/* invokerRef (Phase 88.3-17, owner ruling 6 /
-                                    DEF-88.3-12-01): the modal restores focus to
-                                    the hamburger toggle, NOT to this row — this
-                                    row sits inside the panel R3-D disables in
-                                    the same transition `onOpen` fires, and a
-                                    control inside a disabled subtree cannot take
-                                    focus. R3-D itself is untouched; the full
-                                    DECISION marker with both rejected
-                                    alternatives is at the row variant's onClick
-                                    in FeedbackButton.js. */}
-                                <FeedbackButton
-                                    variant="row"
-                                    label="Send feedback"
-                                    onOpen={() => setMobileMenuOpen(false)}
-                                    invokerRef={triggerRef}
-                                />
+                            {/* Mobile notification bell — full-row tap surface (MOB-02 + MOB-03).
+                                variant="row" makes the entire button the hit target with
+                                press-state via an instant opacity dim (Phase 87.8 D-12
+                                converged idiom). Outer div is just a
+                                non-interactive container (its border moved to the one wrapper above, 89.6-26 O-5); the inner <button> is the
+                                actual tap surface. */}
+                            {user && (
+                                <div>
+                                    <NotificationBell user={user} variant="row" label="Invites" />
+                                </div>
+                            )}
+                            {/* Mobile theme toggle — full-row tap target for parity with Invites row */}
+                            <div>
+                                <ThemeToggle variant="row" label="Theme" />
                             </div>
-                        )}
+                            {/* Mobile feedback entry point (Phase 87.8 D-09) — full-row
+                                tap surface for parity with Invites/Theme. Only the
+                                TRIGGER lives here: the modal deliberately does NOT
+                                render in this dropdown (its computed `translate` would
+                                capture a fixed-position overlay as its containing
+                                block) — the row drives the modal instance mounted at
+                                the layout root via FeedbackModalProvider. onOpen closes
+                                this menu in the SAME transition that opens the modal,
+                                the close-on-tap idiom the nav links above use. Gated on
+                                user like the Invites row — feedback is auth-only. */}
+                            {user && (
+                                <div>
+                                    {/* invokerRef (Phase 88.3-17, owner ruling 6 /
+                                        DEF-88.3-12-01): the modal restores focus to
+                                        the hamburger toggle, NOT to this row — this
+                                        row sits inside the panel R3-D disables in
+                                        the same transition `onOpen` fires, and a
+                                        control inside a disabled subtree cannot take
+                                        focus. R3-D itself is untouched; the full
+                                        DECISION marker with both rejected
+                                        alternatives is at the row variant's onClick
+                                        in FeedbackButton.js. */}
+                                    <FeedbackButton
+                                        variant="row"
+                                        label="Send feedback"
+                                        onOpen={() => setMobileMenuOpen(false)}
+                                        invokerRef={triggerRef}
+                                    />
+                                </div>
+                            )}
+                        </div>
                     </div>}
                 </nav>
             </div>

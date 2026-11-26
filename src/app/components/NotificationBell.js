@@ -576,9 +576,13 @@ function NotificationBell({ user, variant = 'icon', label }) {
   // Bell SVG — shared between icon and row variants. Decorative inside row variant
   // (the surrounding button is the actual hit target per CONTEXT D-02 "bell + row
   // are one combined target; bell becomes purely decorative").
+  // DECISION Phase 89.6-26 (O-5): the row bell is the Theme icon's size so the three settings labels
+  // start at one x and the rows are one height (the O-5 card told the owner 'the plan makes the icons
+  // one size'), chosen OVER the larger row bell (a 4px step and a 48px row). The desktop bell keeps its
+  // size. Changing this is a decision, not a cleanup.
   const bellIcon = (
     <svg
-      className="w-6 h-6"
+      className={variant === 'row' ? 'w-5 h-5' : 'w-6 h-6'}
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
