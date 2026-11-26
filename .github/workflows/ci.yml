@@ -740,7 +740,7 @@ jobs:
         run: |
           set -euo pipefail
           PLAYWRIGHT_JSON_OUTPUT_FILE=playwright-results-large-text.json npx playwright test --project=journeys --no-deps --output=test-results/large-text-blocks e2e/large-text-blocks.spec.ts
-          node scripts/gate-c-executed-floor.mjs playwright-results-large-text.json --spec e2e/large-text-blocks.spec.ts --project journeys --floor 222
+          node scripts/gate-c-executed-floor.mjs playwright-results-large-text.json --spec e2e/large-text-blocks.spec.ts --project journeys --floor 224
 
       - name: Large-text sweep — every surface row in the sweep cells, pending rows listed (SPEC R4)
         # DECISION Phase 89.6-08 (sweep-step): the per-surface sweep runs once per CI run in its own

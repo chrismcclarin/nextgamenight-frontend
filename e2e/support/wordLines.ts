@@ -358,13 +358,12 @@ export const SIDEWAYS_BOX_EXCEPTIONS: readonly SidewaysBoxException[] = [
     selector: 'div.inline-block.max-w-full.overflow-x-auto',
     source: { file: 'src/app/components/tutorial/simulated/TutorialGrid.js', snippet: 'p-3 inline-block max-w-full overflow-x-auto' },
   },
-  {
-    id: 'SB-5',
-    what: "the QR code's box (decision D25: the code keeps its 200px)",
-    reason: 'images required for understanding (such as maps and diagrams): a code that must keep its size to be scanned',
-    selector: 'div.mx-auto.w-fit:has(> svg)',
-    source: { file: 'src/app/components/QRCodeModal.js', snippet: '<div className="mx-auto mb-4 w-fit">' },
-  },
+  // AMENDED R17 (2026-11-26): no entry for the QR code. SB-5 (the code's own box, decision D25) matched
+  // nothing on the real QR dialog: the box that scrolls sideways there is the dialog box, at the two
+  // page-zoom cells only, and the too-wide item is the dialog body around the code, not the code's
+  // div. An exception that matches nothing is dead, so it is removed, chosen OVER widening the rule
+  // to "an item that holds an excepted element" (a wider exception nothing needs). The code's size
+  // at those widths is recorded, not failed, under the L2 marker below.
 ];
 
 export interface LargeTextReadOptions {
@@ -567,6 +566,22 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     // climb in an axis STOPS at the first element whose overflow in that axis is auto or scroll:
     // content past a scroller is reachable by scrolling, so a hidden ancestor above the scroller
     // (the house Modal's content box around its scrolling body) never makes scrolled-away text a cut.
+    // DECISION Phase 89.6 R17 (overflow applies): ONE answer, for every climb of this read, to whether an
+    // overflow value on an element does anything. Overflow applies to block, flex and grid containers and
+    // to replaced elements; on an inline box that is not replaced, on a display: contents element and on
+    // a table row, row group or column it neither clips nor scrolls, whatever its computed value says.
+    // The spill read skipped those since R16 (finding 5-A); the cut check's hidden kind, the page-zoom
+    // read's first-overflow climb and its drawn-part cut did not, so a word whole on screen read as cut
+    // or unreachable beside an inline overflow-hidden box, a real clip above an inline overflow-auto box
+    // was not read (the climb took the inline box for a scroller and stopped), and two texts that meet
+    // were not an overlap. Chosen OVER the display test alone in every climb: an svg or an image drawn
+    // inline is a replaced element and DOES clip, so the cut check would have gone blind to text an
+    // inline svg cuts; the spill read takes the same answer, so the climbs cannot disagree.
+    // Pinned by e2e/large-text-blocks.spec.ts ("check: cut and page zoom, an inline box neither clips nor scrolls (R17)")
+    // and, for the spill read, by the R17 spill test beside it. Changing this is a decision, not a cleanup.
+    const NO_OVERFLOW_DISPLAY = /^(inline|contents|table-row|table-row-group|table-header-group|table-footer-group|table-column|table-column-group)$/;
+    const REPLACED = 'svg, img, video, canvas, iframe, embed, object';
+    const overflowApplies = (a: Element, cs: CSSStyleDeclaration): boolean => !NO_OVERFLOW_DISPLAY.test(cs.display) || a.matches(REPLACED);
     type Axis = 'x' | 'y';
     interface ClipRect {
       left: number;
@@ -577,6 +592,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     const clippedBy = (el: Element, rects: ClipRect[], axis: Axis): Element | null => {
       for (let a: Element | null = el; a && a !== doc; a = a.parentElement) {
         const cs = getComputedStyle(a);
+        if (!overflowApplies(a, cs)) continue;
         const overflow = axis === 'x' ? cs.overflowX : cs.overflowY;
         if (overflow === 'auto' || overflow === 'scroll') return null;
         if (overflow !== 'hidden' && overflow !== 'clip') continue;
@@ -1283,7 +1299,8 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     // day headers, R13's case, as before); one that visibly paints past it is. Chosen OVER the stop,
     // which was silent for a label painting out of its button past a truncate class on an inline
     // span, and for a clip or scroll box that itself sticks out of the filled box around it.
-    const CLIPS_NOTHING = /^(inline|contents|table-row|table-row-group|table-header-group|table-footer-group|table-column|table-column-group)$/;
+    // AMENDED R17: which boxes clip nothing is the one answer above, overflowApplies (it was a display
+    // test of this block's own); an inline svg or image now counts as the clip it is.
     interface SeenPart {
       left: number;
       top: number;
@@ -1295,7 +1312,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       let seen: SeenPart[] = w.rects.map((r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom }));
       for (let a: Element | null = w.el; a && a !== doc; a = a.parentElement) {
         const cs = getComputedStyle(a);
-        if (!CLIPS_NOTHING.test(cs.display) && (cs.overflowX !== 'visible' || cs.overflowY !== 'visible')) {
+        if (overflowApplies(a, cs) && (cs.overflowX !== 'visible' || cs.overflowY !== 'visible')) {
           const box = a.getBoundingClientRect();
           const clipX = cs.overflowX !== 'visible';
           const clipY = cs.overflowY !== 'visible';
@@ -1347,6 +1364,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       const firstOverflow = (el: Element, axis: Axis): 'scroll' | 'clip' | null => {
         for (let a: Element | null = el; a && a !== doc; a = a.parentElement) {
           const cs = getComputedStyle(a);
+          if (!overflowApplies(a, cs)) continue;
           const overflow = axis === 'x' ? cs.overflowX : cs.overflowY;
           if (overflow === 'auto' || overflow === 'scroll') return 'scroll';
           if (overflow === 'hidden' || overflow === 'clip') return 'clip';
@@ -1435,7 +1453,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
         const part: Part = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
         for (let a: Element | null = from; a && a !== doc; a = a.parentElement) {
           const cs = getComputedStyle(a);
-          if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+          if (!overflowApplies(a, cs) || (cs.overflowX === 'visible' && cs.overflowY === 'visible')) continue;
           const box = a.getBoundingClientRect();
           if (cs.overflowX !== 'visible') {
             part.left = Math.max(part.left, box.left + px(cs.borderLeftWidth));
@@ -1523,7 +1541,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     const sidewaysBoxes: SidewaysBox[] = [];
     for (const box of [rootEl, ...Array.from(rootEl.querySelectorAll('*'))]) {
       const cs = getComputedStyle(box);
-      if ((cs.overflowX !== 'auto' && cs.overflowX !== 'scroll') || CLIPS_NOTHING.test(cs.display)) continue;
+      if ((cs.overflowX !== 'auto' && cs.overflowX !== 'scroll') || !overflowApplies(box, cs)) continue;
       if (box.scrollWidth <= box.clientWidth + 1 || drawsNothing(box)) continue;
       const windowWidth = box.clientWidth;
       let excepted = exceptedBy(box);
