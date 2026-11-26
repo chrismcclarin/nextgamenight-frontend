@@ -57,6 +57,16 @@
   </main>
 </section>
 
+<!-- cut, SVG text (plan 89.6-40, orchestrator ruling D29): two 80px icons, each a 15-unit letter.
+     B in a viewBox 40 units wide, so it is drawn at 30px (above the 24px floor at 200%); T in one
+     80 units wide, so it is drawn at 15px (below the floor). The landing logo letter is the first case. -->
+<section data-case="cut-svg">
+  <main data-frame class="lt-frame px-4 py-4">
+    <svg width="80" height="80" viewBox="0 0 40 40" role="img" aria-label="Big icon"><text x="12" y="28" font-size="15">B</text></svg>
+    <svg width="80" height="80" viewBox="0 0 80 80" role="img" aria-label="Tiny icon"><text x="32" y="45" font-size="15">T</text></svg>
+  </main>
+</section>
+
 <section data-case="cut-good">
   <main data-frame class="lt-frame px-4 py-4">
     <div class="lt-card rounded-card border border-line bg-surface-card p-3 text-content-primary">

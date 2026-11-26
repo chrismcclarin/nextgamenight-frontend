@@ -516,6 +516,20 @@ test('check: cut (89.6-02): reports its bad twin and passes its good twin', asyn
   expect(requests, 'the page made a request').toEqual([]);
 });
 
+// Orchestrator ruling D29 (plan 89.6-40), a change to this file's instrument: an SVG text is
+// measured at its DRAWN size (its font size times its screen scale), never at its font size in user
+// units, which an icon's viewBox scales: the landing logo's letter, 15 units in an 80px icon of a
+// 40-unit viewBox, is drawn at 30px and was read as shrunk in every 200% cell.
+test('check: shrunk, SVG text (89.6-40, D29): an SVG text drawn above the floor through its viewBox scale is not shrunk, and one drawn below it still is', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const read = await readLargeTextCell(await renderTwin(page, 'cut-svg'));
+  await testInfo.attach('twin-read', { body: JSON.stringify(read, null, 2), contentType: 'application/json' });
+  const shrunk = read.cut.filter((entry) => entry.startsWith('shrunk: '));
+  expect(shrunk.filter((entry) => entry === 'shrunk: "B"'), `a letter drawn at 30px through a viewBox scale reads as shrunk (${JSON.stringify(read.cut)})`).toEqual([]);
+  expect(shrunk.filter((entry) => entry === 'shrunk: "T"').length, `a letter drawn at 15px no longer reads as shrunk (${JSON.stringify(read.cut)})`).toBe(1);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
 // THE SPLIT CONTROLS (plan 89.6-02; orchestrator fix R3 and its repair batch; replaced by
 // orchestrator change R6; all 2026-11-24). For a word drawn on more than one line the read stacks
 // the side-by-side containers between the word and its bound for a moment, reads the word again
