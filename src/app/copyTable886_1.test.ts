@@ -199,6 +199,8 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'GB2', text: "No one has said what they're bringing yet.", site: 'app/components/BringSummary.js', kind: 'chunk' },
   // Phase 88.9 round 2 BANNER-01 (owner ruling short, 2026-11-07): the composed load-failure title, defined once in the banner
   { id: 'BN1', text: "Couldn't load {thing}", site: 'components/ui/FetchErrorBanner.tsx', kind: 'fragments', fragments: ["Couldn't load ", ''] },
+  // Notification preferences (Phase 89.6-22, owner pick O-M3 A+ note, 2026-11-22: 30 min before is accepted rewording)
+  { id: 'NP1', text: '30 min before', site: 'app/userProfile/page.js', kind: 'chunk' },
 ];
 
 // The exact roster: a dropped or renamed row fails.
@@ -224,6 +226,8 @@ const EXPECTED_IDS = [
   'GB1', 'GB2',
   // Phase 88.9 round 2 BANNER-01 (owner ruling short, 2026-11-07): the composed load-failure title, defined once in the banner
   'BN1',
+  // Notification preferences (Phase 89.6-22, owner pick O-M3 A+ note, 2026-11-22)
+  'NP1',
 ];
 
 // Rows that ship no literal of their own.
@@ -308,6 +312,8 @@ const RETIRED_LITERALS: Retired[] = [
   { text: 'Group Games', scope: ['app/components/GroupGamesList.js'] },
   { text: 'Loading...', scope: LOADING_SITES, whole: true },
   { text: 'Loading…', scope: ['app/components/AvailabilityForm.js'], whole: true },
+  // NP1 (Phase 89.6-22, owner pick O-M3 A+): the reminder's first choice reads 30 min before; its former label is retired where it lived.
+  { text: '30 minutes before', scope: ['app/userProfile/page.js'] },
 ];
 
 // RF1 typed copies (plan 70 contract C7): every test or spec file a consumer plan pins RF1 in.
@@ -426,11 +432,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (121 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (122 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(121);
+    expect(ids).toHaveLength(122);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });
