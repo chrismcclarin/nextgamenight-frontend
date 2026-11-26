@@ -13,7 +13,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import { settleAnimations } from '../inFlight';
 import { routeMemberRoster } from '../memberRoster';
-import { setTextMode } from '../wordLines';
+import { readLargeTextCell, setTextMode } from '../wordLines';
 import { toDialogTop } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
 import { actionPairProblems, answerSettings, reachRecurring, recordInputFit, SETTINGS_EMPTY } from './profileA';
@@ -28,7 +28,8 @@ const groupId = (): string => {
 
 // Two staged members, first in the roster answer, so the first read-only participant boxes are
 // theirs: a short name (the word the 2rem lock reserve broke at 320 / 200%) and a 40-character
-// name of ordinary words. Synthetic ids in a range no seed owns.
+// name of ordinary words. Synthetic ids in a range no seed owns. The seeded roster has an Alice of
+// its own (flip run 45827953808), so a read of the staged one takes the first match.
 const SHORT_MEMBER = 'Alice';
 const LONG_MEMBER = 'Christopher Alexander Montgomery Whitley';
 const STAGED_ROSTER = [
@@ -45,6 +46,37 @@ const say = (line: string): void => {
   process.stdout.write(`ZZ24 ${line}\n`);
 };
 const r1 = (value: number): string => value.toFixed(1);
+
+/**
+ * Print what a cell's own read found, one ZZ24 line per entry (CI keeps nothing else from a test,
+ * and the ci-log reader cuts a line at 400 characters), and the leaf-most boxes that run past the
+ * dialog box sideways. Diagnosis only: it asserts nothing (the sweep's own read fails the cell).
+ */
+async function printDiagnosis(tag: string, root: Locator, dialog: Locator, cell: SweepCell): Promise<void> {
+  if (cell.zoom) return;
+  const read = await readLargeTextCell(root, { dialog });
+  for (const kind of ['cut', 'split', 'held', 'spill', 'selectCut'] as const) {
+    for (const entry of read[kind]) say(`diag ${tag} ${kind}: ${entry.slice(0, 300)}`);
+  }
+  if ((read.dialogSideways ?? 0) > 0 || read.pageSideways > 0) {
+    const out = await dialog.evaluate((box) => {
+      const frame = box.getBoundingClientRect();
+      const past = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && (r.right > frame.right + 0.5 || r.left < frame.left - 0.5);
+      };
+      return Array.from(box.querySelectorAll('*'))
+        .filter((el) => past(el) && !Array.from(el.children).some(past))
+        .slice(0, 8)
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return `${el.tagName.toLowerCase()}.${(el.getAttribute('class') ?? '').slice(0, 90)} "${(el.textContent ?? '').trim().slice(0, 24)}" ${Math.round(r.left)}-${Math.round(r.right)} (box ${Math.round(frame.left)}-${Math.round(frame.right)})`;
+        });
+    });
+    say(`diag ${tag} sideways page=${read.pageSideways} dialog=${read.dialogSideways}`);
+    for (const line of out) say(`diag ${tag} past: ${line}`);
+  }
+}
 
 /** Wait until the dialog box and the page stop moving after a viewport or text-size change. */
 async function settle(page: Page, dialog: Locator): Promise<void> {
@@ -72,7 +104,7 @@ async function openCreateEvent(page: Page): Promise<Locator> {
   await open.click();
   const dialog = createEventDialog(page);
   await dialog.waitFor({ state: 'visible', timeout: 15_000 });
-  await participantsOf(dialog).getByText(SHORT_MEMBER, { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await participantsOf(dialog).getByText(SHORT_MEMBER, { exact: true }).first().waitFor({ state: 'visible', timeout: 15_000 });
   await settleAnimations(dialog);
   await toDialogTop(dialog);
   return dialog;
@@ -94,6 +126,7 @@ interface MemberRowRead {
 async function readMemberRow(dialog: Locator): Promise<MemberRowRead> {
   return participantsOf(dialog)
     .getByText(SHORT_MEMBER, { exact: true })
+    .first()
     .evaluate((el) => {
       const box = (node: Element | null) => {
         if (!node) return null;
@@ -120,6 +153,7 @@ const readonlyExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cel
   const dialog = createEventDialog(page);
   const problems: string[] = [];
   await recordInputFit(dialog, 'D21-readonly', cell);
+  await printDiagnosis(tag, participantsOf(dialog), dialog, cell);
   if (cell.id === '320x568-dark-200') {
     await setTextMode(page, '100', `${tag} normal-text pass`);
     for (const size of [
@@ -128,7 +162,7 @@ const readonlyExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cel
     ]) {
       await page.setViewportSize(size);
       await settle(page, dialog);
-      await participantsOf(dialog).getByText(SHORT_MEMBER, { exact: true }).scrollIntoViewIfNeeded();
+      await participantsOf(dialog).getByText(SHORT_MEMBER, { exact: true }).first().scrollIntoViewIfNeeded();
       const read = await readMemberRow(dialog);
       say(`D21-readonly normal-${size.width} name=${r1(read.name.height)}@${r1(read.name.bottom)} score=${read.score ? `${r1(read.score.height)}@${r1(read.score.bottom)}` : 'none'} faction=${read.faction ? `${r1(read.faction.height)}@${r1(read.faction.bottom)}` : 'none'}`);
       if (Math.abs(read.name.height - 42) > 0.5) problems.push(`${tag}: at ${size.width} with normal text the read-only name box is ${r1(read.name.height)}px tall, expected 42`);
@@ -188,6 +222,7 @@ const createEventExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, 
   const dialog = createEventDialog(page);
   const problems = await actionPairProblems(dialog, tag, 'Create Event');
   await recordInputFit(dialog, 'D21', cell);
+  await printDiagnosis(tag, dialog, dialog, cell);
   if (cell.id === '320x568-dark-200') {
     await setTextMode(page, '100', `${tag} S5 normal-text pass`);
     await page.setViewportSize({ width: 700, height: 900 });
@@ -247,6 +282,7 @@ const editEventExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, ce
   const dialog = editEventDialog(page);
   const problems = await actionPairProblems(dialog, `D22 ${cell.id}`, 'Update Event');
   await recordInputFit(dialog, 'D22', cell);
+  await printDiagnosis(`D22 ${cell.id}`, dialog, dialog, cell);
   await toDialogTop(dialog);
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
@@ -321,6 +357,7 @@ const schedulerExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, ce
   const tag = `D21-scheduler ${cell.id}`;
   const dialog = createEventDialog(page);
   const read = await readScheduler(dialog);
+  await printDiagnosis(tag, schedulerGrid(dialog).locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " space-y-4 ")][1]'), dialog, cell);
   const problems: string[] = [];
   say(`D21-scheduler ${cell.id} phone=${read.phone} spills=${read.spills.length} today=${read.today.found ? `${read.today.underline ? 'underlined' : 'plain'} ${r1(read.today.width)}x${r1(read.today.height)}` : 'none'} window=${read.window ? `${read.window.height}/${r1(read.window.header)}+${r1(read.window.row)}` : 'none'}`);
   if (read.spills.length > 0) problems.push(`${tag}: strip text runs past its cell: ${read.spills.join('; ')}`);
@@ -361,8 +398,10 @@ const reachMemberPicker: SurfaceRow['reach'] = async (page) => {
 
 // D25-members extras, in cell 320x568-dark-200 only (the PR lane has no normal-text cell): after the
 // cell's own reads, the picker is read at normal text at 375 x 667: the first member's name starts
-// 8px (within 0.5px) after its checkbox ends, and level (within 0.5px) with the Select All text,
-// today's look; the cell's size and text are put back after. One joined line is thrown.
+// 8px (within 0.5px) after its checkbox ends, and level (within 0.5px) with the Select All text;
+// the cell's size and text are put back after. One joined line is thrown. On the tree before the
+// fix the long name squeezed its checkbox (a plain flex row shrinks every item): the name started
+// at 59.69 against Select All's 62 (flip run 45827953808), so this read is red there too.
 const memberPickerExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
   if (cell.id !== '320x568-dark-200') return;
   const tag = `D25-members ${cell.id}`;
