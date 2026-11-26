@@ -20,6 +20,13 @@
 // split, held and spilling words are cleared too (spill by orchestrator ruling D12, plan 89.6-16)
 // and written into the cell's record as cleared.
 //
+// SIDEWAYS (R16, 2026-11-26). Every box that scrolls sideways inside the row's root is listed in
+// the cell's record, and fails the cell when one item in it is wider than its window, but for the
+// excepted grids and the QR code: e2e/support/wordLines.ts ("DECISION Phase 89.6 R16 (sideways boxes)").
+// At the two page-zoom cells a sideways scroll of the page, of a dialog box or of such a box is
+// printed (in the record, and as an L2 line in the CI log) and does not fail the cell, by the
+// owner's ruling: e2e/support/wordLines.ts ("DECISION Phase 89.6 R16 (L2)").
+//
 // RESULTS. The row test writes test-results/large-text-sweep/results/<row id>.json (every cell
 // with its verdict and read, and the row's wall time) BEFORE it asserts, and the row-list test
 // writes rows.json there. scripts/large-text-sweep-coverage.mjs reads that folder in CI and says
@@ -57,10 +64,12 @@ import {
   type SweepHold,
 } from './support/largeTextSurfaces/index';
 import {
+  SIDEWAYS_BOX_EXCEPTIONS,
   expectLargeTextCell,
   expectPageZoomUsable,
   readLargeTextCell,
   setTextMode,
+  sidewaysRecorded,
   type LargeTextCellRead,
   type PageZoomRead,
 } from './support/wordLines';
@@ -221,6 +230,9 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
     const matrix = cell.zoom ? null : await readCellUnderExceptions(reached.root, { dialog: reached.dialog });
     const zoom = matrix ? null : await readPageZoomCellUnderExceptions(reached.root, { dialog: reached.dialog });
     const read = matrix ? matrix.read : zoom!.read;
+    // Owner ruling L2: at a page-zoom cell a sideways scroll is printed, here for the CI log (the record holds it too), not failed.
+    const sideways = zoom ? sidewaysRecorded(zoom.read) : [];
+    if (sideways.length > 0) process.stdout.write(`L2 recorded, not failed: ${tag}: ${sideways.join(' | ')}\n`);
     const record: CellRecord = { cell: cell.id, verdict: 'pass', fontSize: at.fontSize, window: at.window, read };
     if (matrix && matrix.cleared.split.length + matrix.cleared.held.length + matrix.cleared.spill.length > 0) record.cleared = matrix.cleared;
     if (zoom && zoom.cleared.length > 0) record.cleared = { split: [], held: [], spill: [], lost: zoom.cleared };
@@ -422,6 +434,19 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
       expect(occurrences(source, snippet), `${entry.id}: its source snippet must occur exactly once in ${entry.source.file}: ${snippet}`).toBe(1);
     }
     if (entry.source.folder) expect(existsSync(entry.source.folder) && statSync(entry.source.folder).isDirectory(), `${entry.id}: ${entry.source.folder} is not a folder`).toBe(true);
+  }
+
+  // R16: only the entry that names clamped texts may clear a page-zoom clip, never a container.
+  expect(EXCEPTIONS.filter((entry) => entry.ownClamp === true).map((entry) => entry.id), 'only the list-row titles (A3-3) name clamped texts; the month grid and the tutorial are containers').toEqual(['A3-3']);
+  expect(EXCEPTIONS.filter((entry) => entry.clears === 'cut').map((entry) => entry.id), 'the cut-only exceptions, each excused its own clamp and never a sideways cut').toEqual(['A3-1', 'A10']);
+
+  // The excepted list of the sideways-box check (R16): exactly these, each with the standard's reason and bound to its source.
+  expect(SIDEWAYS_BOX_EXCEPTIONS.map((entry) => entry.id), 'the sideways-box check excepts tables and grids, the three named grids and the QR code, and nothing else').toEqual(['SB-1', 'SB-2', 'SB-3', 'SB-4', 'SB-5']);
+  for (const entry of SIDEWAYS_BOX_EXCEPTIONS) {
+    expect(entry.selector.trim(), `${entry.id}: no selector`).not.toBe('');
+    expect(entry.reason, `${entry.id}: its reason is not one of the standard's excepted kinds`).toMatch(/^(data tables \(not individual cells\)|images required for understanding \(such as maps and diagrams\))/);
+    expect(entry.source === undefined, `${entry.id}: only the generic entry (SB-1) has no source`).toBe(entry.id === 'SB-1');
+    if (entry.source) expect(occurrences(readFileSync(entry.source.file, 'utf8'), entry.source.snippet), `${entry.id}: its source snippet must occur exactly once in ${entry.source.file}: ${entry.source.snippet}`).toBe(1);
   }
 
   // The exceptions at work, on a page of this test's own (no request leaves it).
