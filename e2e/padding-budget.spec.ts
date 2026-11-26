@@ -567,7 +567,7 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
 
    WHY ARM ONE IS A PLANTED PROBE. Neither control in this row is a bare `.btn` any more:
    "Manage Members" is `<Button variant="ghost">` (src/app/groupHomePage/page.js ("onClick={() => setMemberModal(true)}"), label src/app/groupHomePage/page.js ("dark:text-white dark:bg-white/10 dark:enabled-hover:bg-white/20")) and
-   "Plan Game Session" is `<Button asChild variant="primary">` (src/app/groupHomePage/page.js ("whitespace-nowrap text-center"), label src/app/groupHomePage/page.js ("/groupPlanning?group_id=")). Arm one
+   "Plan Game Session" is `<Button asChild variant="primary">` (src/app/groupHomePage/page.js ("'shadow-theme-lg enabled-hover:shadow-theme-lg '"), label src/app/groupHomePage/page.js ("/groupPlanning?group_id=")). Arm one
    therefore copies the house PLANTED-PROBE idiom (e2e/touch-targets.spec.ts ("DECISION Phase 88-30 (D-36 / DEF-1): the")), whose own
    marker states the rule this follows: an arm whose subject can be migrated away is an arm with an
    expiry date. `.btn` and `.btn-secondary` are AUTHORED CSS, not scanned utilities, so the
@@ -680,7 +680,7 @@ test.describe('SPEC Req 8 / DEF-1 — a dense `.btn` row stays dense at desktop'
 
     expect(
       floored.height,
-      `"Plan Game Session" measured ${floored.height}px tall at 1280 — it is a <Button asChild variant="primary"> (src/app/groupHomePage/page.js ("whitespace-nowrap text-center")), so what floors it above md is D-09's 'min-h-11' on the cva BASE (src/components/ui/Button.tsx ("'min-h-11',")), not a per-CTA utility and not the D-36 phone rule, which stops at 48rem. If this failed, someone deleted that line from the base as redundant — exactly what all eight D-36 markers warn against, one layer down`,
+      `"Plan Game Session" measured ${floored.height}px tall at 1280 — it is a <Button asChild variant="primary"> (src/app/groupHomePage/page.js ("'shadow-theme-lg enabled-hover:shadow-theme-lg '")), so what floors it above md is D-09's 'min-h-11' on the cva BASE (src/components/ui/Button.tsx ("'min-h-11',")), not a per-CTA utility and not the D-36 phone rule, which stops at 48rem. If this failed, someone deleted that line from the base as redundant — exactly what all eight D-36 markers warn against, one layer down`,
     ).toBeGreaterThanOrEqual(44);
   });
 });

@@ -984,8 +984,10 @@ describe('groupHomePage kebab — one role check (88.6.1-55: W051 / AC-35)', () 
     expect(tag!).not.toContain(roleVar);
 
     // The wrapper still encloses the gear's div: the role variable, then the div, then the gear.
+    // AMENDED Phase 89.6-17 (title-icon): the gear's div is the title row's bb-row-end slot (it was
+    // shrink-0), so the gear moves under the title when the two do not fit; the wrapper is unchanged.
     expect(src).toMatch(
-      new RegExp(`\\{\\s*${roleVar}\\s*&&\\s*\\(\\s*<div className="shrink-0 relative z-20">\\s*<button\\b`),
+      new RegExp(`\\{\\s*${roleVar}\\s*&&\\s*\\(\\s*<div className="bb-row-end relative z-20">\\s*<button\\b`),
     );
   });
 });

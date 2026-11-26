@@ -1313,9 +1313,21 @@ function GroupHomePage(){
                     is a STACKING CONTEXT for everything inside — the sibling CTA row
                     below is z-20, so at z-10 the open dropdown painted underneath
                     "Manage Members" at phone width (87.8-13 walkthrough F-5). */}
-                <div className="flex items-center gap-3 md:gap-4 relative z-30 flex-1 min-w-0">
+                {/* DECISION Phase 89.6-17 (title-icon): GR (owner, 2026-11-22: 'A row stays a row while
+                    everything in it fits whole. When it does not, items stack.') with HR-5: the group icon
+                    is not drawn while the row is narrower than picture, gaps, a 7.5rem title and the 44px
+                    gear (13rem + 44px on a phone, 14.5rem + 44px from md); the h1 is its text twin.
+                    Chosen OVER wrapping the icon onto its own line (a 128px picture alone above the title
+                    at 320 / 200%) because the owner ruled Drop for every picture beside words at large
+                    text (S2 first look; R4 C3: lose the picture at the large text), and OVER shrinking the
+                    icon (P1). The row is a bb-row so the gear moves under the title instead of squeezing
+                    it; items-center is kept (bb-row's own alignment is flex-start). min-w-0 stays on the
+                    row (a container, not text); the title column carries no min-width (HR-2). Normal
+                    text is pixel-identical at 320 and 375 (at 320 / 100% the row is 264px against the
+                    252px threshold). Changing this is a decision, not a cleanup. */}
+                <div className="bb-row items-center gap-3 md:gap-4 relative z-30 flex-1 min-w-0 @container/group-title">
                     {Group?.profile_picture_url && (
-                        <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card flex items-center justify-center text-2xl md:text-4xl shrink-0 overflow-hidden border-2 md:border-4 border-surface-card shadow-theme-lg">
+                        <div className="max-md:@max-[calc(13rem_+_44px)]/group-title:hidden md:@max-[calc(14.5rem_+_44px)]/group-title:hidden w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card flex items-center justify-center text-2xl md:text-4xl shrink-0 overflow-hidden border-2 md:border-4 border-surface-card shadow-theme-lg">
                             {Group.profile_picture_url.startsWith('http') || Group.profile_picture_url.startsWith('/') ? (
                                 <SafeImage
                                     src={Group.profile_picture_url}
@@ -1328,7 +1340,7 @@ function GroupHomePage(){
                             )}
                         </div>
                     )}
-                    <div className="flex-1 min-w-0">
+                    <div className="bb-row-text">
                         {/* DECISION Phase 88-24 (Req 2 / UI-SPEC §4.1): the page title is
                             `text-3xl` at EVERY width, chosen OVER the shipped
                             `text-2xl md:text-3xl`. A heading that grows at a breakpoint is a
@@ -1432,7 +1444,7 @@ function GroupHomePage(){
                         contrast suite's Gear hover test holds all 18 arms).
                         AMENDED Phase 88.9-52 (W5): in DARK the edge is the card line (purple-700), chosen OVER the control edge, which is transparent there (on the plain header the fill IS the header, 1.00, and on the green header 1.00, so the gear showed as a bare cog) and OVER the strong line (rejected for the home cog as a 3:1 neutral border). 1.45 on the plain header, 1.45-1.98 on the eight preset grounds; the light control edge reads 1.60 and does not move. On hover the fill reaches the edge colour, so the box fills in. */}
                     {canEditGroup && (
-                        <div className="shrink-0 relative z-20">
+                        <div className="bb-row-end relative z-20">
                             <button
                                 type="button"
                                 onClick={() => setShowGroupSettings(true)}
@@ -1796,10 +1808,17 @@ function GroupHomePage(){
                            was silently overriding — and the ring survives as
                            `ring-2 ring-white/15`, the same 15% white at the same
                            2px. Dropping the ring would still pass 88-29's
-                           zero-`rgba(0,0,0` gate while looking wrong. */
+                           zero-`rgba(0,0,0` gate while looking wrong.
+                           AMENDED Phase 89.6-17 (cta-label-wrap): no whitespace-nowrap here either,
+                           as on Manage Members (this file ("no whitespace-nowrap on this button, chosen")).
+                           Under asChild the label is the link's own text, not span.bb-label, and
+                           with nowrap it ran past the button at 320 wide with text at 200% (text end
+                           288.5, button edge 264: plan 89.6-06's hand-off); without it the words wrap
+                           inside the button, centred. One line at normal text, so nothing moves
+                           there. Re-adding nowrap is a decision, not a cleanup. */
                         className={
                             'shadow-theme-lg enabled-hover:shadow-theme-lg ' +
-                            'whitespace-nowrap text-center' +
+                            'text-center' +
                             (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                         }
                     >

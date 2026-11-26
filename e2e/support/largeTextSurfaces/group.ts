@@ -55,7 +55,7 @@ const reachGames: SurfaceRow['reach'] = (page) => openGroup(page, withIcon(GROUP
 const reachEmoji: SurfaceRow['reach'] = (page) => openGroup(page, withIcon(GROUP_ICON_EMOJI));
 const answerNoGames = (url: URL): unknown => (isGamesRead(url) ? [] : undefined);
 
-// The title row's icon (its decision marker on the page lands with the fix commit): not
+// The title row's icon (src/app/groupHomePage/page.js ("DECISION Phase 89.6-17 (title-icon)")): not
 // drawn while the row is narrower than picture, gaps, a 7.5rem title and the 44px gear. Drawn in the
 // two 768 cells; not drawn in the 320 and 375 cells at 200% or in the two page-zoom cells. Found by
 // position (the element before the h1's column), never by a class.

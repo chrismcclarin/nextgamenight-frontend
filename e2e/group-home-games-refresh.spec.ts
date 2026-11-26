@@ -152,7 +152,7 @@ test.describe('group home games refresh — phone', () => {
   // after this fix lands), then with the real group row unchanged, which proves the seeded icon itself
   // once PR #79 is on the CI database. The icon box is found by position (the element before the h1's
   // column), never by a class: drawn at 375 and 320 with ordinary text, not drawn at 320 with text at
-  // 200% (its decision marker on the page lands with the fix commit). The seeded pass prints
+  // 200% (src/app/groupHomePage/page.js ("DECISION Phase 89.6-17 (title-icon)")). The seeded pass prints
   // one line, never the URL or any other field of the row.
   test('R4-A3 (88.9-52): at 320px with text at 200% a play-history card with a review count does not make the group page scroll sideways', async ({
     page,
