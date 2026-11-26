@@ -11,8 +11,10 @@
 // THE ROOT is the page's main.
 import { expect, type Page } from '@playwright/test';
 
+import { compositeGround, contrastRatio, probeElement } from '../contrast';
 import { GROUP_ICON_EMOJI, GROUP_ICON_PICTURE, routeGroupRead, type GroupRow } from '../groupRead';
 import { settleAnimations } from '../inFlight';
+import { THIRTY_LETTER_WORD } from '../wordLines';
 import type { SurfaceRow, SweepCell } from './index';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
@@ -47,6 +49,11 @@ async function openGroup(page: Page, transform: Transform): Promise<{ root: Retu
   await settleAnimations(root);
   return { root };
 }
+
+// R07-long (UI-SPEC E5 long-text): the group name made of the 30-letter word and two short words,
+// with the picture icon. The 30-letter word may break only because it alone is wider than its row.
+const LONG_NAME = `${THIRTY_LETTER_WORD} Weekend Warriors`;
+const reachLong: SurfaceRow['reach'] = (page) => openGroup(page, (group) => ({ ...group, name: LONG_NAME, profile_picture_url: GROUP_ICON_PICTURE }));
 
 // R07-games: the Overview with the picture icon; the play-history read answered empty (its rows are
 // R07-history's), so this row also shows the No game nights logged yet state (EMPTY_STATES).
@@ -85,14 +92,70 @@ const gearExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
   expect(Math.abs(read.width - 44) <= 0.5 && Math.abs(read.height - 44) <= 0.5, `O-M4: the gear box is not 44 x 44 (${line})`).toBe(true);
   expect(read.svg !== null && read.svg <= 32.5, `O-M4: the gear cog is missing or over 32px (${line})`).toBe(true);
 };
+// The tab strip (CI-01g, the group half) and its selected underline (the U1 floor):
+//   - dark cells: the selected tab's underline against the ground below the strip clears 3.0;
+//   - every cell: the strip's scroll box is no wider than its parent, and when its tabs overflow an
+//     aria-hidden fade is on at the hidden end; then, with the strip at its start, the second tab
+//     focused by keyboard (Tab from the first) is covered by a visible fade for at most
+//     max(0, tabWidth - (stripWidth - 2 * fadeWidth)) + 0.5 px (review M027 / M115).
+// The strip's scroll and the focus are put back for the cells after this one.
+const stripExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
+  const main = page.locator('main');
+  const overview = main.getByRole('button', { name: 'Overview', exact: true });
+  const library = main.getByRole('button', { name: 'Library', exact: true });
+  const strip = overview.locator('xpath=..');
+  const line = strip.locator('xpath=..');
+  if (cell.theme === 'dark') {
+    const underline = await overview.evaluate((el) => getComputedStyle(el).borderBottomColor);
+    const ground = compositeGround(await probeElement(line));
+    const ratio = ground === null ? null : contrastRatio(underline, ground);
+    expect(ratio !== null && ratio >= 3.0, `tab-edge: in ${cell.id} the selected tab's underline ${underline} on ${ground} measures ${ratio?.toFixed(4)}, floor 3.0`).toBe(true);
+  }
+  const geo = await strip.evaluate((el) => ({
+    width: el.getBoundingClientRect().width,
+    parent: (el.parentElement as HTMLElement).getBoundingClientRect().width,
+    overflow: el.scrollWidth > el.clientWidth + 1,
+  }));
+  expect(geo.width <= geo.parent + 0.5, `tab-strip: in ${cell.id} the tab box is ${geo.width}px in a ${geo.parent}px strip`).toBe(true);
+  if (!geo.overflow) return;
+  await strip.evaluate((el) => el.scrollTo({ left: 0 }));
+  await expect(line.locator('[aria-hidden="true"][data-strip-cue="end"]'), `tab-strip: in ${cell.id} the tabs overflow and no end fade shows`).toBeVisible();
+  await overview.focus();
+  await page.keyboard.press('Tab');
+  await expect(library, `tab-strip: in ${cell.id} Tab from Overview did not reach Library`).toBeFocused();
+  const covered = () =>
+    library.evaluate((tab) => {
+      const t = tab.getBoundingClientRect();
+      const box = (tab.parentElement as HTMLElement).getBoundingClientRect();
+      const fade = 2 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+      const cues = Array.from((tab.parentElement as HTMLElement).parentElement!.querySelectorAll('[data-strip-cue]'))
+        .map((cue) => cue.getBoundingClientRect())
+        .filter((r) => r.width > 0);
+      const cover = cues.reduce((sum, r) => sum + Math.max(0, Math.min(t.right, r.right) - Math.max(t.left, r.left)), 0);
+      return { cover, allowed: Math.max(0, t.width - (box.width - 2 * fade)) + 0.5 };
+    });
+  // Two animation frames first, then poll: the focus handler's scroll lands on the next frame.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect
+    .poll(async () => {
+      const read = await covered();
+      return read.cover <= read.allowed ? 'clear' : `${read.cover.toFixed(1)}px under a fade, allowed ${read.allowed.toFixed(1)}`;
+    }, { message: `tab-strip: in ${cell.id} the keyboard-focused Library tab sits under a fade`, timeout: 3_000 })
+    .toBe('clear');
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await strip.evaluate((el) => el.scrollTo({ left: 0 }));
+};
+
 const headerExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
   await titleRowExtras(page, cell);
   await gearExtras(page, cell);
+  await stripExtras(page, cell);
 };
 
 export const rows: SurfaceRow[] = [
   { id: 'R07-games', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', reach: reachGames, answers: answerNoGames, extras: headerExtras },
   { id: 'R07-emoji', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'emoji icon', reach: reachEmoji, answers: answerNoGames, extras: headerExtras },
+  { id: 'R07-long', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'long name', reach: reachLong, answers: answerNoGames, extras: headerExtras },
   { id: 'R07-library', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
   { id: 'R07-checkins', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
   { id: 'R07-history', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
