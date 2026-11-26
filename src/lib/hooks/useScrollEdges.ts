@@ -95,3 +95,27 @@ export function useScrollEdges(ref: RefObject<HTMLElement | null>): { start: boo
 
   return { start, end };
 }
+
+/**
+ * Bring a tab that has just taken keyboard focus into view inside its scrolling strip: clear of
+ * the two edge cues (each w-8, 2rem) when it fits between them, else centred in the strip.
+ * Lifted by Phase 89.6-17 out of the Friends page's tab onFocus (plan 89.6-21), so the group
+ * page's strip and the Friends strip share one copy. At normal text nothing overflows, so nothing
+ * scrolls.
+ */
+/* 89.6-21 (strip-cue): chosen OVER scrollIntoView nearest, which left a focused tab flush with one
+   edge and a whole cue over it (64px of Requests at 320 / 200%, CI run 45706391242); centred, each
+   cue covers half the overflow, the least the geometry allows, and a tab no wider than the strip
+   stays wholly inside it, so a pressed-tab scroll moves nothing. The browser itself scrolls a
+   focused tab only when it is wholly hidden, which is why the focus handler exists at all. */
+export function revealTabInStrip(strip: HTMLElement, tab: HTMLElement): void {
+  const box = strip.getBoundingClientRect();
+  const rect = tab.getBoundingClientRect();
+  const cue = 2 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+  if (rect.width <= box.width - 2 * cue) {
+    if (rect.left < box.left + cue) strip.scrollLeft -= box.left + cue - rect.left;
+    else if (rect.right > box.right - cue) strip.scrollLeft += rect.right - (box.right - cue);
+  } else {
+    strip.scrollLeft += rect.left + rect.width / 2 - (box.left + box.width / 2);
+  }
+}

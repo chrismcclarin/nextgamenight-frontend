@@ -9,6 +9,7 @@ import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { useBgImageFailed } from '../../lib/hooks/useBgImageFailed';
+import { revealTabInStrip, useScrollEdges } from '../../lib/hooks/useScrollEdges';
 import {
     getTextStyle,
     getSubtitleStyle,
@@ -98,6 +99,25 @@ function GroupHomePage(){
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState(null);
     const [activeTab, setActiveTab] = useState('home');
+    // The tab strip's scroll box and which of its ends hide a tab (89.6-17, tab-strip; the hook is
+    // plan 89.6-21's, shared with the Friends strip). Two primitive flags: a scroll that flips
+    // neither does not re-render this page.
+    const tabStripRef = useRef(null);
+    const overviewTabRef = useRef(null);
+    const libraryTabRef = useRef(null);
+    const stripEdges = useScrollEdges(tabStripRef);
+    // A pressed tab partly outside the strip is brought fully into view (nearest both ways, so a tab
+    // already in view moves nothing), guarded as the Friends strip's pressed-tab scroll is.
+    const pressTab = (key, ref) => {
+        setActiveTab(key);
+        const pressed = ref.current;
+        if (pressed && typeof pressed.scrollIntoView === 'function') {
+            pressed.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+    };
+    const focusTab = (e) => {
+        if (tabStripRef.current) revealTabInStrip(tabStripRef.current, e.currentTarget);
+    };
     // Phase 69-04 paint gate: blocks page render until the membership check
     // resolves. Without this, getGroup()/games/events fetches race the
     // membership lookup and the page paints with partial data before the
@@ -1143,7 +1163,7 @@ function GroupHomePage(){
                 plan (D-46), so a screen reader no longer reads "greater than" between the crumbs; it
                 looks the same. */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-edge-card py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
+                <Link href="/" className="rounded-sm px-1 -mx-1 text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
                 <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
                 <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || GROUP_PAGE_NAME}</span>
             </nav>
@@ -1956,30 +1976,58 @@ function GroupHomePage(){
                 corners on the tabs): the top radius sits on BOTH arms, so the tab being left keeps its
                 corners while its fill fades, chosen OVER dropping the fade (the switch would snap). An
                 inactive tab paints no fill, so its radius shows only mid-fade and on its inset focus
-                ring (now rounded like the active one's). Moving it back is a decision, not a cleanup. */}
-            <div className="flex border-b border-line mb-4">
-                <button
-                    onClick={() => setActiveTab('home')}
-                    aria-current={activeTab === 'home' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 rounded-t-btn ${
-                        activeTab === 'home'
-                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary'
-                            : 'text-content-secondary hover:text-content-primary'
-                    }`}
-                >
-                    Overview
-                </button>
-                <button
-                    onClick={() => setActiveTab('library')}
-                    aria-current={activeTab === 'library' ? 'true' : undefined}
-                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 rounded-t-btn ${
-                        activeTab === 'library'
-                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary'
-                            : 'text-content-secondary hover:text-content-primary'
-                    }`}
-                >
-                    Library
-                </button>
+                ring (now rounded like the active one's). Moving it back is a decision, not a cleanup.
+                AMENDED Phase 89.6-17 (tab-strip): at large text the two tabs can be wider than the
+                strip (at 187 wide they are at normal text), so the strip scrolls inside itself with
+                plan 89.6-21's edge fade, the house rule at src/components/ui/Tabs.tsx ("the strip SCROLLS at 375px, it does not wrap"),
+                chosen OVER wrapping the tabs (a one-line control turned into a block) and OVER letting
+                the page scroll sideways (GR). The Friends marker's note that this row neither wraps
+                nor scrolls is superseded at large text. A tab reached by keyboard is brought clear of
+                the fades by the one shared helper (src/lib/hooks/useScrollEdges.ts ("export function revealTabInStrip(")),
+                and no scroll padding is used: plan 89.6-21 measured that scroll-px-8 cut a pressed tab
+                wider than the room between the fades. The strip line stays on the outer box, outside
+                the scroll box.
+                AMENDED Phase 89.6-17 (tab-edge): the selected tab's underline is the tab-indicator
+                token (owner pick O-3 = U1, 2026-11-22), a floor fix: purple-600 measured 2.9867 on the
+                dark page ground (floor 3.0), purple-500 measures 4.1790; light is unchanged. The
+                five-tab structure stays Phase 88.9.1's. Changing this is a decision, not a cleanup. */}
+            <div className="relative border-b border-line mb-4">
+                <div ref={tabStripRef} className="flex overflow-x-auto">
+                    <button
+                        ref={overviewTabRef}
+                        onFocus={focusTab}
+                        onClick={() => pressTab('home', overviewTabRef)}
+                        aria-current={activeTab === 'home' ? 'true' : undefined}
+                        className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 rounded-t-btn ${
+                            activeTab === 'home'
+                                ? 'text-btn-primary-text bg-btn-primary border-b-2 border-tab-indicator'
+                                : 'text-content-secondary hover:text-content-primary'
+                        }`}
+                    >
+                        Overview
+                    </button>
+                    <button
+                        ref={libraryTabRef}
+                        onFocus={focusTab}
+                        onClick={() => pressTab('library', libraryTabRef)}
+                        aria-current={activeTab === 'library' ? 'true' : undefined}
+                        className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 rounded-t-btn ${
+                            activeTab === 'library'
+                                ? 'text-btn-primary-text bg-btn-primary border-b-2 border-tab-indicator'
+                                : 'text-content-secondary hover:text-content-primary'
+                        }`}
+                    >
+                        Library
+                    </button>
+                </div>
+                {/* The edge fades, copied from the Friends strip (src/app/friends/page.js ("DECISION Phase 89.6-21 (strip-cue)")):
+                    one look; nothing renders while both tabs fit, so normal text is unchanged. */}
+                {stripEdges.start && (
+                    <span aria-hidden="true" data-strip-cue="start" className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-linear-to-r from-surface-page to-transparent" />
+                )}
+                {stripEdges.end && (
+                    <span aria-hidden="true" data-strip-cue="end" className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-surface-page to-transparent" />
+                )}
             </div>
 
             {activeTab === 'home' && (

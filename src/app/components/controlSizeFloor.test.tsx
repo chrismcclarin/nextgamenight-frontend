@@ -669,8 +669,9 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
       label: "the friends page's tab buttons (Friends / Requests / Sent), width (88.9 A7a; Sent measured 31px wide)",
     },
     // 88.9 A7a: the group page's Overview tab, measured 38px tall (93px wide) at 375. Inset ring, no halo (O3a).
+    // AMENDED Phase 89.6-17 (tab-strip): the tabs' click goes through pressTab (a pressed tab is brought into view), so the four anchors read it.
     groupTabHomeHeight: {
-      anchor: "onClick={() => setActiveTab('home')}",
+      anchor: "onClick={() => pressTab('home', overviewTabRef)}",
       expectedFile: 'app/groupHomePage/page.js',
       expectedCount: 1,
       floor: MIN_TARGET_44,
@@ -679,7 +680,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
     },
     // 88.9 A7a: the Overview tab's width, pinned so a shorter label can never drop it under 44.
     groupTabHomeWidth: {
-      anchor: "onClick={() => setActiveTab('home')}",
+      anchor: "onClick={() => pressTab('home', overviewTabRef)}",
       expectedFile: 'app/groupHomePage/page.js',
       expectedCount: 1,
       floor: MIN_TARGET_44,
@@ -688,7 +689,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
     },
     // 88.9 A7a: the group page's Library tab, measured 38px tall at 375, the Overview tab's twin.
     groupTabLibraryHeight: {
-      anchor: "onClick={() => setActiveTab('library')}",
+      anchor: "onClick={() => pressTab('library', libraryTabRef)}",
       expectedFile: 'app/groupHomePage/page.js',
       expectedCount: 1,
       floor: MIN_TARGET_44,
@@ -697,7 +698,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
     },
     // 88.9 A7a: the Library tab's width, pinned with its height as the Overview twin is.
     groupTabLibraryWidth: {
-      anchor: "onClick={() => setActiveTab('library')}",
+      anchor: "onClick={() => pressTab('library', libraryTabRef)}",
       expectedFile: 'app/groupHomePage/page.js',
       expectedCount: 1,
       floor: MIN_TARGET_44,

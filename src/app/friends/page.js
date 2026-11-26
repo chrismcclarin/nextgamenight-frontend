@@ -7,7 +7,7 @@ import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { selfIdentityErrorSource } from '../../lib/hooks/selfIdentityErrorSource';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
-import { useScrollEdges } from '../../lib/hooks/useScrollEdges';
+import { revealTabInStrip, useScrollEdges } from '../../lib/hooks/useScrollEdges';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import {
     FetchErrorBanner,
@@ -1402,20 +1402,12 @@ function FriendsPage() {
                                 // cue over it (64px of Requests at 320 / 200%, CI run 45706391242); centred, each cue
                                 // covers half the overflow, the least the geometry allows, and a tab no wider than the
                                 // strip stays wholly inside it, so the pressed-tab scroll below moves nothing. At normal text
-                                // nothing overflows, so nothing scrolls.
+                                // nothing overflows, so nothing scrolls. AMENDED Phase 89.6-17: the geometry is lifted into
+                                // src/lib/hooks/useScrollEdges.ts ("export function revealTabInStrip(") so the group page's strip
+                                // uses the same one (never a second copy); behaviour unchanged.
                                 onFocus={(e) => {
-                                    const focused = e.currentTarget;
                                     const strip = tabStripRef.current;
-                                    if (!strip) return;
-                                    const box = strip.getBoundingClientRect();
-                                    const tab = focused.getBoundingClientRect();
-                                    const cue = 2 * parseFloat(getComputedStyle(document.documentElement).fontSize);
-                                    if (tab.width <= box.width - 2 * cue) {
-                                        if (tab.left < box.left + cue) strip.scrollLeft -= box.left + cue - tab.left;
-                                        else if (tab.right > box.right - cue) strip.scrollLeft += tab.right - (box.right - cue);
-                                    } else {
-                                        strip.scrollLeft += tab.left + tab.width / 2 - (box.left + box.width / 2);
-                                    }
+                                    if (strip) revealTabInStrip(strip, e.currentTarget);
                                 }}
                                 onClick={() => {
                                     // A tab change clears both action lines: DECISION Phase 88.6.1-72 (N5 / N6; D-33 row 22; D-42).

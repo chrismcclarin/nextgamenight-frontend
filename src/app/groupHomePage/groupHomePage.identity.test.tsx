@@ -718,16 +718,27 @@ describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV
       expect(tokens(el), `the ${which} tab kept a four-corner radius`).not.toContain('rounded-btn');
       expect(tokens(el).filter((t) => /^rounded-b/.test(t)), `the ${which} tab has a bottom radius`).toEqual([]);
     };
+    // AMENDED Phase 89.6-17 (tab-edge, tab-strip): the selected tab's underline is the tab-indicator
+    // token (owner pick O-3 = U1; purple-600 measured 2.9867 on the dark page ground, floor 3.0), the
+    // fill and ink unchanged; and the two tabs sit in a scroll box (overflow-x-auto) inside the strip
+    // line (border-b on its relative parent), with plan 89.6-21's edge fade rendered only while a tab
+    // is hidden: jsdom has no ResizeObserver, so nothing overflows here and no fade renders.
     const expectActive = (el: HTMLElement) => {
       expectTopRadiusOnly(el, 'active');
-      expect(el).toHaveClass('bg-btn-primary', 'border-b-2', 'border-btn-primary');
+      expect(el).toHaveClass('bg-btn-primary', 'border-b-2', 'border-tab-indicator');
+      expect(tokens(el), 'the active tab still underlines on border-btn-primary').not.toContain('border-btn-primary');
     };
     const expectInactive = (el: HTMLElement) => {
       expectTopRadiusOnly(el, 'inactive');
-      for (const t of ['bg-btn-primary', 'rounded-btn', 'border-b-2', 'border-btn-primary']) {
+      for (const t of ['bg-btn-primary', 'rounded-btn', 'border-b-2', 'border-btn-primary', 'border-tab-indicator']) {
         expect(tokens(el), `the inactive tab carries ${t}`).not.toContain(t);
       }
     };
+    const strip = overview.parentElement as HTMLElement;
+    expect(library.parentElement, 'the two tabs do not share one box').toBe(strip);
+    expect(strip, 'the tab box does not scroll inside itself').toHaveClass('overflow-x-auto');
+    expect(strip.parentElement, 'the strip line is not on the scroll box parent').toHaveClass('relative', 'border-b');
+    expect(strip.parentElement!.querySelectorAll('[aria-hidden="true"][data-strip-cue]'), 'an edge fade renders while nothing overflows').toHaveLength(0);
     expectActive(overview);
     expectInactive(library);
     await userEvent.setup().click(library);
