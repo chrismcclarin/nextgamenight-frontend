@@ -7,10 +7,13 @@
 // schedules are never touched and every row holds the same two pattern rows. Nothing that writes is
 // pressed: the schedule Delete is pressed ONCE (it arms; arming writes nothing) and disarmed by a
 // press on the section heading, and the sweep's guard holds every write all the same.
+//
+// DECISION Phase 89.6-22 (identity-room): the identity row is marked data-room at run time so a title squeezed by the picture is read against the whole row, chosen OVER reading the identity row as root (the email line under the title is plan 89.6-27's truncate) and OVER a src attribute (no src hook for a test). Changing this is a decision, not a cleanup.
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { settleAnimations } from '../inFlight';
 import { readCellUnderExceptions, readPageZoomCellUnderExceptions } from '../largeTextExceptions';
+import { scrubbedFetch } from '../scrubbedFetch';
 import { THIRTY_LETTER_WORD, expectLargeTextCell, expectPageZoomUsable } from '../wordLines';
 import type { SurfaceRow, SweepCell } from './index';
 
@@ -281,8 +284,53 @@ const reachImport: SurfaceRow['reach'] = async (page) => {
   return { root: dialog, dialog };
 };
 
+// R16-identity: the profile title row with the self read staged in the browser. The real self read
+// is fetched without its timezone parameter (scrubbedFetch, never a bare route.fetch: DECISION Phase
+// 88.6.2-20) and its username set to one word that fits the identity row at 320 / 200% but not the
+// column the picture leaves. The route is GET-only and matches the EXACT self-read path (a path
+// ending in /users/<id>, a query allowed), never a prefix: the Profile writes are its siblings one
+// segment below (username, timezone, phone, email, notification-preferences, tutorial), and a
+// forwarded write would never reach the guard's hold, so any other method falls back to it first
+// (review M073 / M075). The route is registered once per page, after the guard, so it runs first.
+const STAGED_NAME = 'Gareth';
+const isSelfRead = (url: URL): boolean => /\/users\/[^/]+$/.test(url.pathname);
+const selfRouted = new WeakSet<Page>();
+const titleOf = (page: Page): Locator => page.getByRole('heading', { level: 1, name: STAGED_NAME, exact: true });
+const identityRowOf = (page: Page): Locator => titleOf(page).locator('xpath=ancestor::div[3]');
+const reachIdentity: SurfaceRow['reach'] = async (page) => {
+  if (!selfRouted.has(page)) {
+    selfRouted.add(page);
+    await page.route(isSelfRead, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      const url = new URL(route.request().url());
+      url.searchParams.delete('timezone');
+      const response = await scrubbedFetch(route, { url: url.toString() });
+      const body = (await response.json().catch(() => null)) as unknown;
+      const json = body && typeof body === 'object' && !Array.isArray(body) ? { ...(body as object), username: STAGED_NAME } : body;
+      await route.fulfill({ response, json });
+    });
+  }
+  await page.goto('/userProfile');
+  await titleOf(page).waitFor({ state: 'visible', timeout: 15_000 });
+  await identityRowOf(page).evaluate((el) => el.setAttribute('data-room', ''));
+  const root = titleOf(page).locator('xpath=ancestor::div[1]');
+  await settleAnimations(root);
+  return { root };
+};
+
+// R16-identity extras, every cell: the data-room mark is still on the identity row (a re-render
+// that dropped it would read the title against its own squeezed column instead).
+const identityExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const marked = await identityRowOf(page).evaluate((el) => el.hasAttribute('data-room'));
+  if (!marked) throw new Error(`R16-identity ${cell.id}: the identity row lost its data-room mark`);
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R16-availability', census: 'R16', kind: 'route', owner: '89.6-22', status: 'enforced', reach: reachAvailability, answers: answerPatterns, extras: availabilityExtras },
+  { id: 'R16-identity', census: 'R16', kind: 'route', owner: '89.6-22', state: 'identity', status: 'enforced', reach: reachIdentity, answers: answerPatterns, extras: identityExtras },
   { id: 'D25', census: 'D25', kind: 'dialog', owner: '89.6-41', status: 'pending' },
   { id: 'D26', census: 'D26', kind: 'dialog', owner: '89.6-41', status: 'pending' },
   { id: 'R16-specific', census: 'R16', kind: 'route', owner: '89.6-22', state: 'specific-dates', status: 'enforced', reach: reachSpecific, answers: answerPatterns, extras: specificExtras },
