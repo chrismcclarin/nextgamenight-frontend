@@ -75,6 +75,39 @@ const reachTwoPolls: SurfaceRow['reach'] = async (page) => {
   return { root: page.locator('body') };
 };
 
+// R08-expanded: the same page with the Check-ins panel left EXPANDED (the page default), so the
+// check-in cards, the auto-prompt banner and the admin Recurring Check-ins list are on the page.
+// The root is the Check-ins header: its five checks read the header row, and the read's
+// document-level sideways check covers everything the open panel adds. The five checks INSIDE the
+// card list are plan 89.6-42's own row.
+const reachExpanded: SurfaceRow['reach'] = async (page) => {
+  await openPlanning(page, TWO_OPEN_POLLS);
+  await page.getByRole('heading', { level: 3, name: 'Poll Responses' }).waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByRole('button', { name: /Started by E2E Ben/ }).waitFor({ state: 'visible', timeout: 15_000 });
+  const header = checkInsHeader(page);
+  if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
+  await page.locator('[role="button"][aria-expanded="true"]').filter({ hasText: 'Check-ins' }).waitFor({ state: 'visible' });
+  return { root: header };
+};
+
+// R08-empty: no open poll and no active poll, so the page shows its empty states: the check-ins
+// empty line, the auto-prompt banner, the admin Recurring Check-ins list with no schedule, and the
+// no-poll line. The schedule list reads GET /groups/<id>/prompt-settings, a GET that WRITES (the
+// sweep's guard holds it unanswered, so the list would sit on Loading schedules... for ever): it is
+// answered here, in the browser, with the empty body of
+// e2e/recurring-checkins-phone.spec.ts ("const EMPTY_SETTINGS_BODY = { id: null, schedules: [], games: [], members: [] };"),
+// matched on the path as that spec's SETTINGS_PATH is. The seed's own list is never reached. No
+// card renders in this state, so the root is the whole body.
+const NO_POLLS: Staging = { polls: [], activeId: null, respondents: [] };
+const EMPTY_SETTINGS_BODY = { id: null, schedules: [], games: [], members: [] };
+const emptySettingsAnswers: SurfaceRow['answers'] = (url) => (url.pathname.endsWith(`/groups/${groupId()}/prompt-settings`) ? EMPTY_SETTINGS_BODY : undefined);
+const reachEmpty: SurfaceRow['reach'] = async (page) => {
+  await openPlanning(page, NO_POLLS);
+  await page.getByText('No active availability poll found. Use the schedule manager above to send one.').waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByRole('heading', { name: 'No schedules yet' }).waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: page.locator('body') };
+};
+
 // R08 extras (register R6-02): in every cell exactly one Switch poll chip is pressed and it names
 // the poll the Showing line names, and every chip box is at least 44 x 44 (within 0.5px). One
 // joined line is thrown, so a failure fails the cell.
@@ -104,5 +137,8 @@ const chipsHold: SurfaceRow['extras'] = async (page) => {
 
 export const rows: SurfaceRow[] = [
   { id: 'R08', census: 'R08', kind: 'route', owner: '89.6-20', status: 'enforced', state: 'two open polls, Check-ins collapsed', reach: reachTwoPolls, extras: chipsHold },
+  // pending until 89.6-42: the read covers the check-in cards (plan 42's S3 fix) and their three-dot trigger (plan 26's KebabMenu), both after this plan.
+  { id: 'R08-expanded', census: 'R08', kind: 'route', owner: '89.6-42', status: 'pending', state: 'two open polls, Check-ins expanded: the page holds with the cards present', reach: reachExpanded },
+  { id: 'R08-empty', census: 'R08', kind: 'route', owner: '89.6-20', status: 'enforced', state: 'no open poll: check-ins empty state, auto-prompt banner, Recurring Check-ins empty list, no active poll', reach: reachEmpty, answers: emptySettingsAnswers },
   { id: 'O06', census: 'O06', kind: 'overlay', owner: '89.6-20', status: 'pending' },
 ];
