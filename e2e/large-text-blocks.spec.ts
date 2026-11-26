@@ -24,6 +24,7 @@ import {
   readLargeTextCell,
   readPageZoomCell,
   setTextMode,
+  sidewaysRecorded,
   readWordLines,
   type LargeTextCellRead,
   type PageZoomRead,
@@ -1729,6 +1730,75 @@ test('check: shrunk, a stretched SVG text (R16, F1 7-A): an SVG text drawn tall 
   expect(scale?.down ?? 0, `the text is not stretched tall: the harness is not the shape it says (${JSON.stringify(scale)})`).toBeGreaterThan(5);
   expect(scale?.across ?? 1, `the text is not squeezed narrow: the harness is not the shape it says (${JSON.stringify(scale)})`).toBeLessThan(0.2);
   expect(read.cut, `a 20-unit SVG text drawn a tenth of its width is not read as shrunk (${JSON.stringify(read.cut)})`).toContain('shrunk: "Weekend"');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// R16 (2026-11-26), the sideways-box check (decision review F2, the standard's own test) and the
+// owner's ruling L2: e2e/support/wordLines.ts ("DECISION Phase 89.6 R16 (sideways boxes)") and
+// e2e/support/wordLines.ts ("DECISION Phase 89.6 R16 (L2)").
+// ---------------------------------------------------------------------------------------------
+
+/** The sideways boxes of a read, each reduced to what a case asserts. */
+const boxesOf = (read: LargeTextCellRead) => read.sidewaysBoxes.map((box) => ({ name: box.name, fits: box.widest <= box.window + 1, scrolls: box.content > box.window + 1, excepted: box.excepted ?? null, fails: box.fails }));
+
+test('check: sideways boxes (R16, F2): a strip whose items all fit its window is listed and passes, one item wider than the window fails, a grid on the excepted list is listed and passes, and a box with only overflow-y and a too-wide word fails', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const fits = await readLargeTextCell(await renderTwin(page, 'sideways-box-fits'));
+  const wideItem = await readLargeTextCell(await renderTwin(page, 'sideways-box-wide-item'));
+  const grid = await readLargeTextCell(await renderTwin(page, 'sideways-box-grid'));
+  const yOnly = await readLargeTextCell(await renderTwin(page, 'sideways-box-overflow-y-only'));
+  const yOnlyShape = await page.locator('.lt-ybox').evaluate((el) => ({ overflowX: getComputedStyle(el).overflowX, past: el.scrollWidth - el.clientWidth }));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ fits, wideItem, grid, yOnly, yOnlyShape }, null, 2), contentType: 'application/json' });
+  const fails = 'an item inside a box that scrolls sideways is wider than the window of that box';
+  expect(boxesOf(fits), 'the strip whose items all fit is not listed once, as scrolling, fitting and passing').toEqual([{ name: expect.stringContaining('lt-strip'), fits: true, scrolls: true, excepted: null, fails: false }]);
+  expect(() => expectLargeTextCell(fits, 'the strip whose items all fit'), 'a strip whose items all fit its window failed the cell').not.toThrow();
+  expect(boxesOf(wideItem), 'the strip with a 400px item is not listed once, as failing').toEqual([{ name: expect.stringContaining('lt-strip'), fits: false, scrolls: true, excepted: null, fails: true }]);
+  expect(wideItem.sidewaysBoxes[0].widestItem, 'the failing entry does not name the item that is too wide').toContain('lt-too-wide');
+  expect(() => expectLargeTextCell(wideItem, 'the strip with a 400px item'), 'a strip with an item wider than its window passed the cell').toThrow(fails);
+  expect(boxesOf(grid), 'the two excepted grids are not both listed with the entry that excepts each').toEqual([
+    { name: expect.stringContaining('lt-paint'), fits: false, scrolls: true, excepted: 'SB-2', fails: false },
+    { name: expect.stringContaining('lt-week'), fits: false, scrolls: true, excepted: 'SB-1', fails: false },
+  ]);
+  expect(() => expectLargeTextCell(grid, 'the excepted grids'), 'a grid on the excepted list failed the cell').not.toThrow();
+  expect(yOnlyShape.overflowX, 'the box with only overflow-y set does not compute to overflow-x auto: the harness is not the shape it says').toBe('auto');
+  expect(yOnlyShape.past, 'the long word is not wider than its box: the harness is not the shape it says').toBeGreaterThan(1);
+  expect(boxesOf(yOnly), 'the box with only overflow-y and a too-wide word is not listed once, as failing').toEqual([{ name: expect.stringContaining('lt-ybox'), fits: false, scrolls: true, excepted: null, fails: true }]);
+  expect(() => expectLargeTextCell(yOnly, 'the box with only overflow-y'), 'a box that must be scrolled sideways to read one word passed the cell').toThrow(fails);
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: sideways at a page-zoom width (R16, owner ruling L2): the same sideways page, dialog box and sideways-box failure fail a 200% cell and are only recorded at a page-zoom cell', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const dialogOf = () => page.getByRole('dialog');
+  const pageAt200 = await readLargeTextCell(await renderTwin(page, 'sideways-bad'));
+  const pageAtZoom = await readPageZoomCell(await renderTwin(page, 'sideways-bad', ZOOM_CHECK_CELL));
+  await renderTwin(page, 'sideways-dialog-bad');
+  const dialogAt200 = await readLargeTextCell(frameOf(page), { dialog: dialogOf() });
+  await renderTwin(page, 'sideways-dialog-bad', ZOOM_CHECK_CELL);
+  const dialogAtZoom = await readPageZoomCell(frameOf(page), { dialog: dialogOf() });
+  const boxAt200 = await readLargeTextCell(await renderTwin(page, 'sideways-box-wide-item'));
+  const boxAtZoom = await readPageZoomCell(await renderTwin(page, 'sideways-box-wide-item', ZOOM_CHECK_CELL));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ pageAt200, pageAtZoom, dialogAt200, dialogAtZoom, boxAt200, boxAtZoom }, null, 2), contentType: 'application/json' });
+  expect(() => expectLargeTextCell(pageAt200, 'a page that scrolls sideways at 200%'), 'a sideways page passed a 200% cell').toThrow('the page scrolls sideways by');
+  expect(() => expectLargeTextCell(dialogAt200, 'a dialog box that scrolls sideways at 200%'), 'a sideways dialog box passed a 200% cell').toThrow("the dialog's content box scrolls sideways by");
+  expect(() => expectLargeTextCell(boxAt200, 'a too-wide item in a sideways box at 200%'), 'a too-wide item in a sideways box passed a 200% cell').toThrow('an item inside a box that scrolls sideways is wider than the window of that box');
+  for (const [what, read, line] of [
+    ['a page that scrolls sideways', pageAtZoom, 'the page scrolls sideways by'],
+    ['a dialog box that scrolls sideways', dialogAtZoom, "the dialog's content box scrolls sideways by"],
+    ['a too-wide item in a sideways box', boxAtZoom, 'sideways box: '],
+  ] as const) {
+    expect(sidewaysRecorded(read).join(' | '), `${what} is not printed in the record of a page-zoom cell (${JSON.stringify(read)})`).toContain(line);
+    expect(read.lost, `${what} is lost content at a page-zoom cell`).toEqual([]);
+    expect(() => expectPageZoomUsable(read, what), `${what} failed a page-zoom cell`).not.toThrow();
+  }
+  expect(boxAtZoom.sidewaysBoxes?.map((box) => box.fails), 'the page-zoom record does not list the sideways box').toEqual([true]);
+  // The shell's own geometry line follows the same ruling: it is a problem at every cell but the two page-zoom ones.
+  const shell: ShellGeometry = { dialog: { left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100 }, sideways: 12, containerRem: 10, header: null, title: null, titleLines: [], close: null, closeIcon: null, body: null, footer: null, footerContent: null, buttons: [] };
+  const sidewaysLine = (problems: string[]) => problems.filter((problem) => problem.includes('the dialog box scrolls sideways by 12px'));
+  expect(sidewaysLine(shellProblems(shell, '200', 'a shell at 200%')).length, 'a dialog box that scrolls sideways is no shell problem at a 200% cell').toBe(1);
+  expect(sidewaysLine(shellProblems(shell, '100', 'a shell at normal text')).length, 'a dialog box that scrolls sideways is no shell problem at a normal-text cell').toBe(1);
+  expect(sidewaysLine(shellProblems(shell, '100', 'a shell at a page-zoom width', { zoom: true })), 'a dialog box that scrolls sideways is a shell problem at a page-zoom cell').toEqual([]);
   expect(requests, 'the page made a request').toEqual([]);
 });
 

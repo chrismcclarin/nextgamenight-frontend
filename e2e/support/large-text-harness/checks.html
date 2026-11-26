@@ -1463,3 +1463,68 @@
     <svg width="30" height="300" viewBox="0 0 300 30" preserveAspectRatio="none" role="img" aria-label="Stretched icon"><text x="0" y="22" font-size="20">Weekend</text></svg>
   </main>
 </section>
+
+<!--
+  R16 (2026-11-26), the sideways-box check: a box inside the page that scrolls sideways is listed,
+  and fails when one item in it is wider than the box's visible window (WCAG 2.2 SC 1.4.10, the
+  Understanding page's "Carousels and carousel-like widgets": a section may scroll sideways as long
+  as each panel fits the window). Two-dimensional grids and tables, and the QR code, are excepted
+  by name.
+-->
+
+<!-- A strip of five chips that scrolls sideways; every chip fits the strip's window. LISTED, passes. -->
+<section data-case="sideways-box-fits">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-strip flex gap-2 overflow-x-auto">
+      <span class="lt-item flex-none rounded-card border border-line bg-surface-card p-2 text-base text-content-primary">Catan</span>
+      <span class="lt-item flex-none rounded-card border border-line bg-surface-card p-2 text-base text-content-primary">Azul</span>
+      <span class="lt-item flex-none rounded-card border border-line bg-surface-card p-2 text-base text-content-primary">Wingspan</span>
+      <span class="lt-item flex-none rounded-card border border-line bg-surface-card p-2 text-base text-content-primary">Gloomhaven</span>
+      <span class="lt-item flex-none rounded-card border border-line bg-surface-card p-2 text-base text-content-primary">Carcassonne</span>
+    </div>
+  </main>
+</section>
+
+<!-- The same strip with one chip 400px wide: that chip cannot be read without scrolling sideways inside it. FAILS. -->
+<section data-case="sideways-box-wide-item">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-strip flex gap-2 overflow-x-auto">
+      <span class="lt-item flex-none rounded-card border border-line bg-surface-card p-2 text-base text-content-primary">Catan</span>
+      <span class="lt-item lt-too-wide w-[400px] flex-none rounded-card border border-line bg-surface-card p-2 text-base text-content-primary">Twilight Imperium</span>
+      <span class="lt-item flex-none rounded-card border border-line bg-surface-card p-2 text-base text-content-primary">Azul</span>
+    </div>
+  </main>
+</section>
+
+<!-- Two boxes on the excepted list: the availability paint grid's scroll box around its one wide wrapper, and a scroll box around a grid role. LISTED with the entry that excepts each, passes. -->
+<section data-case="sideways-box-grid">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-paint overflow-x-auto pb-2">
+      <div class="min-w-max">
+        <div class="flex">
+          <div class="w-[120px] flex-none text-base text-content-primary">Mon</div>
+          <div class="w-[120px] flex-none text-base text-content-primary">Tue</div>
+          <div class="w-[120px] flex-none text-base text-content-primary">Wed</div>
+          <div class="w-[120px] flex-none text-base text-content-primary">Thu</div>
+        </div>
+      </div>
+    </div>
+    <div class="lt-week mt-3 overflow-x-auto">
+      <div role="grid" aria-label="Sample week" class="grid w-[600px] grid-cols-4">
+        <div class="text-base text-content-primary">Mon</div>
+        <div class="text-base text-content-primary">Tue</div>
+        <div class="text-base text-content-primary">Wed</div>
+        <div class="text-base text-content-primary">Thu</div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- A box with only overflow-y set (overflow-x then computes to auto) holding a word wider than it, which may not break: the word is reached only by scrolling the box sideways. FAILS. -->
+<section data-case="sideways-box-overflow-y-only">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-card bg-surface-card p-2">
+      <div class="lt-ybox max-h-[200px] overflow-y-auto [overflow-wrap:normal] text-base text-content-primary">A Grandmasterboardgamecollective night</div>
+    </div>
+  </main>
+</section>

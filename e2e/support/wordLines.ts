@@ -320,6 +320,23 @@ export interface LargeTextReadOptions {
   surfaceClamps?: readonly string[];
 }
 
+/** One box inside the read's root that scrolls sideways (R16, the sideways-box check). */
+export interface SidewaysBox {
+  /** A name for the box: its tag and its first classes. */
+  name: string;
+  /** The box's visible window: its clientWidth. */
+  window: number;
+  /** Its content width: its scrollWidth. */
+  content: number;
+  /** The width of its widest item, and that item's name. */
+  widest: number;
+  widestItem: string;
+  /** The id of the entry of SIDEWAYS_BOX_EXCEPTIONS that excepts the box; absent when none does. */
+  excepted?: string;
+  /** An item is wider than the window, and no entry excepts the box or that item. */
+  fails: boolean;
+}
+
 export interface LargeTextCellRead {
   rootFontSize: number;
   window: number;
@@ -343,6 +360,8 @@ export interface LargeTextCellRead {
   spill: string[];
   /** One entry per select whose chosen option is wider than the room the closed select has for it. */
   selectCut: string[];
+  /** Every box inside the root that scrolls sideways, listed; one whose item is wider than its window fails the cell. */
+  sidewaysBoxes: SidewaysBox[];
 }
 
 interface LargeTextPageArg {
@@ -1406,7 +1425,9 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       }
     }
 
-    return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split, held, wide, spill, selectCut, lost, ownClamp };
+    const sidewaysBoxes: SidewaysBox[] = [];
+
+    return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split, held, wide, spill, selectCut, sidewaysBoxes, lost, ownClamp };
   } finally {
     ruler.remove();
   }
@@ -1430,6 +1451,7 @@ export async function readLargeTextCell(root: Locator, options: LargeTextReadOpt
     wide: read.wide,
     spill: read.spill,
     selectCut: read.selectCut,
+    sidewaysBoxes: read.sidewaysBoxes,
   };
 }
 
@@ -1491,6 +1513,14 @@ export interface PageZoomRead {
   recorded: string[];
   /** Clips that are a surface's own clamp (surfaceClamps, ruling D27); present only when there are some. */
   ownClamp?: string[];
+  /** Every box inside the root that scrolls sideways (R16); present only when there are some. */
+  sidewaysBoxes?: SidewaysBox[];
+}
+
+/** The entries of a page-zoom record that are a sideways scroll: of the page, of the dialog box, or inside a sideways box. */
+export function sidewaysRecorded(read: PageZoomRead): string[] {
+  void read;
+  return [];
 }
 
 /** Read one page-zoom cell under `root`: what is lost, and what is only recorded. */

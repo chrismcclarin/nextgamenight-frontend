@@ -185,7 +185,8 @@ const px = (value: number): string => `${Math.round(value * 100) / 100}`;
  * the cell's TEXT mode: the close icon is 20px at normal text (the page-zoom cells too) and 32px
  * at 200% and with a 32px default font; a mode between them (150%) checks only that it follows.
  */
-export function shellProblems(read: ShellGeometry, mode: string, tag: string): string[] {
+export function shellProblems(read: ShellGeometry, mode: string, tag: string, options: { zoom?: boolean } = {}): string[] {
+  void options;
   const problems: string[] = [];
   // Every button of the shell can be reached: a header button lies inside the dialog box with the
   // dialog scrolled to its top; a footer button, scrolled into view, lies whole inside the dialog
