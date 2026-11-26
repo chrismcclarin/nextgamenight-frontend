@@ -1028,8 +1028,10 @@ describe('R4 D1 (88.9-52) — a quick-suggestion chip shows the whole game name'
     const row = chip.parentElement as HTMLElement;
     expect(tokens(row)).toEqual(expect.arrayContaining(['flex', 'overflow-x-auto', 'flex-nowrap', 'flex-1', 'min-w-0']));
     // The slot's floor is still the chip's own token, with no height cap that would cut a wrapped name.
+    // AMENDED 89.6-18 (A-held): the floor is two rows of that token plus the row gap and the foot (a
+    // calc on the spacing token, pinned whole in the A-held block below); still a floor, never a cap.
     const slot = screen.getByTestId('quick-suggestions-slot');
-    expect(tokens(slot)).toContain('min-h-11');
+    expect(tokens(slot).filter((t) => t.startsWith('min-h-'))).toEqual(['min-h-[calc(--spacing(11)*2+--spacing(2)+--spacing(1))]']);
     expect(tokens(slot).filter((t) => /^(h|max-h)-/.test(t))).toEqual([]);
     expect(tokens(row).filter((t) => /^(h|max-h)-/.test(t) || t === 'overflow-y-hidden' || t === 'overflow-hidden')).toEqual([]);
     // Every chip, not just the long one.
@@ -1047,6 +1049,9 @@ describe('R4 D1 (88.9-52) — a quick-suggestion chip shows the whole game name'
 // its floor, capped at the chip. Every variant is dialog-named, so the normal-text classes are
 // unchanged and the strip still scrolls inside itself at ordinary sizes. jsdom lays nothing out:
 // class pins. The marker is at src/app/components/QuickSuggestions.js ("DECISION Phase 89.6-18 (chips)").
+// AMENDED 89.6-18 (A-held, owner ruling 2026-11-26): the slot's wrap and the strip's full row are
+// no longer dialog-named, they hold at every size (Browse more always has a line of its own); the
+// strip's own wrap, its visible overflow, the chip's wrap and the picture drop are as described.
 describe('R5-03 (89.6-18) — the chips wrap whole below the dialog switch', () => {
   it('R5-03 (89.6-18): below the 12rem dialog switch the slot and strip wrap, the strip takes the row, the chip wraps and drops its picture; normal-text classes unchanged', async () => {
     api.getGroupSuggestions.mockResolvedValue({ suggestions: GAMES.map((game) => ({ ...game, thumbnail_url: 'https://example.test/pic.png' })) });
@@ -1058,8 +1063,11 @@ describe('R5-03 (89.6-18) — the chips wrap whole below the dialog switch', () 
     const chip = name.closest('button') as HTMLElement;
     const strip = chip.parentElement as HTMLElement;
     const picture = chip.firstElementChild as HTMLElement;
-    expect(tokens(slot)).toContain('@max-[12rem]/dialog:flex-wrap');
-    expect(tokens(strip)).toEqual(expect.arrayContaining(['@max-[12rem]/dialog:flex-wrap', '@max-[12rem]/dialog:basis-full', '@max-[12rem]/dialog:overflow-visible']));
+    // AMENDED 89.6-18 (A-held): the slot's wrap and the strip's full row are at every size now (owner
+    // ruling 2026-11-26, the A-held block below); the strip's own wrap and its visible overflow stay
+    // dialog-named.
+    expect(tokens(slot)).toContain('flex-wrap');
+    expect(tokens(strip)).toEqual(expect.arrayContaining(['basis-full', '@max-[12rem]/dialog:flex-wrap', '@max-[12rem]/dialog:overflow-visible']));
     // The chip wraps its parts at every size (CI run 45778715095: 768 / 200%, above the switch).
     expect(tokens(chip)).toContain('flex-wrap');
     expect(picture).toHaveAttribute('aria-hidden', 'true');
@@ -1072,5 +1080,88 @@ describe('R5-03 (89.6-18) — the chips wrap whole below the dialog switch', () 
     expect(tokens(strip)).toEqual(expect.arrayContaining(['overflow-x-auto', 'flex-nowrap', 'flex-1', 'min-w-0']));
     const browseMore = screen.getByRole('button', { name: 'Browse more' });
     expect(tokens(browseMore)).toEqual(expect.arrayContaining(['whitespace-nowrap', 'shrink-0', 'px-1', 'min-h-11']));
+  });
+});
+
+// 89.6-18 A-held (owner ruling 2026-11-26, shown the trade against his own D-18 first): Browse more
+// sits on a line of its own at EVERY size, and the row is the same two-line height in every state
+// (chips, the in-flight bar, the empty hint, the failed line), so nothing moves when suggestions
+// load. The slot's floor is DERIVED from the chip's own floor token: two min-h-11 rows, the row
+// gap (gap-2) and the foot (pb-1); no px height is written down. In the three states without chips
+// the content sits on a first row of that same token and the second line is empty. jsdom lays
+// nothing out: class pins. The rendered heights (identical in the four states at 375 and 320) are
+// read in e2e/quick-suggestions-failed.spec.ts.
+// The marker is at src/app/components/QuickSuggestions.js ("AMENDED Phase 89.6-18 (A-held)").
+describe('A-held (89.6-18) — the suggestions row is two lines tall in every state', () => {
+  const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  // Two rows of the chip's floor token (11), the row gap (2), the foot (1): the terms the slot carries.
+  const SLOT_FLOOR = 'min-h-[calc(--spacing(11)*2+--spacing(2)+--spacing(1))]';
+  type SlotState = 'pending' | 'chips' | 'empty' | 'failed';
+
+  async function reach(state: SlotState) {
+    if (state === 'pending') api.getGroupSuggestions.mockReturnValue(deferred<never>().promise);
+    if (state === 'chips') api.getGroupSuggestions.mockResolvedValue({ suggestions: GAMES });
+    if (state === 'empty') api.getGroupSuggestions.mockResolvedValue({ suggestions: [] });
+    if (state === 'failed') api.getGroupSuggestions.mockRejectedValue(failure());
+    renderSuggestions();
+    await runDebounce();
+    if (state === 'pending') await waitFor(() => expect(placeholder()).toBeInTheDocument());
+    if (state === 'chips') await waitFor(() => expect(screen.getByText('Catan')).toBeInTheDocument());
+    if (state === 'empty') await waitFor(() => expect(emptyBox()).toBeInTheDocument());
+    if (state === 'failed') await waitFor(() => expect(failedBox()).not.toBeNull());
+  }
+
+  it('A-held (89.6-18): the slot holds its two-row minimum in all four states, and the content without chips sits on a first row of the chip floor', async () => {
+    for (const state of ['pending', 'chips', 'empty', 'failed'] as const) {
+      await reach(state);
+      const held = tokens(slot());
+      // The held height: the derived floor, with the two terms it is derived from on the same element.
+      expect(held, state).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'content-start', 'gap-2', 'pb-1', SLOT_FLOOR]));
+      // The one-row floor is gone from the slot itself, and nothing caps or fixes its height.
+      expect(held, state).not.toContain('min-h-11');
+      expect(held.filter((t) => /^(h|max-h)-/.test(t)), state).toEqual([]);
+      // At every size: the wrap is no longer dialog-named.
+      expect(held, state).not.toContain('@max-[12rem]/dialog:flex-wrap');
+
+      // The first row is one row of the chip's floor token in every state.
+      if (state === 'pending') {
+        const row = placeholder()!.parentElement as HTMLElement;
+        expect(row.parentElement).toBe(slot());
+        expect(row).toHaveAttribute('aria-hidden', 'true');
+        expect(tokens(row)).toEqual(expect.arrayContaining(['flex', 'items-center', 'flex-1', 'min-w-0', 'min-h-11']));
+        expect(tokens(placeholder()!)).toEqual(expect.arrayContaining(['flex-1', 'min-w-0', 'h-6']));
+      }
+      if (state === 'chips') {
+        const chip = screen.getByRole('button', { name: 'Catan3-4p' });
+        expect(chip.parentElement!.parentElement).toBe(slot());
+        expect(tokens(chip)).toContain('min-h-11');
+      }
+      if (state === 'empty' || state === 'failed') {
+        const box = (state === 'empty' ? emptyBox() : failedBox()) as HTMLElement;
+        expect(box.parentElement).toBe(slot());
+        expect(tokens(box), state).toEqual(expect.arrayContaining(['flex-1', 'min-w-0', 'min-h-11']));
+      }
+      cleanup();
+    }
+  });
+
+  it('A-held (89.6-18): with chips, Browse more is on its own line at every size and the strip takes the full row', async () => {
+    await reach('chips');
+    const chip = screen.getByRole('button', { name: 'Catan3-4p' });
+    const strip = chip.parentElement as HTMLElement;
+    const browseMore = screen.getByRole('button', { name: 'Browse more' });
+    // The slot wraps and the strip's basis is the whole row, so the next item starts a new line.
+    expect(tokens(slot())).toContain('flex-wrap');
+    expect(strip.parentElement).toBe(slot());
+    expect(tokens(strip)).toContain('basis-full');
+    expect(tokens(strip)).not.toContain('@max-[12rem]/dialog:basis-full');
+    // Browse more is the strip's next sibling in the slot, never inside the strip.
+    expect(browseMore.parentElement).toBe(slot());
+    expect(strip.nextElementSibling).toBe(browseMore);
+    expect(strip.contains(browseMore)).toBe(false);
+    expect(tokens(browseMore)).toEqual(expect.arrayContaining(['shrink-0', 'min-h-11', 'inline-flex', 'items-center']));
+    // The strip is otherwise as the D1 ruling built it: it scrolls inside itself at ordinary sizes
+    // and wraps its chips below the 12rem dialog switch.
+    expect(tokens(strip)).toEqual(expect.arrayContaining(['flex-1', 'min-w-0', 'overflow-x-auto', 'flex-nowrap', '@max-[12rem]/dialog:flex-wrap', '@max-[12rem]/dialog:overflow-visible']));
   });
 });

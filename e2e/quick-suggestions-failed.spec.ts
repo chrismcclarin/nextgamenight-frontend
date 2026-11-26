@@ -20,6 +20,13 @@ import { test, expect, type Page } from '@playwright/test';
 // on the phone: aria-disabled, the heard suffix, the delayed house Spinner, and the same 52px slot
 // with nothing wrapped or pushed out of the box.
 //
+// AMENDED 89.6-18 (A-held, owner ruling 2026-11-26): the suggestions row is two lines tall in EVERY
+// state (Browse more has a line of its own under the chips, and the other three states are held at
+// that height), so the failed state's slot is no longer 52px: it is the held height, 100px at
+// normal text (two 44px rows, the 8px row gap, the 4px foot), with the 48px failed box inside it.
+// The second test reads all four states at 375 and 320 and finds one height. The marker is at
+// src/app/components/QuickSuggestions.js ("AMENDED Phase 89.6-18 (A-held)").
+//
 // CI ONLY. The phone and journeys projects need the `.auth/user.json` login state, which exists
 // only in CI (C-14 in .planning/codebase/FE-TESTING-CONVENTIONS.md). It was not run locally.
 //
@@ -86,10 +93,15 @@ test('a failed suggestions load shows the H4 line and a Try again link-styled bu
 
   // 88.9 D13c (owner pick, 88.9-PICKS-B3.json item D13): the failed box grows to hold the 44px link (40 -> 48), the slot with it; the empty and chip states keep 44.
   // The slot is min-h-11 + pb-1: 48 (box) + 4 (pb-1) = 52; a wrapped line would grow it further.
+  // AMENDED 89.6-18 (A-held): the 48px box now sits inside the held two-line height, so the slot
+  // reads 100 (44 + 8 + 44 + 4) on a failure as in every other state; the box itself is unchanged.
   const slotBox = await slot.boundingBox();
   expect(slotBox, 'the quick-suggestions slot has no layout box').not.toBeNull();
-  expect(slotBox!.height).toBeGreaterThanOrEqual(52);
-  expect(slotBox!.height).toBeLessThanOrEqual(53);
+  expect(slotBox!.height, 'the failed state is not the held two-line height').toBeGreaterThanOrEqual(100);
+  expect(slotBox!.height, 'the failed state is taller than the held two-line height').toBeLessThanOrEqual(101);
+  const failedHeight = (await failedBox.boundingBox())?.height ?? 0;
+  expect(failedHeight, 'the failed box no longer holds the 44px link (48 with its border)').toBeGreaterThanOrEqual(48);
+  expect(failedHeight, 'the failed box grew past its own content').toBeLessThanOrEqual(49);
 
   // The link clears the 44px floor and sits inside the failed box and the viewport.
   const retryBox = await retry.boundingBox();
@@ -141,8 +153,9 @@ test('a failed suggestions load shows the H4 line and a Try again link-styled bu
   await expect(busyRetry).toHaveText('Try again');
   const busySlotBox = await slot.boundingBox();
   expect(busySlotBox, 'the busy slot has no layout box').not.toBeNull();
-  expect(busySlotBox!.height, 'the busy state must not change the 52px failed slot').toBeGreaterThanOrEqual(52);
-  expect(busySlotBox!.height, 'the busy state must not wrap the line').toBeLessThanOrEqual(53);
+  // AMENDED 89.6-18 (A-held): the held height, as above (was 52 to 53).
+  expect(busySlotBox!.height, 'the busy state must not change the held failed slot').toBeGreaterThanOrEqual(100);
+  expect(busySlotBox!.height, 'the busy state must not wrap the line').toBeLessThanOrEqual(101);
   const busyRetryBox = await busyRetry.boundingBox();
   const busyFailedRect = await failedBox.boundingBox();
   expect(busyRetryBox, 'the busy Try again link has no layout box').not.toBeNull();
@@ -156,4 +169,123 @@ test('a failed suggestions load shows the H4 line and a Try again link-styled bu
   // The retry fails again: the link is live again under its plain name.
   await expect(retry).toBeVisible();
   await expect(retry).not.toHaveAttribute('aria-disabled', 'true');
+});
+
+// 89.6-18 A-held (owner ruling 2026-11-26): the suggestions row is the SAME two-line height in the
+// in-flight, chips, empty and failed states, at 375 and at 320 wide with normal text, so nothing
+// below it moves when suggestions load. Browse more sits on a line of its own under the chip strip.
+// Every state is staged by answering the suggestions read in the browser (a GET; nothing reaches
+// the backend and the form is never submitted). The chip names are ordinary ones that each fit a
+// line: a name wider than the whole row still wraps inside its chip and makes the row taller while
+// it shows, by the older D1 ruling, src/app/components/QuickSuggestions.js ("DECISION Phase 88.9-52 (R4 D1, owner 2026-11-18)").
+const chip = (n: number, name: string, min: number, max: number) => ({
+  id: `89618000-0000-4000-8000-0000000000a${n}`,
+  name,
+  thumbnail_url: null,
+  min_players: min,
+  max_players: max,
+  playing_time: 45,
+  weight: 2.2,
+  owners: [] as string[],
+  avg_group_rating: null,
+  review_count: 0,
+});
+const ORDINARY_CHIPS = [chip(1, 'Catan', 3, 4), chip(2, 'Azul', 2, 4), chip(3, 'Wingspan', 1, 5), chip(4, 'Ticket to Ride', 2, 5), chip(5, 'Carcassonne', 2, 5)];
+
+test('A-held (89.6-18): the suggestions row is one two-line height in the in-flight, chips, empty and failed states at 375 and 320', async ({ page }) => {
+  type Answer = 'hold' | 'chips' | 'empty' | 'fail';
+  const stage: { answer: Answer; release: () => void } = { answer: 'hold', release: () => {} };
+  await page.route(SUGGESTIONS_REQUEST, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    if (stage.answer === 'hold') {
+      // Held until the test releases it, then answered with the chips: the in-flight state and
+      // the arrival of chips are read on ONE open dialog.
+      await new Promise<void>((resolve) => {
+        stage.release = resolve;
+      });
+    }
+    try {
+      if (stage.answer === 'fail') {
+        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'synthetic failure (89.6-18 e2e)' }) });
+      } else {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ suggestions: stage.answer === 'empty' ? [] : ORDINARY_CHIPS }) });
+      }
+    } catch {
+      // The page moved on before a held read was answered: nothing to answer.
+    }
+  });
+
+  const slot = dialog(page).getByTestId('quick-suggestions-slot');
+  const below = dialog(page).getByRole('button', { name: /switch to manual entry/i });
+  const open = async () => {
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await page.getByRole('button', { name: 'Create Event', exact: true }).click();
+    await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
+    await expect(slot).toHaveCount(1);
+  };
+  const read = async (what: string) => {
+    const slotBox = await slot.boundingBox();
+    const belowBox = await below.boundingBox();
+    expect(slotBox, `${what}: the quick-suggestions slot has no layout box`).not.toBeNull();
+    expect(belowBox, `${what}: the Switch to Manual Entry button below the row has no layout box`).not.toBeNull();
+    return { height: slotBox!.height, left: slotBox!.x, belowTop: belowBox!.y };
+  };
+
+  for (const width of [375, 320]) {
+    const at = `${width} wide`;
+    await page.setViewportSize({ width, height: 667 });
+
+    // In flight, then the chips arrive on the same open dialog.
+    stage.answer = 'hold';
+    await open();
+    await expect(slot.getByTestId('quick-suggestions-placeholder'), `${at}: the in-flight bar never showed (the suggestions read was not held)`).toBeVisible();
+    const pending = await read(`${at}, in flight`);
+    stage.answer = 'chips';
+    stage.release();
+    const browseMore = slot.getByRole('button', { name: 'Browse more' });
+    await expect(browseMore).toBeVisible();
+    const chips = await read(`${at}, chips`);
+    expect(chips.belowTop - pending.belowTop, `${at}: the form below the suggestions row moved when the chips arrived (${pending.belowTop} to ${chips.belowTop})`).toBe(0);
+
+    // Browse more has a line of its own: it starts under the chip strip, at the row's left edge.
+    const firstChip = slot.getByRole('button', { name: /^Catan/ });
+    const chipBox = await firstChip.boundingBox();
+    const browseBox = await browseMore.boundingBox();
+    expect(chipBox, `${at}: the first chip has no layout box`).not.toBeNull();
+    expect(browseBox, `${at}: Browse more has no layout box`).not.toBeNull();
+    expect(browseBox!.y, `${at}: Browse more is not on a line of its own under the chips (chip bottom ${chipBox!.y + chipBox!.height}, Browse more top ${browseBox!.y})`).toBeGreaterThanOrEqual(chipBox!.y + chipBox!.height);
+    expect(Math.abs(browseBox!.x - chips.left), `${at}: Browse more does not start at the row's left edge (row ${chips.left}, Browse more ${browseBox!.x})`).toBeLessThanOrEqual(1);
+    for (const game of ORDINARY_CHIPS) {
+      const box = await slot.getByRole('button', { name: new RegExp(`^${game.name}`) }).boundingBox();
+      expect(box, `${at}: the "${game.name}" chip has no layout box`).not.toBeNull();
+      expect(box!.height, `${at}: the "${game.name}" chip is not one 44px row (its name wrapped; pick a name that fits a line for this read)`).toBeLessThanOrEqual(45);
+    }
+
+    // The hint also shows before the read is sent, so wait for the answered read: this is the
+    // SETTLED empty state, not the first frame.
+    stage.answer = 'empty';
+    const emptyAnswered = page.waitForResponse(SUGGESTIONS_REQUEST);
+    await open();
+    await emptyAnswered;
+    await expect(slot.getByTestId('quick-suggestions-empty')).toBeVisible();
+    const empty = await read(`${at}, empty`);
+
+    stage.answer = 'fail';
+    await open();
+    await expect(slot.getByTestId('quick-suggestions-failed')).toBeVisible();
+    const failed = await read(`${at}, failed`);
+
+    const heights = { 'in flight': pending.height, chips: chips.height, empty: empty.height, failed: failed.height };
+    const summary = Object.entries(heights).map(([state, height]) => `${state} ${height}`).join(', ');
+    for (const [state, height] of Object.entries(heights)) {
+      expect(Math.abs(height - chips.height), `${at}: the suggestions row is not one height in every state (${summary}); "${state}" differs from the chips state`).toBeLessThanOrEqual(0.5);
+    }
+    // Two lines: the chip row, the row gap and the Browse more row fit inside it.
+    expect(chips.height, `${at}: the row is shorter than its two lines (${summary})`).toBeGreaterThanOrEqual(chipBox!.height + browseBox!.height);
+    const tops = [pending.belowTop, chips.belowTop, empty.belowTop, failed.belowTop];
+    expect(Math.max(...tops) - Math.min(...tops), `${at}: the form below the row does not start at one place in every state (${tops.join(', ')})`).toBeLessThanOrEqual(0.5);
+  }
 });

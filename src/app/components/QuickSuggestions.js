@@ -57,6 +57,9 @@ function reducedSuggestionsFetchError(err) {
  * the failed state's box grows 40 -> 48px to hold the 44px Try again link (slot 44 -> 52), chosen
  * OVER a sub-44 link inside the 44 slot; the chips, bar and empty hint keep 44. A successful retry
  * shrinks it back — the one height change, owner-ruled on the rendered page.
+ * AMENDED Phase 89.6-18 (A-held, D13c): one height for all four again, now two lines tall. The
+ * failed box keeps its 48px and its 44px link, and sits inside the held height, so its 8px growth
+ * is absorbed and the row no longer changes height for a failure. See the D-18 marker below.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * DECISION Phase 88.6-39 (D-18): `QuickSuggestions` renders ONE fixed-height slot for EVERY
@@ -97,6 +100,31 @@ function reducedSuggestionsFetchError(err) {
  * AMENDED Phase 89.6-18 (chips): a second exception, at large text only. Below the 12rem dialog
  * switch the chips wrap as whole items (the 89.6-18 chips marker, at the slot), so the slot
  * grows when chips arrive there; at ordinary sizes it keeps the one height above.
+ * AMENDED Phase 89.6-18 (A-held): owner ruling, 2026-11-26, made after he was shown what it does to
+ * this marker. "One height" is now TWO LINES, in EVERY state: chips, the in-flight bar, the empty
+ * hint and the failed line. The browse link sits on a line of its own under the chip strip at every
+ * size, so a row with chips is two rows tall; the other three states are HELD at that same height,
+ * their content on the first line and the second line empty. The purpose of D-18 is kept: nothing
+ * moves when suggestions load. Its cost is the one option (b) above was rejected for, accepted
+ * knowingly this time (the owner: the row is always two lines tall, with empty space under the
+ * "no games" hint), because the other way to give the browse link its own line is a jump of one
+ * row every time chips arrive.
+ * STILL NO PX HEIGHT. The slot's floor is a calc on the spacing token with three terms, each the
+ * number of a class on this same row: two rows of the chip's floor (11, twice), the row gap (2)
+ * and the foot (1). Raising the chip floor, the gap or the foot means changing that term too;
+ * the unit test pins the three together. Without chips the first line is one row of the same
+ * floor token (the bar sits centred inside a row of it, the hint and failed box are floored at
+ * it), so the first line is the chip row's height in every state: the hint box reads 44 where it
+ * read 40, the bar sits 2px lower.
+ * The D13c exception above is absorbed (the 48px failed box fits inside the held height). Two
+ * ways the row can still be taller than the held height, both older than this ruling: a chip
+ * whose name wraps (the D1 marker at the name), and wrapped chips below the 12rem dialog switch
+ * (the 89.6-18 chips amendment above).
+ * REJECTED, each shown to the owner on a rendered page: E, keeping one row and accepting that a
+ * single word wider than the strip's window breaks (the orchestrator's pick on the merits); A
+ * with a jump when chips arrive; B, chips that wrap with no strip; D, chips wider than the strip's
+ * window, which the standard's carousel guidance fails (WCAG 2.2 SC 1.4.10: "As long as each
+ * individual panel within the carousel can fit"). Changing this is a decision, not a cleanup.
  *
  * THE PLACEHOLDER BAR IS `aria-hidden` and the HINT BOX IS NOT. The bar is a decorative skeleton
  * conveying nothing, and the effect deps re-fire on every create-event form edit, so a live region
@@ -166,11 +194,18 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
        is kept as the D1 ruling built it at ordinary sizes, scrolling inside itself: its wrap, its
        full row and the picture drop are dialog-named. The slot now grows when
        chips arrive at large text (DECISION Phase 88.6-39 (D-18) is amended for it). Changing this is
-       a decision, not a cleanup. */
-    <div ref={slotRef} data-testid="quick-suggestions-slot" className="flex items-stretch gap-2 min-h-11 pb-1 @max-[12rem]/dialog:flex-wrap">
+       a decision, not a cleanup.
+       AMENDED Phase 89.6-18 (A-held, the browse line): owner ruling 2026-11-26. The browse link's
+       own line is now at EVERY size, not only below the switch: the slot wraps and the strip's
+       basis is the whole row at every size, so the link always starts the second line, and the
+       slot is held at two rows in all four states (the D-18 marker above has the ruling, the
+       derivation of the floor and the rejected options). What stays dialog-named: the strip's own
+       wrap, its visible overflow and the picture drop. Above the switch the strip still scrolls
+       inside itself, now with the whole row as its window. */
+    <div ref={slotRef} data-testid="quick-suggestions-slot" className="flex flex-wrap content-start items-stretch gap-2 pb-1 min-h-[calc(--spacing(11)*2+--spacing(2)+--spacing(1))]">
       {shown.kind === 'chips' ? (
         <>
-          <div className="flex items-center gap-2 overflow-x-auto flex-nowrap flex-1 min-w-0 @max-[12rem]/dialog:basis-full @max-[12rem]/dialog:flex-wrap @max-[12rem]/dialog:overflow-visible">
+          <div className="flex items-center gap-2 overflow-x-auto flex-nowrap flex-1 min-w-0 basis-full @max-[12rem]/dialog:flex-wrap @max-[12rem]/dialog:overflow-visible">
             {shown.suggestions.map((game) => (
               <button
                 key={game.id}
@@ -250,7 +285,11 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
                     whole chip still breaks, inside it. Measured on a replica with the app's
                     stylesheet: at 320 and 375 with ordinary text every chip but the 30-letter
                     name's keeps its box. Below the 12rem dialog switch the chips also wrap as whole
-                    items (the 89.6-18 chips marker, at the slot). */}
+                    items (the 89.6-18 chips marker, at the slot).
+                    AMENDED Phase 89.6-18 (A-held, D1): the row a chip is capped at is the WHOLE
+                    row now (the browse link moved to a line of its own), so a name has that much
+                    room before it wraps. A name that still wraps makes its chip, and the held
+                    two-line row, taller for as long as that chip is shown, as before. */}
                 <span className="text-sm text-content-primary flex-1 max-w-full wrap-break-word">
                   {game.name}
                 </span>
@@ -282,11 +321,15 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
           </button>
         </>
       ) : shown.kind === 'pending' ? (
-        <div
-          aria-hidden="true"
-          data-testid="quick-suggestions-placeholder"
-          className="flex-1 min-w-0 self-center h-6 rounded-full bg-surface-muted"
-        />
+        /* 89.6-18 (A-held): the bar sits centred in a first row of the chip's floor token, so the
+           first line is the chip row's height while the fetch is in flight (the D-18 marker above). */
+        <div aria-hidden="true" className="flex-1 min-w-0 flex items-center min-h-11">
+          <div
+            aria-hidden="true"
+            data-testid="quick-suggestions-placeholder"
+            className="flex-1 min-w-0 h-6 rounded-full bg-surface-muted"
+          />
+        </div>
       ) : (
         /* DECISION Phase 88.6.1-14 (D-28, copy row H4): a failed fetch shows the H4 line in the
            SAME box the empty hint uses — same element, same classes; only the words and the test
@@ -327,11 +370,15 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
            again , retrying): the exact-name locator found nothing in CI. The label is set only
            while busy, starts with the visible words, and no child box (suffix or Spinner) can
            change it; the Profile schedule Delete names its busy state the same way. Going back
-           to the span is a decision, not a cleanup. */
+           to the span is a decision, not a cleanup.
+           AMENDED Phase 89.6-18 (A-held, the box): the shared class string gains the chip's floor
+           token, so the hint box is one row tall (44, was 40) and the failed box keeps its 48;
+           the slot no longer reads 52 on a failure, it is the held two-line height in every
+           state (the D-18 marker at the top of this component). */
         // DECISION Phase 89.6-39 (O-M1-bare): the empty / failed suggestions box keeps its 8px side edge as a calc on the card token, chosen OVER the 12px card edge (a look change at normal text, not on the pick page; offered at look 2 as owner item L-39a) and OVER a new 8px token for one box. Pixel-identical at normal text, held at 8px at 200% text (owner pick O-M1 = D, HR-9 per SPEC A9). Changing this is a decision, not a cleanup.
         <div
           data-testid={shown.kind === 'failed' ? 'quick-suggestions-failed' : 'quick-suggestions-empty'}
-          className="flex-1 min-w-0 flex items-center gap-2 border-2 border-dashed border-line rounded-card px-[calc(var(--spacing-edge-card)_-_4px)]"
+          className="flex-1 min-w-0 min-h-11 flex items-center gap-2 border-2 border-dashed border-line rounded-card px-[calc(var(--spacing-edge-card)_-_4px)]"
         >
           <p className="text-xs text-content-muted italic">
             {shown.kind === 'failed'

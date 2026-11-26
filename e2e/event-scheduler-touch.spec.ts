@@ -661,6 +661,15 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
   test('(1) a plain drag scrolls the day column and selects nothing', async ({ page }) => {
     await openVisualScheduler(page);
     await settleSchedulerGeometry(page);
+    // AMENDED Phase 89.6-18 (A-held, owner ruling 2026-11-26): the suggestions row above the grid is
+    // two lines tall in every state (100px, was 44 to 52), so on this 375 x 667 phone the unscrolled
+    // clipped band of the day column fell from 152-156px to 100px (measured on the real dialog: one
+    // whole 48px cell, where there were two), under this case's floor of 2. As cases (3) and (8) did
+    // for the 88.9-41 caption, the case first does what a person does before a drag on a short
+    // phone: scrolls the dialog body until the column is in view (case 5's own helper), then reads
+    // the geometry. The floor is untouched (fix the GEOMETRY, never the number). What the dialog
+    // shows before that scroll is an owner item for the second look, not a claim of this case.
+    await revealGridBottomEdge(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
     const corridor = corridorCells(geo);
@@ -857,6 +866,9 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
   test('(4) movement past the slop distance before the threshold cancels the gesture', async ({ page }) => {
     await openVisualScheduler(page);
     await settleSchedulerGeometry(page);
+    // AMENDED Phase 89.6-18 (A-held): reveal the column first, as case (1) does and for its reason
+    // (one whole cell in the unscrolled band at 375 x 667 since the suggestions row holds two lines).
+    await revealGridBottomEdge(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
     const corridor = corridorCells(geo);
@@ -1098,6 +1110,9 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     // ever deleted, Req 1 has no owner at all.
     await openVisualScheduler(page);
     await settleSchedulerGeometry(page);
+    // AMENDED Phase 89.6-18 (A-held): reveal the column first, as case (1) does and for its reason
+    // (one whole cell in the unscrolled band at 375 x 667 since the suggestions row holds two lines).
+    await revealGridBottomEdge(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
     const corridor = corridorCells(geo);
@@ -1172,6 +1187,11 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
    *
    * AND THE USER-VISIBLE CONSEQUENCE, asserted beside it: the committed row must be the target
    * row. A zero delta with the wrong row committed would mean the gesture broke some other way.
+   *
+   * AMENDED Phase 89.6-18 (A-held, owner ruling 2026-11-26): the slot above the grid is now two
+   * lines tall in EVERY state (in flight, chips, empty hint, failed line), held at one height, so
+   * the settle this case brackets still may not move the grid: the zero delta below is unchanged.
+   * The four heights themselves are read in e2e/quick-suggestions-failed.spec.ts.
    *
    * ALSO MEASURED HERE (round-3 #179, UI-SPEC 3.5): the rendered heights of the two
    * `QuickSuggestions` controls at 375px. A pass at 1280px is not a pass for a phone floor, and
