@@ -307,7 +307,9 @@ describe('Header — one Main navigation landmark (AC-18, copy row H5)', () => {
 // capture measured (20px fits at 375 with doubled text; at 320 with doubled text only 13px would).
 describe('R21 (88.9-52): the header site name fits one line at enlarged text, or gives way to the logo', () => {
   const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
-  const SIZE = /^text-\[length:clamp\((\d+)px,calc\(\(100cqw_-_(\d+)px_-_([\d.]+)rem_-_(\d+)px\)_\/_([\d.]+)\),([\d.]+)rem\)\]$/;
+  // RE-PINNED by Phase 89.6-26 (O-M4-icons): the menu button is a held 44px, so the size rule carries
+  // a px term for it beside the rem term for the gap after the logo.
+  const SIZE = /^text-\[length:clamp\((\d+)px,calc\(\(100cqw_-_(\d+)px_-_(\d+)px_-_([\d.]+)rem_-_(\d+)px\)_\/_([\d.]+)\),([\d.]+)rem\)\]$/;
   const HIDE = /^@max-\[calc\((\d+)px_\+_([\d.]+)rem\)\]:sr-only$/;
   // Measured by capture j on the real element: the name is 157.4px wide at 20px and 102.3px at 13px.
   const NAME_WIDTH_EM = 157.4 / 20;
@@ -346,53 +348,67 @@ describe('R21 (88.9-52): the header site name fits one line at enlarged text, or
 
   it('R21 lockstep: the constants in the two rules are the logo, the gap after it, the menu button and an 8px clearance', () => {
     const { link, size, hide } = read();
-    const [minPx, logoPx, remTerm, clearPx, divisor, capRem] = numbers(size as RegExpExecArray);
+    const [minPx, logoPx, buttonPx, remTerm, clearPx, divisor, capRem] = numbers(size as RegExpExecArray);
     const [hidePx, hideRem] = numbers(hide as RegExpExecArray);
     expect(minPx).toBe(18);
     expect(capRem * 16).toBe(18);
     // The logo is a fixed px size: it does not grow with text.
     const logo = link.querySelector('svg') as SVGElement;
     expect(Number(logo.getAttribute('width'))).toBe(logoPx);
-    // gap-2.5 after the logo (0.625rem) plus the menu button, p-2.5 round a w-6 icon (2.75rem).
+    // gap-2.5 after the logo (0.625rem), then the menu button: a held 44px box since 89.6-26 (owner
+    // pick O-M4 = Fixed+), its padding and icon sized inline from iconTextSize (jsdom drops an inline
+    // min(), so the sizes are read in e2e/touch-targets.spec.ts ("R21 (88.9-52)"); here, the tokens).
     expect(tokens(link)).toContain('gap-2.5');
     const menu = screen.getByRole('button', { name: 'Toggle menu' });
-    expect(tokens(menu)).toContain('p-2.5');
-    expect(tokens(menu.querySelector('svg') as Element)).toEqual(['w-6', 'h-6']);
-    expect(remTerm).toBe(0.625 + 0.625 * 2 + 1.5);
+    expect(tokens(menu)).not.toContain('p-2.5');
+    const icon = tokens(menu.querySelector('svg') as Element);
+    expect(icon).not.toContain('w-6');
+    expect(icon).not.toContain('h-6');
+    // The unread dot is drawn by the header-dot token, its size and inset computed from the icon.
+    const dot = tokens(menu.querySelector('span[aria-hidden="true"]') as Element);
+    expect(dot).toContain('bg-header-dot');
+    for (const gone of ['bg-red-500', 'h-2.5', 'w-2.5', 'top-1.5', 'right-1.5']) expect(dot).not.toContain(gone);
+    expect(buttonPx).toBe(44);
+    expect(remTerm).toBe(0.625);
     expect(clearPx).toBe(8);
     // The divisor is the name's measured width in em, rounded up, so the clearance is never eaten.
     expect(divisor).toBeGreaterThanOrEqual(NAME_WIDTH_EM);
     expect(divisor).toBeLessThanOrEqual(NAME_WIDTH_EM * 1.03);
     // The give-way width is exactly where the fit rule reaches its 18px floor.
     expect(hideRem).toBe(remTerm);
-    expect(hidePx).toBe(logoPx + clearPx + minPx * divisor);
+    expect(hidePx).toBe(logoPx + clearPx + minPx * divisor + buttonPx);
   });
 
-  it('R21 arithmetic: 18px at ordinary text, about 20px at 375 with doubled text, the logo alone at 320 with doubled text', () => {
+  it('R21 arithmetic: 18px at ordinary text, about 25.6px at 375 with doubled text, about 18.75px at 320 with doubled text', () => {
     const { size, hide } = read();
-    const [minPx, logoPx, remTerm, clearPx, divisor, capRem] = numbers(size as RegExpExecArray);
+    const [minPx, logoPx, buttonPx, remTerm, clearPx, divisor, capRem] = numbers(size as RegExpExecArray);
     const [hidePx, hideRem] = numbers(hide as RegExpExecArray);
     // The row is the screen less the nav's px-4 on each side (1rem each).
     const row = (viewport: number, rem: number) => viewport - 2 * rem;
     const shown = (viewport: number, rem: number) => row(viewport, rem) >= hidePx + hideRem * rem;
     const fontPx = (viewport: number, rem: number) =>
-      Math.min(Math.max(minPx, (row(viewport, rem) - logoPx - remTerm * rem - clearPx) / divisor), capRem * rem);
+      Math.min(Math.max(minPx, (row(viewport, rem) - logoPx - buttonPx - remTerm * rem - clearPx) / divisor), capRem * rem);
     // What is left between the end of the name and the menu button.
     const clearance = (viewport: number, rem: number) =>
-      row(viewport, rem) - logoPx - remTerm * rem - NAME_WIDTH_EM * fontPx(viewport, rem);
+      row(viewport, rem) - logoPx - buttonPx - remTerm * rem - NAME_WIDTH_EM * fontPx(viewport, rem);
 
     // Ordinary text: nothing changes, at either phone width.
     expect(shown(375, 16)).toBe(true);
     expect(fontPx(375, 16)).toBe(18);
     expect(shown(320, 16)).toBe(true);
     expect(fontPx(320, 16)).toBe(18);
-    // Doubled text at 375: the capture measured 20px as the largest size with 8px clear.
+    // Doubled text at 375: the held button frees 44px, so the largest size with 8px clear is about 25.6px.
     expect(shown(375, 32)).toBe(true);
-    expect(fontPx(375, 32)).toBeGreaterThanOrEqual(20);
-    expect(fontPx(375, 32)).toBeLessThan(20.5);
+    expect(fontPx(375, 32)).toBeGreaterThanOrEqual(25);
+    expect(fontPx(375, 32)).toBeLessThan(26.5);
     expect(clearance(375, 32)).toBeGreaterThanOrEqual(8);
-    // Doubled text at 320: 18px cannot fit (the capture measured 13px), so the logo stands alone.
-    expect(shown(320, 32)).toBe(false);
+    // Doubled text at 320: the name now shows, at about 18.75px (it gave way before 89.6-26).
+    expect(shown(320, 32)).toBe(true);
+    expect(fontPx(320, 32)).toBeGreaterThanOrEqual(18);
+    expect(fontPx(320, 32)).toBeLessThan(19);
+    expect(clearance(320, 32)).toBeGreaterThanOrEqual(8);
+    // The logo stands alone under about 314px wide with doubled text.
+    expect(shown(313, 32)).toBe(false);
     // Wide enough, doubled text: the name reaches its doubled size (36px) and still clears the button.
     expect(fontPx(600, 32)).toBe(36);
     expect(clearance(600, 32)).toBeGreaterThanOrEqual(8);

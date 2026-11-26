@@ -7,10 +7,29 @@ import NotificationBell from './components/NotificationBell';
 import ThemeToggle from './components/ThemeToggle';
 import { useUnreadNotificationCount } from './components/UnreadNotificationProvider';
 import FeedbackButton from './components/FeedbackButton';
+import { iconTextSize } from '@/components/ui/Icon';
 
 // Copy row H5 ("Name of the top navigation bar"), owner-ratified 2026-10-04 (D-30): the name of
 // the one primary-navigation landmark. breadcrumbNavOverflow.test.ts resolves the nav by this name.
 const MAIN_NAV_LABEL = 'Main';
+
+// DECISION Phase 89.6-26 (O-M4-icons): the Toggle menu button holds a 44px box at every text size and
+// its icon follows text to 32px through inline min() sizes, chosen OVER the rem padding and w-6 icon
+// that doubled the box to 88px at 200% (a 44px floor never needs 88) and OVER a fixed 24px icon (the
+// owner picked an icon that grows). The dot scales with the icon. Changing this is a decision, not a
+// cleanup.
+// The four sizes, from plan 89.6-06's formula (src/components/ui/Icon.tsx ("export function iconTextSize")):
+// the icon is 24px at 100% and 32px from 133% up; the padding is what is left of 44px around it (10px,
+// then 6px); the dot is the icon x 10 / 24 (10px, then about 13.3px), on the icon's top-right corner
+// (1px in, as built) but never closer than 2px to the box edge, so its 2px halo stays inside the box
+// (6px at 100%, 2px at the cap). Inline styles, because Tailwind v4 emits no class for an interpolated
+// value. At any text size above 100% the halo covers part of the button's 4px inset focus band at the
+// top-right corner while the button has keyboard focus (overlap = max(0, 4 + 2 - inset) px: about 1px
+// at 106%, 4px at the cap): review M121, an owner look ruling, recorded and not changed here.
+const MENU_ICON_SIZE = iconTextSize(24);
+const MENU_DOT_SIZE = `calc(${MENU_ICON_SIZE} * 10 / 24)`;
+const MENU_DOT_INSET = `max(2px, calc((44px - ${MENU_ICON_SIZE}) / 2 + 1px - ${MENU_DOT_SIZE} / 2))`;
+const MENU_BUTTON_PADDING = `calc((44px - ${MENU_ICON_SIZE}) / 2)`;
 
 function Header(){
     const { user, error, isLoading } = useUser();
@@ -348,8 +367,15 @@ function Header(){
                                 40rem and this fit rule holds the name instead: at 768 with doubled
                                 text it is the full doubled 36px on one line, 8px or more before the
                                 button. The marker is on the strip:
-                                this file ("desktop list is drawn only while this strip is at least 42rem wide"). */}
-                            <span className="text-[length:clamp(18px,calc((100cqw_-_34px_-_3.375rem_-_8px)_/_8),1.125rem)] leading-7 whitespace-nowrap @max-[calc(186px_+_3.375rem)]:sr-only md:@min-[40rem]/header:text-xl font-bold tracking-tight text-white">
+                                this file ("desktop list is drawn only while this strip is at least 42rem wide").
+                                AMENDED Phase 89.6-26 (O-M4-icons): the menu button no longer grows with
+                                text (owner pick O-M4 = Fixed+, 2026-11-22), so both rules count it as
+                                44px beside the 0.625rem gap; at 100% the sum is the same 54px.
+                                Re-measured: at doubled text the name is about 25.6px at 375 and shows
+                                at about 18.75px at 320 (it gave way there before); the logo stands
+                                alone under about 314px wide. e2e/touch-targets.spec.ts ("R21 (88.9-52)")
+                                reads it and Header.test.tsx (R21 lockstep) holds the constants. */}
+                            <span className="text-[length:clamp(18px,calc((100cqw_-_34px_-_44px_-_0.625rem_-_8px)_/_8),1.125rem)] leading-7 whitespace-nowrap @max-[calc(230px_+_0.625rem)]:sr-only md:@min-[40rem]/header:text-xl font-bold tracking-tight text-white">
                                 Next Game Night
                             </span>
                         </Link>
@@ -409,15 +435,20 @@ function Header(){
                             flagged it as assumption A7 (never measured in a browser); 88-30's
                             e2e is what settles it. Going back to `p-2` is a decision.
                             88.9-52 R4 S2: drawn again from md while the strip is under 40rem (the
-                            marker on the strip); inline-block is a button's own display. */}
+                            marker on the strip); inline-block is a button's own display.
+                            AMENDED Phase 89.6-26 (O-M4-icons): the box is now a held 44px (padding
+                            computed from the icon) and the icon follows text to 32px; at 100% it is
+                            the same 10 + 24 + 10. The constants and their marker are at the top of
+                            this file ("DECISION Phase 89.6-26 (O-M4-icons)"). */}
                         {sessionKnown && <button
                             ref={triggerRef}
-                            className="relative md:hidden md:@max-[40rem]/header:inline-block text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset"
+                            className="relative md:hidden md:@max-[40rem]/header:inline-block text-white hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                             aria-label="Toggle menu"
                             aria-expanded={mobileMenuOpen}
+                            style={{ padding: MENU_BUTTON_PADDING }}
                         >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg style={{ width: MENU_ICON_SIZE, height: MENU_ICON_SIZE }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 {mobileMenuOpen ? (
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                 ) : (
@@ -451,10 +482,23 @@ function Header(){
                                 - Inherits md:hidden from the parent button — desktop
                                   renders zero hamburger UI and therefore zero dot.
                                 - No animation per CONTEXT D (badge appears/disappears
-                                  instantly when count crosses 0). */}
+                                  instantly when count crosses 0).
+                                AMENDED Phase 89.6-26 (dot): drawn by the header-dot token (plan
+                                89.6-09), value still red-500. Correction: the dot carries meaning
+                                (unread), so WCAG 1.4.11 applies; red-500 measures 3.99 light and 4.77
+                                dark on the header ground. Its size and inset are now computed from the
+                                icon (dot = icon x 10 / 24, on the icon's top-right corner, never closer
+                                than 2px to the box edge), so the 88-28 note about moving the inset
+                                with the padding is carried by the formula. The earlier bullet's
+                                'aria-hidden because it's decorative' is superseded for contrast only:
+                                the dot stays aria-hidden because its text equivalent is the Invites
+                                row's description, heard once the menu is open (CR-2); the closed
+                                button carries no spoken unread cue, a spoken-output gap owned by Phase
+                                89.8 (.planning/deferred/phase-89.8.md, review M119). */}
                             {user && totalCount > 0 && (
                                 <span
-                                    className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-surface-header"
+                                    className="absolute rounded-full bg-header-dot ring-2 ring-surface-header"
+                                    style={{ top: MENU_DOT_INSET, right: MENU_DOT_INSET, width: MENU_DOT_SIZE, height: MENU_DOT_SIZE }}
                                     aria-hidden="true"
                                 />
                             )}

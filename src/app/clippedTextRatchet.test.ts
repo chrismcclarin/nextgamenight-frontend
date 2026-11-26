@@ -40,7 +40,7 @@ const OWNED_ELSEWHERE = [/^src\/app\/components\/tutorial\//, /^src\/app\/compon
 
 /** The exception literals: the class text at each excepted site. Each occurs exactly once in its file. */
 const EXCEPTION_LITERALS: ReadonlyArray<{ file: string; literal: string }> = [
-  { file: 'src/app/Header.js', literal: 'leading-7 whitespace-nowrap @max-[calc(186px_+_3.375rem)]:sr-only' },
+  { file: 'src/app/Header.js', literal: 'leading-7 whitespace-nowrap @max-[calc(230px_+_0.625rem)]:sr-only' },
   { file: 'src/app/components/CalendarListView.js', literal: "'font-bold text-base min-w-0 line-clamp-2'" },
   { file: 'src/app/components/CalendarListView.js', literal: "'font-bold text-base truncate'" },
   { file: 'src/app/components/CalendarListView.js', literal: "'block text-base line-clamp-2 mt-0.5'" },

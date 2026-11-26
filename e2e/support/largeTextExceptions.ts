@@ -53,7 +53,7 @@ export const EXCEPTIONS: readonly LargeTextException[] = [
     id: 'A3-1',
     what: 'header site name',
     owner: 'SPEC A3 (1), owner pick R21',
-    source: { file: 'src/app/Header.js', snippet: 'leading-7 whitespace-nowrap @max-[calc(186px_+_3.375rem)]:sr-only' },
+    source: { file: 'src/app/Header.js', snippet: 'leading-7 whitespace-nowrap @max-[calc(230px_+_0.625rem)]:sr-only' },
     selector: 'nav a[href="/"] > span.whitespace-nowrap',
     clears: 'cut',
   },

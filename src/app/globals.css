@@ -605,8 +605,8 @@
   /* Bell count badge (bg-badge-count) — see the DECISION Phase 88.9-01 (M3b) marker in the light block. */
   --color-badge-count: var(--color-badge-count-bg);
   /* Header unread dot (bg-header-dot), the marker DECISION Phase 89.6-09 (dot-token) is in the light
-     block. The key name differs from the runtime property (header-dot-bg). Plan 89.6-26 applies the
-     utility at the dot; until a source file uses it, no class is emitted for it. */
+     block. The key name differs from the runtime property (header-dot-bg). Plan 89.6-26 applied the
+     utility at the dot (src/app/Header.js ("absolute rounded-full bg-header-dot ring-2 ring-surface-header")). */
   --color-header-dot: var(--color-header-dot-bg);
 
   /* focus     -- 1 collision key, aliased */
@@ -1870,7 +1870,7 @@
      and 4.7746. The dot carries meaning (something is unread), so WCAG 1.4.11 applies to it. The
      value ends in a literal because the token test's resolver does not read the palette theme
      block. Pinned by src/app/tokenContrast.test.ts ("89.6 R7 dot-token"). The dot itself is moved
-     onto the bg-header-dot utility by plan 89.6-26, so nothing changes on screen with this
+     onto the bg-header-dot utility by plan 89.6-26 (done), so nothing changed on screen with this
      declaration. Changing the value is a decision, not a cleanup. */
   --color-header-dot-bg: #ef4444;
 
