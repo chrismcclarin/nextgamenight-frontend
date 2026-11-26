@@ -25,6 +25,7 @@ import {
 } from '../planningPolls';
 import { THIRTY_LETTER_WORD, TWO_WORD_NAME } from '../wordLines';
 import type { SurfaceRow } from './index';
+import { rows as linksRows } from './links';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
 // owns. No fallback id, as in e2e/support/largeTextSurfaces/members.ts ("No fallback id").
@@ -108,6 +109,106 @@ const reachEmpty: SurfaceRow['reach'] = async (page) => {
   return { root: page.locator('body') };
 };
 
+// O06: the heatmap tooltip (census O06) on a read cell of the Create Event dialog's visual
+// calendar. The email-link route opens the dialog with the poll's own heatmap
+// (src/app/groupPlanning/page.js ("hideVisualCalendar={!promptId}")): prompt_id names staged poll A,
+// and its heatmap read answers every hour of ten days around the answered week with two free
+// members, one of them the 30-letter word, so whichever cell the calendar shows in the viewer's own
+// time zone carries the tooltip. Keyboard focus opens it (no tap, no paint): a key press first, so
+// the browser treats the focus as keyboard focus, then the first cell with availability is focused.
+// The root is the tooltip.
+const mondayInTwoWeeks = (): Date => {
+  const now = new Date();
+  const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7) + 14);
+  return monday;
+};
+const isoDay = (date: Date, plusDays: number): string => {
+  const day = new Date(date);
+  day.setUTCDate(day.getUTCDate() + plusDays);
+  return day.toISOString().slice(0, 10);
+};
+const tooltipHeatmap = (monday: Date): unknown => ({
+  weekStart: isoDay(monday, 0),
+  totalMembers: 3,
+  totalGroupMembers: 3,
+  membersWithoutDataCount: 0,
+  gcalConflicts: [],
+  slots: Array.from({ length: 10 }, (_, day) => isoDay(monday, day - 1)).flatMap((date) =>
+    Array.from({ length: 24 }, (_, hour) => ({
+      date,
+      hour,
+      availableCount: 2,
+      availableMembers: [
+        { user_id: '89620000-0000-4000-8000-0000000000c2', username: THIRTY_LETTER_WORD },
+        { user_id: PLANNING_CREATOR_A_ID, username: 'E2E Ana' },
+      ],
+    })),
+  ),
+});
+const reachTooltip: SurfaceRow['reach'] = async (page) => {
+  const monday = mondayInTwoWeeks();
+  await openPlanning(page, { ...TWO_OPEN_POLLS, heatmap: tooltipHeatmap(monday) }, `&prompt_id=${PLANNING_POLL_A_ID}&prefillDate=${isoDay(monday, 2)}&prefillTime=19:00`);
+  const cell = page.locator('[role="gridcell"][aria-label*=" available"]').first();
+  await cell.waitFor({ state: 'attached', timeout: 20_000 });
+  await page.keyboard.press('Shift');
+  await cell.focus();
+  const tooltip = page.getByRole('tooltip');
+  await tooltip.waitFor({ state: 'visible', timeout: 10_000 });
+  await tooltip.getByText(THIRTY_LETTER_WORD, { exact: false }).waitFor({ state: 'visible' });
+  return { root: tooltip };
+};
+// O06 extras: the tooltip is open in every cell (the sweep reaches once per page, so a viewport
+// change that closed it is a STOP, reported, not patched here) and its box lies inside the window.
+const tooltipInWindow: SurfaceRow['extras'] = async (page) => {
+  const read = await page.evaluate(() => {
+    const tip = document.querySelector('[role="tooltip"]');
+    if (!tip) return null;
+    const box = tip.getBoundingClientRect();
+    return { left: box.left, right: box.right, window: document.documentElement.clientWidth };
+  });
+  if (read === null) throw new Error('O06: no open tooltip in this cell');
+  if (read.left < 0 || read.right > read.window + 0.5) throw new Error(`O06: the tooltip runs out of the window (left ${read.left.toFixed(1)}, right ${read.right.toFixed(1)}, window ${read.window})`);
+};
+
+// R03-grid (register CI-01, section D, CI-01d): the availability link page's paint grid, its day
+// headers measured in every cell. The reach and the answers are links.ts's R03 row's, imported,
+// never copied. Each header's text lies inside its own header box, and each word of a header is on
+// one line (a header may wrap between its two words; no word breaks).
+const availabilityRow = linksRows.find((row) => row.id === 'R03');
+if (!availabilityRow?.reach) throw new Error('planning.ts: links.ts has no R03 row with a reach for R03-grid');
+const headersWhole: SurfaceRow['extras'] = async (page) => {
+  const problems = await page.evaluate(() => {
+    const out: string[] = [];
+    const headerRow = document.querySelector('main .min-w-max > div');
+    const headers = headerRow ? Array.from(headerRow.children).slice(1) : [];
+    if (headers.length === 0) out.push('no day headers found');
+    for (const header of headers) {
+      const box = header.getBoundingClientRect();
+      const text = header.firstChild;
+      if (!text || text.nodeType !== Node.TEXT_NODE) {
+        out.push(`a header holds no text node: ${header.textContent}`);
+        continue;
+      }
+      const all = document.createRange();
+      all.selectNodeContents(header);
+      for (const rect of Array.from(all.getClientRects())) {
+        if (rect.left < box.left - 0.5 || rect.right > box.right + 0.5) out.push(`"${header.textContent}" runs out of its column (text ${rect.left.toFixed(1)}-${rect.right.toFixed(1)}, column ${box.left.toFixed(1)}-${box.right.toFixed(1)})`);
+      }
+      const value = text.textContent ?? '';
+      for (const match of value.matchAll(/\S+/g)) {
+        const range = document.createRange();
+        range.setStart(text, match.index ?? 0);
+        range.setEnd(text, (match.index ?? 0) + match[0].length);
+        const lines = new Set(Array.from(range.getClientRects()).filter((rect) => rect.width > 0).map((rect) => Math.round(rect.top))).size;
+        if (lines !== 1) out.push(`"${match[0]}" in "${value}" is on ${lines} lines`);
+      }
+    }
+    return out;
+  });
+  if (problems.length > 0) throw new Error(`CI-01d: ${problems.join('; ')}`);
+};
+
 // R08 extras (register R6-02): in every cell exactly one Switch poll chip is pressed and it names
 // the poll the Showing line names, and every chip box is at least 44 x 44 (within 0.5px). One
 // joined line is thrown, so a failure fails the cell.
@@ -140,5 +241,6 @@ export const rows: SurfaceRow[] = [
   // pending until 89.6-42: the read covers the check-in cards (plan 42's S3 fix) and their three-dot trigger (plan 26's KebabMenu), both after this plan.
   { id: 'R08-expanded', census: 'R08', kind: 'route', owner: '89.6-42', status: 'pending', state: 'two open polls, Check-ins expanded: the page holds with the cards present', reach: reachExpanded },
   { id: 'R08-empty', census: 'R08', kind: 'route', owner: '89.6-20', status: 'enforced', state: 'no open poll: check-ins empty state, auto-prompt banner, Recurring Check-ins empty list, no active poll', reach: reachEmpty, answers: emptySettingsAnswers },
-  { id: 'O06', census: 'O06', kind: 'overlay', owner: '89.6-20', status: 'pending' },
+  { id: 'O06', census: 'O06', kind: 'overlay', owner: '89.6-20', status: 'enforced', state: 'heatmap tooltip naming the 30-letter word, opened by keyboard focus', reach: reachTooltip, extras: tooltipInWindow },
+  { id: 'R03-grid', census: 'R03', kind: 'route', owner: '89.6-20', status: 'enforced', state: 'availability grid day headers (CI-01d)', reach: availabilityRow.reach, answers: availabilityRow.answers, extras: headersWhole },
 ];

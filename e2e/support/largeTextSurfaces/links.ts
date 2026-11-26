@@ -197,8 +197,8 @@ const reachRestore: SurfaceRow['reach'] = async (page) => {
 // the backend's success shape (backend:Sonnet/routes/magicAuth.js ("// Success response with info needed by frontend")),
 // with saved availability on (so "Use my saved availability" is pressable), Google off (so Import
 // is absent), an expiry 30 minutes out (so the expiry warning shows), the emoji name as the person
-// and the 30-letter word as the game. The backend sends no game today (found-new, plan 89.6-23
-// SUMMARY), so a real link reads "Game TBD"; the name is answered so the longest text is read.
+// and the 30-letter word as the game. Since R14 (FE a58361b) a real link with no game reads "the
+// upcoming session"; the name is answered here so the longest text is read.
 // The existing-response read is answered with null (no earlier answer).
 const isMagicValidate = (url: URL): boolean => url.pathname.endsWith('/magic-auth/validate');
 const routedValidate = new WeakSet<Page>();
@@ -287,7 +287,10 @@ export const rows: SurfaceRow[] = [
   // spill 2 to 5px out of their 48px gutter at every 200% and font32 cell, a real squeeze that is plan 89.6-20's. Plan
   // 89.6-20 turns this row back on with its fix; the coverage script's --close run fails on any pending row, so the phase
   // cannot close with it off. Changing this is a decision, not a cleanup.
-  { id: 'R03', census: 'R03', kind: 'route', owner: '89.6-20', status: 'pending', state: 'ready', reach: reachAvailability, answers: availabilityAnswers },
+  // AMENDED Phase 89.6-20 (R03 back on): plan 89.6-20 turns this row back on with its time-label fix in the paint grid,
+  // src/app/components/AvailabilityGrid.js ("DECISION Phase 89.6-20 (grid-labels)"); its day headers are measured in
+  // every cell by its own R03-grid row (e2e/support/largeTextSurfaces/planning.ts), which reuses this row's reach.
+  { id: 'R03', census: 'R03', kind: 'route', owner: '89.6-20', status: 'enforced', state: 'ready', reach: reachAvailability, answers: availabilityAnswers },
   { id: 'R06', census: 'R06', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'default', reach: reachGoodbye },
   { id: 'R06-deleted', census: 'R06', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'account deleted', reach: reachGoodbyeDeleted },
   { id: 'R09', census: 'R09', kind: 'route', owner: '89.6-23', status: 'enforced', state: 'signed out', reach: reachInviteAccept, answers: inviteInfoAnswers },
