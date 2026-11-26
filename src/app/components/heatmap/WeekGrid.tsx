@@ -488,7 +488,11 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
   // SEAM 4c: with `maxBodyHeight` the wrapper becomes ONE both-axes scroller and is the element
   // `scrollContainerRef` points at; without it, byte-identical to pre-88.1-02 (`overflow-x-auto`,
   // unbounded height).
-  const scrollerClassName = maxBodyHeight ? 'overflow-auto pb-2' : 'overflow-x-auto pb-2';
+  // AMENDED Phase 89.6-24 (BP-5): the bounded scroller (only the event scheduler's day column passes
+  // maxBodyHeight) keeps 0.5rem of scroll padding, so a cell scrolled into view by the keyboard
+  // shows its whole focus ring, as the dialog shell and Body do (plan 89.6-11). The unbounded arm is
+  // unchanged.
+  const scrollerClassName = maxBodyHeight ? 'overflow-auto pb-2 scroll-p-2' : 'overflow-x-auto pb-2';
 
   return (
     <div

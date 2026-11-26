@@ -408,7 +408,7 @@ function todayStripCell(page: Page): Locator {
  * target. VERIFIED 2026-08-26: that span is rendered by the DESKTOP day header only —
  * src/app/components/EventScheduler.tsx ("{isPhoneViewport && (") gates the week strip on `isPhoneViewport` and the plain-column
  * header on `!isPhoneViewport`, so at 375x667 the desktop day header DOES NOT EXIST. The
- * phone's today site is src/app/components/SchedulerWeekStrip.tsx ("className={today ? 'bg-surface-accent-subtle' : 'bg-surface-card'}"), the OTHER half of the same paired
+ * phone's today site is src/app/components/SchedulerWeekStrip.tsx ("className={today ? 'bg-surface-accent-subtle rounded-t-xs' : 'bg-surface-card rounded-t-xs'}"), the OTHER half of the same paired
  * ternary, and it resolves the SAME `--color-bg-accent-subtle` token because
  * `TODAY_TINT_SCOPE` (src/app/components/EventScheduler.tsx ("const TODAY_TINT_SCOPE = {")) re-points it for the whole subtree.
  * Same token, same tint, same requirement — the reachable half. Substituting the desktop

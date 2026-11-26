@@ -44,6 +44,16 @@ export interface SchedulerWeekStripProps {
 // close ruling P-94). The `d` token, not `dd`: a single-digit day is spoken "5", never "05".
 export const SPOKEN_DAY_NAME_FORMAT = 'EEEE d';
 
+/* DECISION Phase 89.6-24 (today-cue): today is underlined (2px, the accent ink) as well as tinted,
+   so it is not told by colour alone (WCAG 1.4.1), chosen OVER the word 'Today' (new copy needs the
+   owner's ratification), OVER bold (it shifts the day label's width in the desktop header) and OVER
+   a dot (a second element that shrinks out of sight at normal text). Shown at look 2 with printed
+   values (deltas ruling 5). The one class string, used by the strip's today date number below and
+   by the desktop day header's today label in src/app/components/EventScheduler.tsx ("TODAY_CUE_CLASS}"); the underline
+   takes the element's own ink, so it is the accent on both, and it is not a colour class (the
+   T-88.1-39 one-colour-class pin holds). Changing this is a decision, not a cleanup. */
+export const TODAY_CUE_CLASS = 'underline decoration-2 underline-offset-4';
+
 /*
  * DECISION Phase 88.1-12 (CONTEXT D-03 reinterpretation + the strip's ARIA role), two choices, one
  * marker because the second only exists because of the first:
@@ -135,6 +145,8 @@ function StripDayCell({
       // Today is exposed to assistive tech HERE, not by tint alone — the VISUAL today treatment
       // in the header zone below (plan 88.1-13) is colour-only, so this is what carries the state
       // where colour does not reach. Both halves ship; neither is a substitute for the other.
+      // AMENDED Phase 89.6-24 (today-cue): the visual treatment is no longer colour-only; the date
+      // number is also underlined (TODAY_CUE_CLASS above). This attribute is still the spoken half.
       aria-current={today ? 'date' : undefined}
       aria-label={`${dayName}, ${availability}`}
       tabIndex={tabIndex}
@@ -143,7 +155,12 @@ function StripDayCell({
       // No border and no padding: at 375px each cell is 46.7px wide against a 44px floor, so the
       // 2.7px of margin is the entire budget. Selection is drawn with an INSET box-shadow below
       // for exactly that reason — a ring costs no layout, a border costs 2px.
-      className="flex h-14 flex-col overflow-hidden rounded-xs active:opacity-75 transition-opacity duration-100 focus:outline-hidden focus-visible:focus-ring"
+      // AMENDED Phase 89.6-24 (CI-01e): the cell is at least 56px (min-h-14, was a fixed h-14) and
+      // clips nothing (overflow-hidden removed), so at 200% text its two lines grow the cell instead
+      // of being cut; the 2px corners the clip used to draw on its two fills are now on the fills
+      // themselves (rounded-t-xs on the header zone, rounded-b-xs on the wash). GR (owner
+      // 2026-11-22: 'Nothing is squeezed, shrunk, cut or broken to avoid stacking.').
+      className="flex min-h-14 flex-col rounded-xs active:opacity-75 transition-opacity duration-100 focus:outline-hidden focus-visible:focus-ring"
       style={
         selected
           ? { boxShadow: 'inset 0 0 0 2px var(--color-btn-primary-bg)' }
@@ -190,7 +207,7 @@ function StripDayCell({
           rendering this strip OUTSIDE `EventScheduler` would give its today cell the WEAKER
           global accent tint. If that ever happens, move the scope, do not hard-code a colour
           here (`rawColorValues.test.ts` forbids the literal anyway). */}
-      <span className={today ? 'bg-surface-accent-subtle' : 'bg-surface-card'}>
+      <span className={today ? 'bg-surface-accent-subtle rounded-t-xs' : 'bg-surface-card rounded-t-xs'}>
         {/* DECISION Phase 88.6-26 (D-03 / W35): weight 700, chosen OVER 400 and over keeping 500.
             This span is the byte-identical twin of EventHeatmapBackground.js's weekday letter — the
             sibling this cell's header zone was copied from verbatim (see the comment above) — and it
@@ -206,7 +223,7 @@ function StripDayCell({
           aria-hidden="true"
           // Hooked for the T-88.1-39 pin, which asserts exactly ONE colour class per branch here.
           data-testid="strip-day-number"
-          className={`text-xs ${today ? 'text-content-accent' : 'text-content-muted'}`}
+          className={`text-xs ${today ? `text-content-accent ${TODAY_CUE_CLASS}` : 'text-content-muted'}`}
         >
           {format(date, 'd')}
         </span>
@@ -230,7 +247,7 @@ function StripDayCell({
           text-content-secondary (3.04 dark at that step); weight 700 kept. */}
       <span
         aria-hidden="true"
-        className="flex flex-1 items-center justify-center text-xs font-bold text-content-primary"
+        className="flex flex-1 items-center justify-center rounded-b-xs text-xs font-bold text-content-primary"
         style={background ? { backgroundColor: background } : undefined}
       >
         {aggregate > 0 ? aggregate : ''}

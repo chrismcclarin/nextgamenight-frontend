@@ -3237,6 +3237,59 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
   });
 
+  it('89.6-24 drag-edge: the rectangle keeps border-2 and no fill and its edge token clears 3.0 on every scheduler ground in both themes', () => {
+    // Register "[floor, to measure] border-btn-primary drawn as a control edge" (scheduler half).
+    // The drag rectangle drew its 2px edge in the primary fill (purple-600) on whatever cell is under
+    // it: measured 1.0000 on the committed selection fill (both themes), 2.4461 on the dark card,
+    // 1.9159 on the dark today tint and 1.1037 to 1.8739 on the dark availability washes. Its edge is
+    // a graphic a person must see to know what they are selecting (WCAG 1.4.11, 3:1). Every ground a
+    // scheduler cell can draw is read here: the card, the committed selection fill, the today tint
+    // and each CALENDAR_WASH_RAMP step composited over the card. The edge class and the inner outline
+    // class are read from the call site; the rectangle still has no fill (DECISION Phase 88-27).
+    // Measured with src/lib/wcag.ts after: the edge (content-primary) worst case 3.1735 light (on the
+    // selection fill) and 4.5815 dark (on the darkest wash); the inner outline (the card colour) is
+    // 17.9673 light and 13.0642 dark from the edge itself.
+    const src = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'EventScheduler.tsx'), 'utf8'),
+    );
+    const rect = /data-testid="scheduler-drag-rect"\s+className="([^"]*)"/.exec(src);
+    expect(rect, 'LOCATOR: the drag rectangle names its classes').not.toBeNull();
+    const tokens = rect![1].split(/\s+/);
+    expect(tokens, 'the 2px edge').toContain('border-2');
+    expect(tokens.filter((token) => token.startsWith('bg-')), 'no fill (DECISION Phase 88-27)').toEqual([]);
+    const edge = tokens.find((token) => /^border-[a-z]/.test(token) && token !== 'border-2');
+    expect(edge, 'LOCATOR: the rectangle names an edge colour').toBeDefined();
+    const themeBlock = blockOf('theme');
+    const runtimeProp = (key: string): string => {
+      const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
+      if (!ref) throw new TokenContrastParseError(`the class key "${key}" names no @theme inline colour`);
+      return ref[1];
+    };
+    const edgeProp = runtimeProp(edge!.slice('border-'.length));
+    const req = '89.6-24 drag-edge (register border-btn-primary, scheduler half) / 1.4.11';
+    for (const theme of ['light', 'dark'] as const) {
+      const card = resolve(theme, '--color-bg-card');
+      const grounds: Array<[string, string]> = [
+        ['the card', card],
+        ['the committed selection fill', resolve(theme, '--color-btn-primary-bg')],
+        ['the today tint', resolve(theme, '--color-bg-today-tint')],
+      ];
+      CALENDAR_WASH_RAMP.forEach((wash, step) => {
+        const parts = /rgba\((\d+), (\d+), (\d+), ([\d.]+)\)/.exec(wash);
+        if (!parts) throw new TokenContrastParseError(`CALENDAR_WASH_RAMP step ${step + 1} (${wash}) is not rgba(r, g, b, a)`);
+        const hexOf = '#' + [parts[1], parts[2], parts[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+        const composited = blend(hexOf, Number(parts[4]), card);
+        if (composited === null) throw new TokenContrastParseError(`could not composite wash step ${step + 1} over ${card}`);
+        grounds.push([`wash step ${step + 1} over the card`, composited]);
+      });
+      const ink = resolve(theme, edgeProp);
+      for (const [name, ground] of grounds) {
+        const value = ratioHex(ink, ground, `${req} ${edgeProp} on ${name}`);
+        expect(value, `${req} — [${theme}] ${edgeProp} (${ink}) on ${name} (${ground}) measures ${value.toFixed(4)}:1, floor 3.00:1`).toBeGreaterThanOrEqual(3.0);
+      }
+    }
+  });
+
   it('X52d (88.9-68; W45 re-pointed 88.9-52): the collection bar is at least 1.20 from the section card in both themes, its top rule 1.20 from it, its words 4.5 on it', () => {
     // Owner ruling X52d (pick page 10c): the bar reads as a bar against the section card it closes,
     // floor 1.20 (the same floor e2e/profile-look-fixes.spec.ts ("X52d dark bar against the card ground") holds

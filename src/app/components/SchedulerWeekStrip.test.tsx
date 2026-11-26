@@ -13,7 +13,7 @@ import * as React from 'react';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { addDays, format, startOfWeek } from 'date-fns';
-import SchedulerWeekStrip, { stripTabId } from './SchedulerWeekStrip';
+import SchedulerWeekStrip, { stripTabId, TODAY_CUE_CLASS } from './SchedulerWeekStrip';
 
 afterEach(cleanup);
 
@@ -258,7 +258,9 @@ describe('SchedulerWeekStrip — the tint carries a numeric cue and the shared r
       expect(tab.className).not.toMatch(/\bp[xy]?-\d/);
       // 56px tall — the height half of the touch floor, asserted as the authored class because
       // jsdom has no layout (the real box is measured in plan 88.1-14's Playwright spec).
-      expect(tab.className).toContain('h-14');
+      // AMENDED Phase 89.6-24 (CI-01e): at least 56px (min-h-14, read as a whole class: a substring
+      // read of h-14 would stay green on a regression back to the fixed height).
+      expect(tab.className.split(/\s+/)).toContain('min-h-14');
     });
   });
 });
@@ -302,13 +304,14 @@ describe('UI-SPEC §9.3 E9 · overflow — the scheduler week strip after the 10
 });
 
 describe('UI-SPEC §9.3 E9 · long-text — the strip cell clips exactly as it did before the fold', () => {
-  it('keeps the tab cell\'s overflow-hidden — the fold must not change the clip treatment', () => {
+  // AMENDED Phase 89.6-24 (CI-01e): the clip is REMOVED (the cell grows with its text at 200%, it
+  // was cut there), so this pin now holds the opposite half: no clip and no truncate. A wide date
+  // number still cannot push the cell sideways at the sizes the strip shows (the sweep row
+  // D21-scheduler reads the cells at 320 / 200% and both page-zoom widths).
+  it('the tab cell clips nothing and truncates nothing (89.6-24 CI-01e; was: keeps the tab cell\'s overflow-hidden)', () => {
     renderStrip();
-    // The before-fold treatment was `overflow-hidden` on the button, and E9 · long-text requires
-    // the fold to leave it exactly as it was. REMOVING it would let a wide date number push the
-    // 46.7px cell; ADDING a truncate would be a new treatment the fold introduced. Both red here.
     for (const tab of screen.getAllByRole('tab')) {
-      expect(tab.className).toMatch(/\boverflow-hidden\b/);
+      expect(tab.className).not.toMatch(/\boverflow-hidden\b/);
       expect(tab.className).not.toMatch(/\b(truncate|text-ellipsis|line-clamp-)/);
     }
   });
@@ -336,5 +339,42 @@ describe('D-03 / W35 — the two weight settlements this plan records at the sou
     expect(letter?.className).toMatch(/\btext-content-muted\b/);
     expect(num?.className).toMatch(/\btext-content-muted\b/);
     expect(num?.className).not.toMatch(/\bfont-(bold|medium|semibold)\b/);
+  });
+});
+
+// Phase 89.6-24, CI-01b (WCAG 1.4.1) and CI-01e. Today was told by colour alone (an amber tint and
+// the accent ink); it now also carries a shape, a 2px underline under the date number in the accent
+// ink (TODAY_CUE_CLASS, beside the one colour class, so the T-88.1-39 pin above still holds). And the
+// cell had a fixed 56px height with overflow-hidden, so at 200% text its two lines were cut; it now
+// grows (min-h-14, no clip), and its two square-cornered fills carry the 2px corners the clip used
+// to draw. jsdom lays nothing out: class pins; the sweep row D21-scheduler measures the cells
+// (e2e/support/largeTextSurfaces/event.ts ("strip text runs past its cell")).
+describe('89.6-24 — today by shape, and cells that never clip', () => {
+  it("89.6-24 today-cue: the strip's today cell carries the TODAY_CUE_CLASS underline; no other day does", () => {
+    expect(TODAY_CUE_CLASS).toBe('underline decoration-2 underline-offset-4');
+    const todayMonday = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const thisWeek = Array.from({ length: 7 }, (_, i) => addDays(todayMonday, i));
+    renderStrip({ dates: thisWeek });
+    const cue = TODAY_CUE_CLASS.split(' ');
+    for (const tab of screen.getAllByRole('tab')) {
+      const number = tab.querySelector('[data-testid="strip-day-number"]') as HTMLElement;
+      const tokens = number.className.split(/\s+/);
+      if (tab.getAttribute('aria-current') === 'date') expect(tokens).toEqual(expect.arrayContaining(cue));
+      else for (const token of cue) expect(tokens, `${tab.getAttribute('aria-label')}: ${token}`).not.toContain(token);
+    }
+  });
+
+  it('89.6-24 CI-01e: no strip cell carries a fixed height with overflow-hidden, and its two fills keep the rounded corners', () => {
+    renderStrip();
+    for (const tab of screen.getAllByRole('tab')) {
+      const tokens = tab.className.split(/\s+/);
+      expect(tokens).toContain('min-h-14');
+      expect(tokens).not.toContain('h-14');
+      expect(tokens).not.toContain('overflow-hidden');
+      const [header, wash] = Array.from(tab.children) as HTMLElement[];
+      expect(header.className.split(/\s+/), 'the header-zone span').toContain('rounded-t-xs');
+      expect(wash.getAttribute('aria-hidden'), 'the second child is the wash span').toBe('true');
+      expect(wash.className.split(/\s+/), 'the wash span').toContain('rounded-b-xs');
+    }
   });
 });

@@ -53,7 +53,7 @@ import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityCol
 import { WeekGrid, type WeekGridReadData } from './heatmap/WeekGrid';
 import { maxAvailabilityPerDay, peakHourForDay } from './heatmap/dayAggregate';
 import { slotCellName } from './heatmap/slotCellName';
-import SchedulerWeekStrip, { SPOKEN_DAY_NAME_FORMAT, stripTabId } from './SchedulerWeekStrip';
+import SchedulerWeekStrip, { SPOKEN_DAY_NAME_FORMAT, stripTabId, TODAY_CUE_CLASS } from './SchedulerWeekStrip';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import {
   usePaintGesture,
@@ -84,8 +84,12 @@ const GRID_MAX_HEIGHT = '600px'; // parity with the outgoing h-[600px] container
  * The three inputs above are fixed by prior decisions (`Modal`'s max-h-[90dvh], src/app/components/Modal.tsx ("flex max-h-[90dvh] w-[calc(100%-1.5rem)]"), its phone gutter
  * `w-[calc(100%-1.5rem)]`, and `Modal.Body`'s `p-3`). They are inputs to this number, NOT
  * variables — overriding any of them to buy height here re-opens DEF-88-17-01 / 88-32 ruling 6.
+ *
+ * AMENDED Phase 89.6-24 (CI-01f): the window follows text size like the rows it shows; at 200% the
+ * dialog scrolls as one below 12rem (plan 89.6-11, O-8 C), so the taller window cannot trap the page.
+ * 19.0625rem is exactly 305px at a 16px root (305 / 16), so normal text is unchanged; 19rem would be 304px.
  */
-const PHONE_GRID_MAX_HEIGHT = '305px';
+const PHONE_GRID_MAX_HEIGHT = '19.0625rem';
 
 export interface HeatmapMember {
   user_id?: string;
@@ -274,8 +278,8 @@ const NAV_BUTTON_CLASS =
    this at the `surface-*` name would silently un-ship the owner's pick with nothing going red.
 
    THE SCOPE IS THE WHOLE SCHEDULER SUBTREE, WHICH IS A TRADE, NOT AN ACCIDENT: it is what lets the
-   desktop day header (`renderDayHeader`) and the phone strip cell (src/app/components/SchedulerWeekStrip.tsx ("today ? 'bg-surface-accent-subtle'"),
-   `today ? 'bg-surface-accent-subtle'`)
+   desktop day header (`renderDayHeader`) and the phone strip cell (src/app/components/SchedulerWeekStrip.tsx ("today ? 'bg-surface-accent-subtle rounded-t-xs'"),
+   `today ? 'bg-surface-accent-subtle rounded-t-xs'`)
    share one declaration, and both are today sites. The cost is that ANY FUTURE
    `bg-surface-accent-subtle` ADDED INSIDE THIS COMPONENT WOULD ALSO GET THE STRONGER TINT — today
    there are exactly two, both today sites (censused 2026-08-24). If a non-today accent-subtle
@@ -1229,7 +1233,9 @@ export default function EventScheduler({
          consumers to style one of them. Removing the bleed shrinks the treatment: a decision.
          AMENDED Phase 88.6.1-85 (close ruling P-94): WeekGrid gained a NAME seam (SEAM 7,
          `dayHeaderLabel`), so the header is spoken as the full day; it styles nothing, and the
-         styling seam rejected above stays rejected. */
+         styling seam rejected above stays rejected.
+         AMENDED Phase 89.6-24 (today-cue): today's label is also underlined, so today is not told
+         by colour alone; the cue and its reasons are src/app/components/SchedulerWeekStrip.tsx ("DECISION Phase 89.6-24 (today-cue)"). */
   const renderDayHeader = useCallback(
     (col: number) => {
       const day = columnDates[col];
@@ -1238,7 +1244,7 @@ export default function EventScheduler({
         <span
           className={`block -my-2 py-2 ${today ? 'bg-surface-accent-subtle' : 'bg-surface-card'}`}
         >
-          <span className={today ? 'text-content-accent' : 'text-content-primary'}>
+          <span className={today ? `text-content-accent ${TODAY_CUE_CLASS}` : 'text-content-primary'}>
             {format(day, 'dd EEE')}
           </span>
         </span>
@@ -1265,12 +1271,18 @@ export default function EventScheduler({
      This is NOT the committed-selection block — that one IS filled, see the marker in `getCell`
      above. The two states are drawn at two sites so they cannot be merged by accident.
      `pointer-events-none` is load-bearing too: a layer that consumed pointer events would
-     swallow the very drag it is drawing. */
+     swallow the very drag it is drawing.
+     AMENDED Phase 89.6-24 (drag-edge): the 2px edge was 1.0000 on the committed selection fill
+     (both themes) and 1.1037 on the dark wash (2.4461 on the dark card), drawn in the primary fill;
+     it is now two-tone, the primary ink with a 1px card-colour line just inside it (the O-1 ring's
+     mechanism), so one of the two tones stands out on any ground: the edge alone is 3.1735 at worst
+     (light, on the selection fill) and 4.5815 (dark, on the darkest wash), pinned by
+     src/app/tokenContrast.test.ts ("89.6-24 drag-edge: the rectangle keeps border-2"). Still no fill. */
   const dragOverlay: React.ReactNode = dragRect ? (
     <div
       aria-hidden="true"
       data-testid="scheduler-drag-rect"
-      className="absolute pointer-events-none border-2 border-btn-primary rounded-sm z-10"
+      className="absolute pointer-events-none border-2 border-content-primary outline outline-1 -outline-offset-[3px] outline-surface-card rounded-sm z-10"
       style={{
         top: dragRect.top,
         left: dragRect.left,

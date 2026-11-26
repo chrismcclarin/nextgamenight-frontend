@@ -299,7 +299,9 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
     expect(scheduler).toMatch(/today \? 'bg-surface-accent-subtle' : 'bg-surface-card'/);
     // the retired exemplar's own in-file warning was that `isTodayDate` drove the day number's
     // `text-content-accent` too and "the two must agree" — so the PAIR is asserted, not just the surface.
-    expect(scheduler).toMatch(/today \? 'text-content-accent' : 'text-content-primary'/);
+    // AMENDED Phase 89.6-24 (today-cue): the today arm also carries the 89.6-24 shape cue (the
+    // underline class string) beside its one colour; still a pair, still mutually exclusive.
+    expect(scheduler).toMatch(/today \? `text-content-accent \$\{TODAY_CUE_CLASS\}` : 'text-content-primary'/);
 
     const grouplist = fs.readFileSync(path.join(SRC, 'app/components/grouplist.js'), 'utf8');
     // AMENDED Phase 88.9-27 (owner ruling O21b / pick O02d1): the home card's photo dim is gone,

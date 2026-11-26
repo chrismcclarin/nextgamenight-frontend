@@ -1282,8 +1282,9 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
  * (W47 part 1): call it after openVisualScheduler.
  */
 async function expectDayLabelsComplete(page: Page): Promise<void> {
-  // The strip cell is `overflow-hidden`, so a label that no longer fits is
-  // clipped SILENTLY — scrollWidth vs clientWidth is what makes that visible.
+  // The strip cell was `overflow-hidden` until plan 89.6-24 (CI-01e), so a label that no longer fit
+  // was clipped SILENTLY; it now grows and clips nothing, and a label wider than its cell would
+  // spill instead. Either way scrollWidth vs clientWidth is what makes it visible.
   // The stacked single-letter-over-date shape (copied verbatim from
   // src/app/components/EventHeatmapBackground.js ("aria-label={dayNames[i]} tabIndex={-1}"), `role="columnheader" className="text-center"`) is the
   // M-03 fix; this is its gate.

@@ -217,10 +217,12 @@ describe('Req 4/5 accent sweep — every failing light-surface accent site reads
 
   it('6. Req 5 — the today ternary moved its TOKEN, not its SHAPE', () => {
     // `DECISION 88-27 D-32` is literal: "token VALUE only, never the ternary shape". Pinned at
-    // the production site (src/app/components/EventScheduler.tsx ("today ? 'text-content-accent' : 'text-content-primary'")), paired-ternary and mutually exclusive —
-    // NOT a static surface with an appended tint. src/app/tintTreatment.test.ts ("'text-content-accent' : 'text-content-primary'/);") pins the same
+    // the production site (src/app/components/EventScheduler.tsx ("text-content-accent ${TODAY_CUE_CLASS}")), paired-ternary and mutually exclusive —
+    // NOT a static surface with an appended tint. src/app/tintTreatment.test.ts ("the today arm also carries the 89.6-24 shape cue") pins the same
     // shape independently, one layer up.
+    // AMENDED Phase 89.6-24 (today-cue): the today arm also carries the shape cue (the underline
+    // class string), beside its one colour; the arms are still paired and mutually exclusive.
     const scheduler = read('app/components/EventScheduler.tsx');
-    expect(scheduler).toMatch(/today \? 'text-content-accent' : 'text-content-primary'/);
+    expect(scheduler).toMatch(/today \? `text-content-accent \$\{TODAY_CUE_CLASS\}` : 'text-content-primary'/);
   });
 });

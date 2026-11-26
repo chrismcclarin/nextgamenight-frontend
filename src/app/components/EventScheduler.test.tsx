@@ -55,6 +55,8 @@
 // names. Chosen OVER keeping the old name as a test anchor: that would have kept the defect to
 // spare a locator. The `columnHeaders()` / `toHaveLength(7)` pins the paragraph above protects
 // are untouched. Changing this is a decision, not a cleanup.
+import fs from 'node:fs';
+import path from 'node:path';
 import * as React from 'react';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -124,6 +126,7 @@ vi.mock('@/lib/hooks/usePhoneViewport', async (importOriginal) => {
 import type { ComponentType } from 'react';
 import EventSchedulerDefault from './EventScheduler';
 import { PHONE_MEDIA_QUERY } from '@/lib/hooks/usePhoneViewport';
+import { TODAY_CUE_CLASS } from './SchedulerWeekStrip';
 
 // EventScheduler is still a `.js` component (the FE is mid JS->TS migration, WS-12), so its
 // INFERRED prop type marks every prop required and narrows the defaulted ones to `null`.
@@ -1041,9 +1044,15 @@ describe('EventScheduler — the live selection rectangle (DECISION Phase 88-27,
     render(<EventScheduler initialDate={WEEK_N} />);
     pointerAt('pointerDown', 4, 2);
 
+    // AMENDED Phase 89.6-24 (drag-edge): the edge is the primary ink with a card-colour line just
+    // inside it (was the primary fill, under 3.0 on most grounds); the ratios are pinned in
+    // src/app/tokenContrast.test.ts ("89.6-24 drag-edge: the rectangle keeps border-2"). Whole-class reads.
     const el = rect() as HTMLElement;
-    expect(el.className).toContain('border-2');
-    expect(el.className).toContain('border-btn-primary');
+    const tokens = el.className.split(/\s+/);
+    expect(tokens).toContain('border-2');
+    expect(tokens).toEqual(expect.arrayContaining(['border-content-primary', 'outline', 'outline-1', '-outline-offset-[3px]', 'outline-surface-card']));
+    expect(tokens).not.toContain('border-btn-primary');
+    expect(tokens.filter((token) => token.startsWith('bg-'))).toEqual([]);
     expect(el.className).toContain('pointer-events-none');
     expect(el.style.backgroundColor).toBe('');
     expect(el.getAttribute('aria-hidden')).toBe('true');
@@ -1467,6 +1476,25 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
           expect(html).not.toContain('bg-surface-accent-subtle');
           expect(html).not.toContain('text-content-accent');
         }
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  // Phase 89.6-24, CI-01b (WCAG 1.4.1): the desktop today header's label also carries the shape cue
+  // the strip carries (TODAY_CUE_CLASS, a 2px underline in the label's accent ink).
+  it('89.6-24 today-cue: the desktop today header carries the TODAY_CUE_CLASS underline; no other day does', () => {
+    expect(TODAY_CUE_CLASS).toBe('underline decoration-2 underline-offset-4');
+    const { restore } = renderAtViewport(DESKTOP, <EventScheduler initialDate={TODAY} />);
+    try {
+      const headers = screen.getAllByRole('columnheader');
+      const cue = TODAY_CUE_CLASS.split(' ');
+      headers.forEach((header) => {
+        const label = Array.from(header.querySelectorAll('span')).find((span) => span.textContent === span.innerHTML && span.textContent !== '') as HTMLElement;
+        const tokens = label.className.split(/\s+/);
+        if (header.textContent === format(TODAY, 'dd EEE')) expect(tokens).toEqual(expect.arrayContaining(cue));
+        else for (const token of cue) expect(tokens, `${header.textContent}: ${token}`).not.toContain(token);
       });
     } finally {
       restore();
@@ -2394,5 +2422,19 @@ describe('EventScheduler — the day header is named with the full day (88.6.1-8
     renderMondayDayView();
     expect(columnHeaders()).toEqual(['05 Mon']);
     expect(columnHeaders()).toEqual([format(MONDAY_OCT_5, 'dd EEE')]);
+  });
+});
+
+// Phase 89.6-24, CI-01f: the phone day column's window was a fixed 305px, so at 200% text it showed
+// fewer rows than at normal text while the rows it shows grew. It is a rem length now, 305px at a
+// 16px root (19.0625rem), so it grows with the text like the rows inside it. Read from source: the
+// window height is a prop of WeekGrid that jsdom lays out nowhere.
+describe('89.6-24 CI-01f — the phone day window follows text size', () => {
+  it('89.6-24 CI-01f: PHONE_GRID_MAX_HEIGHT is a rem length', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'EventScheduler.tsx'), 'utf8');
+    const decl = /const PHONE_GRID_MAX_HEIGHT = '([^']+)';/.exec(src);
+    expect(decl, 'LOCATOR: the phone window constant').not.toBeNull();
+    expect(decl![1]).toMatch(/^\d+(\.\d+)?rem$/);
+    expect(parseFloat(decl![1]) * 16, 'the window is 305px at a 16px root (normal text unchanged)').toBe(305);
   });
 });
