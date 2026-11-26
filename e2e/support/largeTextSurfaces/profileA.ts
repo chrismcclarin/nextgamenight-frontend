@@ -11,10 +11,12 @@
 // DECISION Phase 89.6-22 (identity-room): the identity row is marked data-room at run time so a title squeezed by the picture is read against the whole row, chosen OVER reading the identity row as root (the email line under the title is plan 89.6-27's truncate) and OVER a src attribute (no src hook for a test). Changing this is a decision, not a cleanup.
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
+import { routeGroupRead } from '../groupRead';
 import { settleAnimations } from '../inFlight';
 import { readCellUnderExceptions, readPageZoomCellUnderExceptions } from '../largeTextExceptions';
+import { routePlanningPolls } from '../planningPolls';
 import { scrubbedFetch } from '../scrubbedFetch';
-import { THIRTY_LETTER_WORD, expectLargeTextCell, expectPageZoomUsable } from '../wordLines';
+import { THIRTY_LETTER_WORD, TWO_WORD_NAME, expectLargeTextCell, expectPageZoomUsable } from '../wordLines';
 import type { SurfaceRow, SweepCell } from './index';
 
 const PATTERNS = [
@@ -328,10 +330,215 @@ const identityExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cel
   if (!marked) throw new Error(`R16-identity ${cell.id}: the identity row lost its data-room mark`);
 };
 
+// ---------------------------------------------------------------------------------------------
+// THE SCHEDULE DIALOGS AND THE RECURRING CHECK-INS LIST (Phase 89.6-41: census D25, D26, R08).
+// Create Schedule and Edit Schedule are opened from the planning page's inline Recurring
+// Check-ins card (src/app/components/PromptScheduleManager.js ("Recurring Check-ins")), which only
+// an owner or admin sees; the CI login owns the E2E group. The card reads
+// GET /groups/<id>/prompt-settings, a GET that WRITES: every row here answers it in the browser
+// with a staged body (answerSettings), so the CI login's real schedules are never read or touched.
+// The page's poll reads are staged by plan 89.6-20's one helper with no poll at all, and the group
+// read with the two-word name, as the planning rows stage them
+// (e2e/support/largeTextSurfaces/planning.ts ("async function openPlanning(")). Only presses that
+// open state are made: + New Schedule, the phone kebab and its Edit or Delete. Create Schedule,
+// Update Schedule, Confirm Delete, Pause and Resume are NEVER pressed; the guard holds every write.
+
+// The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
+// owns. No fallback id, as in the planning rows.
+const scheduleGroupId = (): string => {
+  const id = process.env.E2E_GROUP_ID ?? '';
+  if (id === '') throw new Error('E2E_GROUP_ID must be set: the CI step that runs scripts/e2e-fixtures.js exports it, and the schedule rows open that group');
+  return id;
+};
+
+// Synthetic ids in a range no seed owns.
+const STAGED_GAME = { id: '89641000-0000-4000-8000-000000000010', name: 'Twilight Imperium: Fourth Edition', image_url: null, min_players: 3, max_players: 6 };
+const STAGED_MEMBERS = [
+  { id: '89641000-0000-4000-8000-000000000021', user_id: 'auth0|e2e-89-6-41-ana', username: 'E2E Ana' },
+  { id: '89641000-0000-4000-8000-000000000022', user_id: 'auth0|e2e-89-6-41-ben', username: 'E2E Ben' },
+];
+const SCHEDULE_A = {
+  id: '89641000-0000-4000-8000-000000000001',
+  template_name: 'Thursday Strategy Night',
+  schedule_day_of_week: 3,
+  schedule_time: '19:00',
+  schedule_timezone: 'America/Los_Angeles',
+  game_id: STAGED_GAME.id,
+  default_deadline_hours: 72,
+  default_token_expiry_hours: 168,
+  min_participants: 3,
+  selected_member_ids: STAGED_MEMBERS.map((member) => member.id),
+  is_active: true,
+};
+const SCHEDULE_B = {
+  ...SCHEDULE_A,
+  id: '89641000-0000-4000-8000-000000000002',
+  template_name: 'Saturday Afternoon Campaign Session',
+  schedule_day_of_week: 6,
+  schedule_time: '14:00',
+  game_id: null,
+  is_active: false,
+};
+// Passes src/lib/schemas/prompts.ts ("export const promptSettingsSchema = z"), so nothing soft-fails to empty.
+const SETTINGS_WITH_SCHEDULES = { id: '89641000-0000-4000-8000-000000000000', schedules: [SCHEDULE_A, SCHEDULE_B], games: [STAGED_GAME], members: STAGED_MEMBERS };
+
+/** Answer the group's prompt-settings read (a GET that writes) with `body`, in the browser. */
+const answerSettings =
+  (body: unknown): NonNullable<SurfaceRow['answers']> =>
+  (url) =>
+    /\/groups\/[^/]+\/prompt-settings$/.test(url.pathname) ? body : undefined;
+
+const planningStaged = new WeakSet<Page>();
+const recurringHeading = (page: Page): Locator => page.getByRole('heading', { level: 3, name: 'Recurring Check-ins', exact: true });
+
+/**
+ * Open the planning page at 375 x 667 with no poll staged and wait for the inline Recurring
+ * Check-ins card. STOPS when the card is absent (the CI login is no longer an owner or admin), when
+ * the poll-error banner shows (the staging is wrong: the row would read a page production never
+ * shows, review M082) or when the text is not normal (the sweep's cell order changed).
+ */
+async function reachRecurring(page: Page): Promise<void> {
+  if (!planningStaged.has(page)) {
+    planningStaged.add(page);
+    await routeGroupRead(page, scheduleGroupId(), (group) => ({ ...group, name: TWO_WORD_NAME }));
+    await routePlanningPolls(page, { groupId: scheduleGroupId(), polls: [], activeId: null, respondents: [] });
+  }
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto(`/groupPlanning?group_id=${scheduleGroupId()}`);
+  try {
+    await recurringHeading(page).waitFor({ state: 'visible', timeout: 20_000 });
+  } catch {
+    throw new Error('89.6-41: STOP, the Recurring Check-ins card did not show on the planning page: the CI login is no longer an owner or admin of the E2E group');
+  }
+  const banner = await page.getByText("Couldn't load the poll responses").count();
+  if (banner > 0) throw new Error('89.6-41: STOP, the poll-error banner shows on the planning page: the poll staging is wrong');
+  await expectNormalText(page, '89.6-41 reachRecurring');
+}
+
+interface ActionPair {
+  dialog: { left: number; right: number; width: number };
+  stacked: boolean;
+  rootPx: number;
+  buttons: Array<{ label: string; left: number; right: number; top: number; bottom: number; width: number; height: number }>;
+  row: { right: number };
+}
+
+/**
+ * Scroll each of the dialog's two action buttons into view and measure it, with the dialog box,
+ * the action row's right edge and whether the dialog is narrower than its 12rem container step.
+ */
+async function readActionPair(dialog: Locator, submit: string): Promise<ActionPair> {
+  const labels = ['Cancel', submit];
+  const buttons: ActionPair['buttons'] = [];
+  for (const label of labels) {
+    const button = dialog.getByRole('button', { name: label, exact: true });
+    await button.scrollIntoViewIfNeeded();
+    buttons.push({ label, ...(await button.evaluate((el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; })) });
+  }
+  const frame = await dialog.evaluate((el) => {
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const box = el.getBoundingClientRect();
+    return { dialog: { left: box.left, right: box.right, width: box.width }, stacked: el.clientWidth < 12 * rootPx, rootPx };
+  });
+  const row = await dialog.getByRole('button', { name: submit, exact: true }).evaluate((el) => ({ right: (el.parentElement as HTMLElement).getBoundingClientRect().right }));
+  return { ...frame, buttons, row };
+}
+
+const r1 = (value: number): string => value.toFixed(1);
+
+/** Print one short line for the CI log (a passing test keeps nothing else) and attach the whole read. */
+async function recordInputFit(dialog: Locator, rowId: string, cell: SweepCell): Promise<void> {
+  const inputs = await dialog.locator('input').evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const input = node as HTMLInputElement;
+      const label = input.id ? document.querySelector(`label[for="${CSS.escape(input.id)}"]`)?.textContent?.trim() : undefined;
+      return {
+        name: input.getAttribute('aria-label') ?? label ?? input.placeholder ?? input.name ?? '',
+        type: input.type,
+        placeholder: input.placeholder,
+        scrollWidth: input.scrollWidth,
+        clientWidth: input.clientWidth,
+      };
+    }),
+  );
+  await test.info().attach(`input-fit-${cell.id}.json`, { body: JSON.stringify(inputs, null, 2), contentType: 'application/json' });
+  const text = inputs.filter((input) => input.type !== 'checkbox' && input.type !== 'radio' && input.type !== 'hidden');
+  process.stdout.write(`ZZ41 input-fit ${rowId} ${cell.id}: ${text.map((input) => `${input.name.slice(0, 24)}=${input.scrollWidth}/${input.clientWidth}`).join(' | ')}\n`);
+}
+
+/**
+ * The schedule dialogs' extras, every cell: (a) the two action buttons, each scrolled into view,
+ * lie inside the dialog box horizontally and are at least 44px tall; below the 12rem dialog
+ * container they are equal width with Cancel above, elsewhere they share a top; (b) the title, with
+ * the dialog scrolled to its top, holds the cell's checks; (c) the input fit is recorded, never
+ * asserted (text cut inside an input box goes to plan 89.6-34's list). One joined line is thrown.
+ */
+const scheduleDialogExtras =
+  (rowId: string, title: string, submit: string): NonNullable<SurfaceRow['extras']> =>
+  async (page: Page, cell: SweepCell) => {
+    const tag = `${rowId} ${cell.id}`;
+    const dialog = page.getByRole('dialog', { name: title, exact: true });
+    const problems: string[] = [];
+    const pair = await readActionPair(dialog, submit);
+    for (const button of pair.buttons) {
+      if (button.left < pair.dialog.left - 0.5 || button.right > pair.dialog.right + 0.5) problems.push(`${tag}: "${button.label}", scrolled into view, runs out of the dialog box sideways (${r1(button.left)} to ${r1(button.right)}; dialog ${r1(pair.dialog.left)} to ${r1(pair.dialog.right)})`);
+      if (button.height < 43.5) problems.push(`${tag}: "${button.label}" is ${r1(button.height)}px tall, under 44`);
+    }
+    const [cancel, action] = pair.buttons;
+    if (pair.stacked) {
+      if (Math.abs(cancel.width - action.width) > 0.5) problems.push(`${tag}: below the 12rem dialog the two buttons are not equal width (Cancel ${r1(cancel.width)}, ${submit} ${r1(action.width)})`);
+      if (cancel.bottom > action.top + 0.5) problems.push(`${tag}: below the 12rem dialog Cancel is not above ${submit} (Cancel bottom ${r1(cancel.bottom)}, ${submit} top ${r1(action.top)})`);
+    } else if (Math.abs(cancel.top - action.top) > 0.5) {
+      problems.push(`${tag}: at 12rem and over Cancel and ${submit} do not share a top (${r1(cancel.top)} and ${r1(action.top)})`);
+    }
+    process.stdout.write(`ZZ41 actions ${tag}: stacked=${pair.stacked} dialog=${r1(pair.dialog.width)} cancel=${r1(cancel.width)}x${r1(cancel.height)}@${r1(cancel.top)} action=${r1(action.width)}x${r1(action.height)}@${r1(action.top)}\n`);
+    // Imported when the extras run: dialogs.ts imports this module (its D24 row reaches the same card).
+    const { toDialogTop } = await import('./dialogs');
+    await toDialogTop(dialog);
+    try {
+      await expectPart(dialog.getByRole('heading', { name: title, exact: true }), cell, `${tag} title`);
+    } catch (error) {
+      problems.push(firstLine(error));
+    }
+    await recordInputFit(dialog, rowId, cell);
+    if (problems.length > 0) throw new Error(problems.join(' || '));
+  };
+
+/** At normal text, at 375 and at 320: Cancel and the submit share a top and the submit ends the row (today's look held). */
+async function expectActionRowAtNormalText(page: Page, dialog: Locator, rowId: string, submit: string): Promise<void> {
+  for (const size of [
+    { width: 375, height: 667 },
+    { width: 320, height: 568 },
+  ]) {
+    await page.setViewportSize(size);
+    await settleFrames(page);
+    await settleAnimations(dialog);
+    const pair = await readActionPair(dialog, submit);
+    const [cancel, action] = pair.buttons;
+    expect(Math.abs(cancel.top - action.top), `${rowId}: at ${size.width} with normal text Cancel and ${submit} do not share a top (${r1(cancel.top)} and ${r1(action.top)})`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(action.right - pair.row.right), `${rowId}: at ${size.width} with normal text ${submit} does not end its row (${r1(action.right)} and ${r1(pair.row.right)})`).toBeLessThanOrEqual(0.5);
+  }
+  await page.setViewportSize({ width: 375, height: 667 });
+  await settleFrames(page);
+}
+
+// D25: Create Schedule, opened by + New Schedule over two staged schedules.
+const reachCreateSchedule: SurfaceRow['reach'] = async (page) => {
+  await reachRecurring(page);
+  await page.getByRole('button', { name: '+ New Schedule', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create Schedule', exact: true });
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(dialog);
+  await expectActionRowAtNormalText(page, dialog, 'D25', 'Create Schedule');
+  const { toDialogTop } = await import('./dialogs');
+  await toDialogTop(dialog);
+  return { root: dialog, dialog };
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R16-availability', census: 'R16', kind: 'route', owner: '89.6-22', status: 'enforced', reach: reachAvailability, answers: answerPatterns, extras: availabilityExtras },
   { id: 'R16-identity', census: 'R16', kind: 'route', owner: '89.6-22', state: 'identity', status: 'enforced', reach: reachIdentity, answers: answerPatterns, extras: identityExtras },
-  { id: 'D25', census: 'D25', kind: 'dialog', owner: '89.6-41', status: 'pending' },
+  { id: 'D25', census: 'D25', kind: 'dialog', owner: '89.6-41', status: 'enforced', reach: reachCreateSchedule, answers: answerSettings(SETTINGS_WITH_SCHEDULES), extras: scheduleDialogExtras('D25', 'Create Schedule', 'Create Schedule') },
   { id: 'D26', census: 'D26', kind: 'dialog', owner: '89.6-41', status: 'pending' },
   { id: 'R16-specific', census: 'R16', kind: 'route', owner: '89.6-22', state: 'specific-dates', status: 'enforced', reach: reachSpecific, answers: answerPatterns, extras: specificExtras },
   { id: 'D32', census: 'D32', kind: 'dialog', owner: '89.6-22', status: 'enforced', reach: reachDisconnect, answers: answerConnected },
