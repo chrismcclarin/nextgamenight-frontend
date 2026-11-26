@@ -381,9 +381,11 @@ const SCHEDULE_B = {
 };
 // Passes src/lib/schemas/prompts.ts ("export const promptSettingsSchema = z"), so nothing soft-fails to empty.
 const SETTINGS_WITH_SCHEDULES = { id: '89641000-0000-4000-8000-000000000000', schedules: [SCHEDULE_A, SCHEDULE_B], games: [STAGED_GAME], members: STAGED_MEMBERS };
+// The empty body, the shape of e2e/recurring-checkins-phone.spec.ts ("const EMPTY_SETTINGS_BODY = { id: null, schedules: [], games: [], members: [] };").
+export const SETTINGS_EMPTY = { id: null, schedules: [], games: [], members: [] };
 
 /** Answer the group's prompt-settings read (a GET that writes) with `body`, in the browser. */
-const answerSettings =
+export const answerSettings =
   (body: unknown): NonNullable<SurfaceRow['answers']> =>
   (url) =>
     /\/groups\/[^/]+\/prompt-settings$/.test(url.pathname) ? body : undefined;
@@ -397,7 +399,7 @@ const recurringHeading = (page: Page): Locator => page.getByRole('heading', { le
  * the poll-error banner shows (the staging is wrong: the row would read a page production never
  * shows, review M082) or when the text is not normal (the sweep's cell order changed).
  */
-async function reachRecurring(page: Page): Promise<void> {
+export async function reachRecurring(page: Page): Promise<void> {
   if (!planningStaged.has(page)) {
     planningStaged.add(page);
     await routeGroupRead(page, scheduleGroupId(), (group) => ({ ...group, name: TWO_WORD_NAME }));
@@ -447,7 +449,7 @@ async function readActionPair(dialog: Locator, submit: string): Promise<ActionPa
 const r1 = (value: number): string => value.toFixed(1);
 
 /** Print one short line for the CI log (a passing test keeps nothing else) and attach the whole read. */
-async function recordInputFit(dialog: Locator, rowId: string, cell: SweepCell): Promise<void> {
+export async function recordInputFit(dialog: Locator, rowId: string, cell: SweepCell): Promise<void> {
   const inputs = await dialog.locator('input').evaluateAll((nodes) =>
     nodes.map((node) => {
       const input = node as HTMLInputElement;
@@ -535,11 +537,48 @@ const reachCreateSchedule: SurfaceRow['reach'] = async (page) => {
   return { root: dialog, dialog };
 };
 
+/** Open the phone kebab named Schedule actions (the nth, from 0) and return the list its trigger names. */
+async function openScheduleActions(page: Page, nth: number): Promise<Locator> {
+  const trigger = page.getByRole('button', { name: 'Schedule actions', exact: true }).nth(nth);
+  await trigger.waitFor({ state: 'visible', timeout: 15_000 });
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-controls', /.+/);
+  return page.locator(`[id="${await trigger.getAttribute('aria-controls')}"]`);
+}
+
+// D26: Edit Schedule, opened from the first schedule's phone kebab (Edit), pre-filled with
+// SCHEDULE_A: its template name, its game and both members ticked.
+const reachEditSchedule: SurfaceRow['reach'] = async (page) => {
+  await reachRecurring(page);
+  const list = await openScheduleActions(page, 0);
+  await list.getByRole('button', { name: 'Edit', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Schedule', exact: true });
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  await expect(dialog.getByRole('textbox', { name: 'Template Name', exact: true })).toHaveValue(SCHEDULE_A.template_name);
+  await expect(dialog.locator('#schedule-game-name')).toHaveValue(STAGED_GAME.name);
+  for (const member of STAGED_MEMBERS) await expect(dialog.locator(`[id="member-select-${member.id}"]`)).toBeChecked();
+  await settleAnimations(dialog);
+  const { toDialogTop } = await import('./dialogs');
+  await toDialogTop(dialog);
+  return { root: dialog, dialog };
+};
+
+// R08-noschedules: the inline card with no schedule (the No schedules yet empty state). The root is
+// the card: the nearest ancestor of the Recurring Check-ins heading that is a rounded card.
+const reachNoSchedules: SurfaceRow['reach'] = async (page) => {
+  await reachRecurring(page);
+  await page.getByRole('heading', { name: 'No schedules yet', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  const root = recurringHeading(page).locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " rounded-card ")][1]');
+  await settleAnimations(root);
+  return { root };
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R16-availability', census: 'R16', kind: 'route', owner: '89.6-22', status: 'enforced', reach: reachAvailability, answers: answerPatterns, extras: availabilityExtras },
   { id: 'R16-identity', census: 'R16', kind: 'route', owner: '89.6-22', state: 'identity', status: 'enforced', reach: reachIdentity, answers: answerPatterns, extras: identityExtras },
   { id: 'D25', census: 'D25', kind: 'dialog', owner: '89.6-41', status: 'enforced', reach: reachCreateSchedule, answers: answerSettings(SETTINGS_WITH_SCHEDULES), extras: scheduleDialogExtras('D25', 'Create Schedule', 'Create Schedule') },
-  { id: 'D26', census: 'D26', kind: 'dialog', owner: '89.6-41', status: 'pending' },
+  { id: 'D26', census: 'D26', kind: 'dialog', owner: '89.6-41', status: 'enforced', reach: reachEditSchedule, answers: answerSettings(SETTINGS_WITH_SCHEDULES), extras: scheduleDialogExtras('D26', 'Edit Schedule', 'Update Schedule') },
+  { id: 'R08-noschedules', census: 'R08', kind: 'route', owner: '89.6-41', state: 'admin, no schedules: the No schedules yet empty state', status: 'enforced', reach: reachNoSchedules, answers: answerSettings(SETTINGS_EMPTY) },
   { id: 'R16-specific', census: 'R16', kind: 'route', owner: '89.6-22', state: 'specific-dates', status: 'enforced', reach: reachSpecific, answers: answerPatterns, extras: specificExtras },
   { id: 'D32', census: 'D32', kind: 'dialog', owner: '89.6-22', status: 'enforced', reach: reachDisconnect, answers: answerConnected },
   { id: 'D33', census: 'D33', kind: 'dialog', owner: '89.6-22', status: 'enforced', reach: reachImport, answers: answerPatterns },

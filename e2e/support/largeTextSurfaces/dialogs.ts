@@ -1,4 +1,4 @@
-// Surface rows: Customize Group, Delete group, the feedback dialogs, Start a check-in and the floating feedback button. Owner: plan 89.6-25.
+// Surface rows: Customize Group, Delete group, the feedback dialogs, Start a check-in and the floating feedback button. Owner: plan 89.6-25 (Start a check-in, D24: plan 89.6-41).
 // One row per line, each with its census id.
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
@@ -15,6 +15,7 @@ import { routeGroupRead } from '../groupRead';
 import { routeMemberRoster } from '../memberRoster';
 import { readLargeTextCell, setTextMode, THIRTY_LETTER_WORD } from '../wordLines';
 import type { SurfaceRow, SweepCell } from './index';
+import { answerSettings, reachRecurring, recordInputFit, SETTINGS_EMPTY } from './profileA';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
 // owns. No fallback id: a row that opened some other group would read a dialog the fixtures do not own.
@@ -285,20 +286,25 @@ const reachDeleteConfirmLong: SurfaceRow['reach'] = async (page) => {
 // D08 extras (a tall dialog scrolls, plan 89.6-11): each footer button, scrolled into view, lies
 // inside the dialog box and is the thing under a finger at its centre. readShell is the shell
 // module's read; it is imported when the extras run, because the shell module imports this one.
-const deleteConfirmExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+// One copy, for D08 and D24 (plan 89.6-41): footerProblems returns the problems as lines.
+async function footerProblems(dialog: Locator, tag: string): Promise<string[]> {
   const { readShell } = await import('./dialogShell');
-  const read = await readShell(deleteConfirm(page));
+  const read = await readShell(dialog);
   const footer = read.buttons.filter((button) => button.part === 'footer');
   const problems: string[] = [];
-  if (footer.length === 0) problems.push(`D08 ${cell.id}: the dialog footer holds no button`);
+  if (footer.length === 0) problems.push(`${tag}: the dialog footer holds no button`);
   for (const button of footer) {
     const at = button.reached?.box ?? button.box;
     const box = button.reached?.dialog ?? read.dialog;
     if (at.left < box.left - 0.5 || at.right > box.right + 0.5 || at.top < box.top - 0.5 || at.bottom > box.bottom + 0.5) {
-      problems.push(`D08 ${cell.id}: the footer button "${button.label}", scrolled into view, is outside the dialog box (${r2(at.left)} to ${r2(at.right)} by ${r2(at.top)} to ${r2(at.bottom)}; dialog ${r2(box.left)} to ${r2(box.right)} by ${r2(box.top)} to ${r2(box.bottom)})`);
+      problems.push(`${tag}: the footer button "${button.label}", scrolled into view, is outside the dialog box (${r2(at.left)} to ${r2(at.right)} by ${r2(at.top)} to ${r2(at.bottom)}; dialog ${r2(box.left)} to ${r2(box.right)} by ${r2(box.top)} to ${r2(box.bottom)})`);
     }
-    if (!button.reached?.onTop) problems.push(`D08 ${cell.id}: the footer button "${button.label}", scrolled into view, is not the thing under a finger at its centre`);
+    if (!button.reached?.onTop) problems.push(`${tag}: the footer button "${button.label}", scrolled into view, is not the thing under a finger at its centre`);
   }
+  return problems;
+}
+const deleteConfirmExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const problems = await footerProblems(deleteConfirm(page), `D08 ${cell.id}`);
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
@@ -538,6 +544,32 @@ const thankYouExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cel
   if (!open) throw new Error(`D11 ${cell.id}: the Thank You! panel closed before the cell was read (the clock advanced ${advanced}ms after the pause)`);
 };
 
+// D24: Start a check-in (owner plan 89.6-41, handed on by plan 89.6-25), opened on the planning page
+// staged with no open poll, so the empty state carries the one + Start a check-in button
+// (src/app/components/OpenPollsList.js ("keeps exactly one start-a-check-in CTA")). The page is
+// reached as the schedule rows reach it, and its prompt-settings read (a GET that writes) is
+// answered with the empty body: e2e/support/largeTextSurfaces/profileA.ts ("export async function reachRecurring(").
+// Start poll is NEVER pressed.
+const startCheckIn = (page: Page): Locator => page.getByRole('dialog', { name: 'Start a check-in', exact: true });
+const reachStartCheckIn: SurfaceRow['reach'] = async (page) => {
+  await reachRecurring(page);
+  await page.getByRole('button', { name: '+ Start a check-in', exact: true }).click();
+  const dialog = startCheckIn(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(dialog);
+  await toDialogTop(dialog);
+  return { root: dialog, dialog };
+};
+// D24 extras, every cell: each footer button, scrolled into view, lies inside the dialog box and is
+// the thing under a finger at its centre; the Week and Deadline input fit is recorded, never asserted
+// (text cut inside an input box goes to plan 89.6-34's list).
+const startCheckInExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const dialog = startCheckIn(page);
+  const problems = await footerProblems(dialog, `D24 ${cell.id}`);
+  await recordInputFit(dialog, 'D24', cell);
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'D07', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: customizeGroupExtras },
   { id: 'D07-leave', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'leave-confirm', reach: reachLeaveConfirm, answers: answerPromptSettings },
@@ -548,7 +580,6 @@ export const rows: SurfaceRow[] = [
   { id: 'D10', census: 'D10', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachReportBug },
   { id: 'D10-attached', census: 'D10', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'screenshot-attached', reach: reachAttached, extras: attachedExtras },
   { id: 'D11', census: 'D11', kind: 'dialog', owner: '89.6-25', status: 'enforced', clock: 'held', reach: reachThankYou, extras: thankYouExtras },
-  // pending: D24 until 89.6-41 (the planning page scrolls sideways at 320 / 200% until 89.6-20; plan 41 depends on 20 and on this plan)
-  { id: 'D24', census: 'D24', kind: 'dialog', owner: '89.6-41', status: 'pending' },
+  { id: 'D24', census: 'D24', kind: 'dialog', owner: '89.6-41', status: 'enforced', reach: reachStartCheckIn, answers: answerSettings(SETTINGS_EMPTY), extras: startCheckInExtras },
   { id: 'O09', census: 'O09', kind: 'overlay', owner: '89.6-25', status: 'enforced', reachAt: { width: 1280, height: 800 }, reach: reachFloatingFeedback, extras: floatingFeedbackExtras },
 ];
