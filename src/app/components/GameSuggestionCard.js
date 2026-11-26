@@ -59,6 +59,18 @@ export default function GameSuggestionCard({ game, onClick }) {
   // ordinary text). NOT DECIDED HERE, the owner's call: not drawing the picture at large text, his
   // ruling for the Play history card (R4 C3), in place of stacking it above the words.
   // At ordinary text with an ordinary title nothing moves.
+  // AMENDED Phase 89.6-18 (S2): the question NOT DECIDED HERE above is decided, "Drop" (the owner's
+  // first look, 2026-11-22): at large text the picture is not drawn (the marker at the picture).
+  // DECISION Phase 89.6-18 (S2): the picture is dropped at large text by a container query on the
+  // card (the card is the container, its width given by its grid cell or the night page's grid), the
+  // owner's S2 "Drop" (first look, 2026-11-22; the Play history rule HR-5, the name is its text twin),
+  // chosen OVER the picture on its own line above the words (as built since 88.9-52) and OVER
+  // shrinking it. The drop is at 14rem, not the shared block's 15rem for a 4rem picture: the card's
+  // inside at 320 wide with ordinary text in the Browse grid is about 238px (296 - 2 x 16 gutter - 2 x
+  // 12 card edge - 2 border), under 15rem, so 15rem would drop the picture at normal text. The words
+  // column keeps its R4 D2 form (no 10rem basis: that would move the words under the picture at 320 /
+  // 100%, an unpicked look change). The alt stays; the wrapper is aria-hidden. The picture loads
+  // lazily, so one hidden by the drop is not downloaded. Changing this is a decision, not a cleanup.
   // DECISION Phase 88.9-58 (X14): this whole-card control keeps its own hover wash; the card utility has none (owner 2026-11-11).
   return (
     <button
@@ -66,7 +78,7 @@ export default function GameSuggestionCard({ game, onClick }) {
       onClick={() => onClick(game)}
       aria-labelledby={nameId}
       aria-describedby={describedBy}
-      className={`card p-edge-card md:p-edge-wide hover:bg-surface-hover flex gap-4 flex-wrap gap-y-2 hover:shadow-theme-md transition-shadow cursor-pointer w-full text-left focus:outline-hidden focus-visible:focus-ring`}
+      className={`card p-edge-card md:p-edge-wide hover:bg-surface-hover flex gap-4 flex-wrap gap-y-2 hover:shadow-theme-md transition-shadow cursor-pointer w-full text-left focus:outline-hidden focus-visible:focus-ring bb-media`}
     >
       {/* Thumbnail.
           DECISION Phase 88.6.1-03 (D-38): the thumbnail is hidden from assistive tech by this
@@ -83,11 +95,12 @@ export default function GameSuggestionCard({ game, onClick }) {
           only cue that the number is a rating, and replacing it would need words the owner has
           not ratified (D-31), so it stays as it is heard today.
           Changing any of this is a decision, not a cleanup. */}
-      <span aria-hidden="true" className="shrink-0">
+      <span aria-hidden="true" className="shrink-0 @max-[14rem]:hidden">
         <SafeImage
           src={game.thumbnail_url}
           alt={game.name}
           className="w-16 h-16 rounded-sm object-cover shrink-0"
+          loading="lazy"
         />
       </span>
 

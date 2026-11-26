@@ -682,10 +682,14 @@ export default function BrowseMoreModal({
             star 4.84 light / 5.63 dark with the ink GameSuggestionCard.js carries since 88.9-44
             (Q7 ADDENDUM). Two whole class literals (Tailwind v4 emits nothing for an
             interpolated class). Changing this is a decision, not a cleanup. */}
+        {/* DECISION Phase 89.6-18 (gutters): the results gutter is the page edge token (HR-9, owner
+            pick O-M1 = D, thin edges): 16px at normal text, pixel-identical, and still 16px at 200%,
+            chosen OVER the rem gutter that doubled to 32px at 200% in a phone dialog (the plan
+            89.6-21 dialog-gutter precedent). Changing this is a decision, not a cleanup. */}
         <div
           data-testid="browse-more-results"
           aria-busy={loading || undefined}
-          className={refreshing && !isEmpty ? 'p-4 [&>*]:opacity-85' : 'p-4'}
+          className={refreshing && !isEmpty ? 'p-edge-page [&>*]:opacity-85' : 'p-edge-page'}
         >
           {bodyError ? (
             <p

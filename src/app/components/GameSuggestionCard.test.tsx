@@ -140,6 +140,21 @@ describe('GameSuggestionCard — keyboard operable, one name (Req 2 / AC-8, D-26
     expect(button.firstElementChild).toHaveClass('shrink-0');
   });
 
+  // 89.6-18 (owner S2 "Drop", first look 2026-11-22; the Play history rule HR-5): the card is a
+  // media container and its aria-hidden picture is dropped by a 14rem container variant at large
+  // text; the title is its text twin. The picture loads lazily, so a dropped one is not fetched.
+  it('S2 (89.6-18): the card is a media container and its picture carries the large-text drop', () => {
+    renderCard();
+    const button = screen.getByRole('button', { name: 'Catan' });
+    expect(button).toHaveClass('bb-media');
+    const wrapper = button.firstElementChild as HTMLElement;
+    expect(wrapper).toHaveAttribute('aria-hidden', 'true');
+    expect(wrapper).toHaveClass('shrink-0', '@max-[14rem]:hidden');
+    expect(wrapper.querySelector('img')).toHaveAttribute('loading', 'lazy');
+    const column = within(button).getByText('Catan').parentElement as HTMLElement;
+    expect(column.className).toBe('flex-1 max-w-full flex flex-col gap-1');
+  });
+
   it('F. holds phrasing content only: no paragraph, and no div outside a hidden wrapper', () => {
     renderCard();
     const button = screen.getByRole('button', { name: 'Catan' });
