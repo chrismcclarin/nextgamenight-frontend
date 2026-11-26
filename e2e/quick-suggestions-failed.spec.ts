@@ -1,5 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
+import { settleAnimations } from './support/inFlight';
+
 // Phase 88.6.1 plan 14 (D-28, copy row H4): a FAILED suggestions load, seen on a phone.
 //
 // WHY THIS FILE EXISTS. Before 88.6.1-14 a failed group-suggestions fetch rendered the
@@ -33,6 +35,21 @@ import { test, expect, type Page } from '@playwright/test';
 // SYNTHETIC FAILURE, NO REAL DATA. The route answers the browser's suggestions request with a
 // 500 and a small made-up error body; nothing is forwarded to the backend and nothing is
 // written. The Create Event form is never submitted.
+//
+// AMENDED 89.6-18 (R17, 2026-11-26): EVERY GEOMETRY READ WAITS FOR THE DIALOG TO STOP MOVING.
+// The house dialog opens over 200ms, sliding down from 48% of its own height and growing from 95%,
+// src/components/ui/dialog.tsx ("data-[state=open]:slide-in-from-top-[48%]"), and boundingBox()
+// reads the box as it is drawn at that moment. In CI (production build, backend on the same
+// machine) the member read answers inside those 200ms, so the form and the in-flight bar are on
+// screen while the dialog is still on its way: the second test read the button below the row at
+// 267.1, 281.8, 292.0, 298.6 and 302.2 where it rests at 303.35, and called that the form moving
+// when the chips arrived (runs 45885350275 and 45890693140; the same read repeated after the
+// animations had finished gave 303.3515625 in 8 of 8, with the fonts loaded at every read). Locally
+// the member read answers after the animation has ended, so the test passed there. So each test
+// waits with the house wait, e2e/support/inFlight.ts ("export async function settleAnimations"),
+// before its first geometry read. It waits for the animation to END: no fixed time, no retry and
+// no tolerance, and the assertions are unchanged. The first test's reads were shielded only by the
+// 500ms debounce before its failed line shows; it takes the same wait.
 
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '';
 const FIXTURE_OWNER = 'periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js';
@@ -95,6 +112,8 @@ test('a failed suggestions load shows the H4 line and a Try again link-styled bu
   // The slot is min-h-11 + pb-1: 48 (box) + 4 (pb-1) = 52; a wrapped line would grow it further.
   // AMENDED 89.6-18 (A-held): the 48px box now sits inside the held two-line height, so the slot
   // reads 100 (44 + 8 + 44 + 4) on a failure as in every other state; the box itself is unchanged.
+  // R17: the dialog has stopped moving before the first geometry read (the header note).
+  await settleAnimations(dialog(page));
   const slotBox = await slot.boundingBox();
   expect(slotBox, 'the quick-suggestions slot has no layout box').not.toBeNull();
   expect(slotBox!.height, 'the failed state is not the held two-line height').toBeGreaterThanOrEqual(100);
@@ -225,6 +244,9 @@ test('A-held (89.6-18): the suggestions row is one two-line height in the in-fli
     await page.getByRole('button', { name: 'Create Event', exact: true }).click();
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
     await expect(slot).toHaveCount(1);
+    // R17: the dialog has stopped moving before any read of this open (the header note). The form
+    // is already drawn here, so the opening animation is the one still running, if any is.
+    await settleAnimations(dialog(page));
   };
   const read = async (what: string) => {
     const slotBox = await slot.boundingBox();
