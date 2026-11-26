@@ -1121,7 +1121,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     const rowFills = await page.evaluate(() => {
       const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
       const panel = nav.querySelector(':scope > div:last-child') as HTMLElement;
-      const rows = Array.from(panel.querySelectorAll(':scope > div > button')) as HTMLElement[];
+      // 89.6-26 (O-5): the settings rows sit inside one bordered wrapper, so one level deeper.
+      const rows = Array.from(panel.querySelectorAll(':scope > div > div > button')) as HTMLElement[];
       return rows.map((b) => ({ name: b.getAttribute('aria-label') ?? (b.textContent ?? '').trim(), fill: getComputedStyle(b).backgroundColor, hovered: b.matches(':hover') }));
     });
     const feedbackRow = rowFills.find((r) => r.name === 'Send feedback');

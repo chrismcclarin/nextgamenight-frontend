@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
+import { settleAnimations } from './support/inFlight';
 import { setTextMode } from './support/wordLines';
 
 // The app chrome at large text (Phase 89.6-26, SPEC R4). Two reads the sweep rows cannot make:
@@ -75,6 +76,9 @@ test.describe('chrome at large text, signed in (89.6-26)', () => {
     // 320 x 568 with 200% text: the last row can be scrolled fully into view inside the panel.
     await page.setViewportSize({ width: 320, height: 568 });
     await openMenu(page);
+    // The panel's height cap is in dvh and the panel carries transition-all, so after the viewport
+    // change it eases to its new cap; read it settled (CI run 45791569816 read it mid-ease).
+    await settleAnimations(page.locator('[data-slot="header-menu-panel"]'));
     const last = await page.evaluate(() => {
       const panel = document.querySelector('[data-slot="header-menu-panel"]') as HTMLElement;
       const row = Array.from(panel.querySelectorAll('button')).find((b) => (b.textContent ?? '').includes('Send feedback')) as HTMLElement;
