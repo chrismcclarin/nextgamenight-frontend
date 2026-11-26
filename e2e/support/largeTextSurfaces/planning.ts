@@ -75,7 +75,34 @@ const reachTwoPolls: SurfaceRow['reach'] = async (page) => {
   return { root: page.locator('body') };
 };
 
+// R08 extras (register R6-02): in every cell exactly one Switch poll chip is pressed and it names
+// the poll the Showing line names, and every chip box is at least 44 x 44 (within 0.5px). One
+// joined line is thrown, so a failure fails the cell.
+const chipsHold: SurfaceRow['extras'] = async (page) => {
+  const read = await page.evaluate(() => {
+    const group = document.querySelector('[role="group"][aria-label="Switch poll"]');
+    const chips = group ? Array.from(group.querySelectorAll('button')) : [];
+    const showing = Array.from(document.querySelectorAll('p')).find((p) => (p.textContent ?? '').startsWith('Showing '));
+    return {
+      chips: chips.map((chip) => {
+        const box = chip.getBoundingClientRect();
+        return { name: (chip.textContent ?? '').trim(), pressed: chip.getAttribute('aria-pressed'), width: box.width, height: box.height };
+      }),
+      showing: (showing?.textContent ?? '').trim(),
+    };
+  });
+  const problems: string[] = [];
+  if (read.chips.length !== 2) problems.push(`${read.chips.length} Switch poll chips, not 2`);
+  const pressed = read.chips.filter((chip) => chip.pressed === 'true');
+  if (pressed.length !== 1) problems.push(`${pressed.length} chips pressed, not 1`);
+  else if (read.showing !== `Showing ${pressed[0].name}`) problems.push(`the pressed chip "${pressed[0].name}" is not the shown poll ("${read.showing}")`);
+  for (const chip of read.chips) {
+    if (chip.width < 43.5 || chip.height < 43.5) problems.push(`chip "${chip.name}" is ${chip.width.toFixed(1)} x ${chip.height.toFixed(1)}, under 44 x 44`);
+  }
+  if (problems.length > 0) throw new Error(`R6-02: ${problems.join('; ')}`);
+};
+
 export const rows: SurfaceRow[] = [
-  { id: 'R08', census: 'R08', kind: 'route', owner: '89.6-20', status: 'enforced', state: 'two open polls, Check-ins collapsed', reach: reachTwoPolls },
+  { id: 'R08', census: 'R08', kind: 'route', owner: '89.6-20', status: 'enforced', state: 'two open polls, Check-ins collapsed', reach: reachTwoPolls, extras: chipsHold },
   { id: 'O06', census: 'O06', kind: 'overlay', owner: '89.6-20', status: 'pending' },
 ];

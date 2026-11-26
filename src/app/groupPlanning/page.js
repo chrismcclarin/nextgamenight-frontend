@@ -554,7 +554,7 @@ export default function GroupPlanningPage() {
     // quick-261026-pi6 (owner R4/R5): a selection is one history entry, pushed only when it
     // changes the poll; the selection effect then loads it in place.
     const selectPoll = (id) => {
-        if (!id || id === selectedPollId) return;
+        if (!id || sameId(id, selectedPollId)) return;
         const next = new URLSearchParams(searchParams.toString());
         next.set('poll', id);
         window.history.pushState(null, '', `${pathname}?${next.toString()}`);
@@ -957,11 +957,18 @@ export default function GroupPlanningPage() {
                                     sides take 48, which leaves a word 158px (Weekend at 28px bold is about
                                     136). REJECTED: a line clamp (still a cut) and wrap-anywhere (one
                                     letter per line in a squeezed chip). A two-line label in a pill is
-                                    accepted. */}
+                                    accepted.
+                                    AMENDED Phase 89.6-20 (planning-chips): a chip keeps the 44px floor at
+                                    every width (it was 28px tall from md up, register R6-02), chosen OVER
+                                    the desktop opt-out, a floor fix shown at look 2; and the pressed chip
+                                    is found with sameId, the page's F7 rule, chosen OVER ===, which left
+                                    no chip pressed when a link carried the poll id in another case. */}
+                                {/* DECISION Phase 89.6-20 (planning-chips): the 44px floor at every width and
+                                    the pressed chip by sameId; the reasoning is the amendment above. */}
                                 {openPolls.length >= 2 && (
                                     <div role="group" aria-label={SWITCH_POLL_LABEL} className="mb-3 flex flex-wrap gap-2">
                                         {openPolls.map((p) => {
-                                            const pressed = p.id === selectedPollId;
+                                            const pressed = sameId(p.id, selectedPollId);
                                             return (
                                                 <button
                                                     key={p.id}
@@ -969,8 +976,8 @@ export default function GroupPlanningPage() {
                                                     aria-pressed={pressed}
                                                     onClick={(event) => handleChipSelect(event, p.id)}
                                                     className={pressed
-                                                        ? 'max-w-full px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring bg-btn-primary text-btn-primary-text'
-                                                        : 'max-w-full px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring bg-surface-muted text-content-secondary hover:text-content-primary'}
+                                                        ? 'max-w-full px-3 py-1 min-h-11 min-w-11 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring bg-btn-primary text-btn-primary-text'
+                                                        : 'max-w-full px-3 py-1 min-h-11 min-w-11 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring bg-surface-muted text-content-secondary hover:text-content-primary'}
                                                 >
                                                     <span className="block wrap-break-word">{chipLabels.get(p.id)}</span>
                                                 </button>
