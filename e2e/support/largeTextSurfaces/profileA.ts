@@ -448,6 +448,30 @@ async function readActionPair(dialog: Locator, submit: string): Promise<ActionPa
 
 const r1 = (value: number): string => value.toFixed(1);
 
+/**
+ * The tall-dialog action reads (plan 89.6-41), as lines: the two action buttons, each scrolled into
+ * view, lie inside the dialog box horizontally and are at least 44px tall; below the 12rem dialog
+ * container they are equal width with Cancel above, elsewhere they share a top. One ZZ41 line is
+ * printed per call. The one copy: the schedule dialogs here and the event dialogs in event.ts.
+ */
+export async function actionPairProblems(dialog: Locator, tag: string, submit: string): Promise<string[]> {
+  const problems: string[] = [];
+  const pair = await readActionPair(dialog, submit);
+  for (const button of pair.buttons) {
+    if (button.left < pair.dialog.left - 0.5 || button.right > pair.dialog.right + 0.5) problems.push(`${tag}: "${button.label}", scrolled into view, runs out of the dialog box sideways (${r1(button.left)} to ${r1(button.right)}; dialog ${r1(pair.dialog.left)} to ${r1(pair.dialog.right)})`);
+    if (button.height < 43.5) problems.push(`${tag}: "${button.label}" is ${r1(button.height)}px tall, under 44`);
+  }
+  const [cancel, action] = pair.buttons;
+  if (pair.stacked) {
+    if (Math.abs(cancel.width - action.width) > 0.5) problems.push(`${tag}: below the 12rem dialog the two buttons are not equal width (Cancel ${r1(cancel.width)}, ${submit} ${r1(action.width)})`);
+    if (cancel.bottom > action.top + 0.5) problems.push(`${tag}: below the 12rem dialog Cancel is not above ${submit} (Cancel bottom ${r1(cancel.bottom)}, ${submit} top ${r1(action.top)})`);
+  } else if (Math.abs(cancel.top - action.top) > 0.5) {
+    problems.push(`${tag}: at 12rem and over Cancel and ${submit} do not share a top (${r1(cancel.top)} and ${r1(action.top)})`);
+  }
+  process.stdout.write(`ZZ41 actions ${tag}: stacked=${pair.stacked} dialog=${r1(pair.dialog.width)} cancel=${r1(cancel.width)}x${r1(cancel.height)}@${r1(cancel.top)} action=${r1(action.width)}x${r1(action.height)}@${r1(action.top)}\n`);
+  return problems;
+}
+
 /** Print one short line for the CI log (a passing test keeps nothing else) and attach the whole read. */
 export async function recordInputFit(dialog: Locator, rowId: string, cell: SweepCell): Promise<void> {
   const inputs = await dialog.locator('input').evaluateAll((nodes) =>
@@ -480,20 +504,7 @@ const scheduleDialogExtras =
   async (page: Page, cell: SweepCell) => {
     const tag = `${rowId} ${cell.id}`;
     const dialog = page.getByRole('dialog', { name: title, exact: true });
-    const problems: string[] = [];
-    const pair = await readActionPair(dialog, submit);
-    for (const button of pair.buttons) {
-      if (button.left < pair.dialog.left - 0.5 || button.right > pair.dialog.right + 0.5) problems.push(`${tag}: "${button.label}", scrolled into view, runs out of the dialog box sideways (${r1(button.left)} to ${r1(button.right)}; dialog ${r1(pair.dialog.left)} to ${r1(pair.dialog.right)})`);
-      if (button.height < 43.5) problems.push(`${tag}: "${button.label}" is ${r1(button.height)}px tall, under 44`);
-    }
-    const [cancel, action] = pair.buttons;
-    if (pair.stacked) {
-      if (Math.abs(cancel.width - action.width) > 0.5) problems.push(`${tag}: below the 12rem dialog the two buttons are not equal width (Cancel ${r1(cancel.width)}, ${submit} ${r1(action.width)})`);
-      if (cancel.bottom > action.top + 0.5) problems.push(`${tag}: below the 12rem dialog Cancel is not above ${submit} (Cancel bottom ${r1(cancel.bottom)}, ${submit} top ${r1(action.top)})`);
-    } else if (Math.abs(cancel.top - action.top) > 0.5) {
-      problems.push(`${tag}: at 12rem and over Cancel and ${submit} do not share a top (${r1(cancel.top)} and ${r1(action.top)})`);
-    }
-    process.stdout.write(`ZZ41 actions ${tag}: stacked=${pair.stacked} dialog=${r1(pair.dialog.width)} cancel=${r1(cancel.width)}x${r1(cancel.height)}@${r1(cancel.top)} action=${r1(action.width)}x${r1(action.height)}@${r1(action.top)}\n`);
+    const problems = await actionPairProblems(dialog, tag, submit);
     // Imported when the extras run: dialogs.ts imports this module (its D24 row reaches the same card).
     const { toDialogTop } = await import('./dialogs');
     await toDialogTop(dialog);
