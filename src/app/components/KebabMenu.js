@@ -334,52 +334,67 @@ export default function KebabMenu({
      text the menu shows less than two of its three items at once and the rest is a scroll
      away; the cut item at the fold is the cue.
      The inline overflow replaces a one-item menu's own clip (overflow-hidden) only while
-     capped, and sideways it stays hidden, so the rounded corners still clip the band. */
+     capped, and sideways it stays hidden, so the rounded corners still clip the band.
+     AMENDED Phase 89.6-26 (refit): the NOT DONE above is half done. A change of the WINDOW's size
+     with the menu open (a rotation; the sweep's next cell) now runs the same fit again, with the
+     earlier sideways shift cleared first so it measures the menu where its anchor puts it; it
+     does not scroll the page again (the reveal is the open's). Found by sweep row O04 (CI run
+     45786993394): opened at 215 wide and left open at 187, the menu kept the 215 fit and started
+     left of the page. Chosen OVER closing the menu on a resize (a rotation would drop what the
+     person opened) and OVER leaving it (a menu drawn off the screen). A text-size change with no
+     window resize still moves nothing. Changing this is a decision, not a cleanup. */
   const listRef = useRef(null);
   useLayoutEffect(() => {
     if (!open) return;
     const list = listRef.current;
     if (!list) return;
-    let left = 0;
-    let right = document.documentElement.clientWidth;
-    // Up and down: the screen, narrowed to the clipping box when that box clips up and down.
-    const screenHeight = document.documentElement.clientHeight;
-    let top = 0;
-    let bottom = screenHeight;
-    for (let el = list.parentElement; el && el !== document.body; el = el.parentElement) {
-      const style = window.getComputedStyle(el);
-      const clipsY = (style.overflowY || 'visible') !== 'visible';
-      if ((style.overflowX || 'visible') !== 'visible' || clipsY) {
-        const box = el.getBoundingClientRect();
-        left = box.left;
-        right = box.right;
-        if (clipsY) {
-          top = screenHeight > 0 ? Math.max(box.top, 0) : box.top;
-          bottom = screenHeight > 0 ? Math.min(box.bottom, screenHeight) : box.bottom;
+    const fit = (reveal) => {
+      let left = 0;
+      let right = document.documentElement.clientWidth;
+      // Up and down: the screen, narrowed to the clipping box when that box clips up and down.
+      const screenHeight = document.documentElement.clientHeight;
+      let top = 0;
+      let bottom = screenHeight;
+      for (let el = list.parentElement; el && el !== document.body; el = el.parentElement) {
+        const style = window.getComputedStyle(el);
+        const clipsY = (style.overflowY || 'visible') !== 'visible';
+        if ((style.overflowX || 'visible') !== 'visible' || clipsY) {
+          const box = el.getBoundingClientRect();
+          left = box.left;
+          right = box.right;
+          if (clipsY) {
+            top = screenHeight > 0 ? Math.max(box.top, 0) : box.top;
+            bottom = screenHeight > 0 ? Math.min(box.bottom, screenHeight) : box.bottom;
+          }
+          break;
         }
-        break;
       }
-    }
-    if (right - left <= 0) return;
-    const room = right - left - 2 * MENU_EDGE_GAP_PX;
-    if (room > 0) list.style.maxWidth = `min(calc(100vw - 2rem), ${Math.floor(room)}px)`;
-    // R4 B3: measured after the width cap (a narrower menu wraps its labels and grows taller) and
-    // with any earlier cap cleared, so this reads the menu's own height.
-    list.style.maxHeight = '';
-    list.style.overflowY = '';
-    list.style.overflowX = '';
-    const own = list.getBoundingClientRect();
-    const shift = left + MENU_EDGE_GAP_PX - own.left;
-    list.style.translate = shift > 0.5 ? `${Math.ceil(shift)}px 0` : '';
-    const roomY = bottom - top - 2 * MENU_EDGE_GAP_PX;
-    if (roomY > 0 && own.height > roomY + 0.5) {
-      const firstItem = list.querySelector('button');
-      const oneItem = firstItem ? Math.ceil(firstItem.getBoundingClientRect().height) : 0;
-      list.style.maxHeight = `${Math.max(Math.floor(roomY), oneItem)}px`;
-      list.style.overflowY = 'auto';
-      list.style.overflowX = 'hidden';
-    }
-    if (typeof list.scrollIntoView === 'function') list.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      if (right - left <= 0) return;
+      const room = right - left - 2 * MENU_EDGE_GAP_PX;
+      if (room > 0) list.style.maxWidth = `min(calc(100vw - 2rem), ${Math.floor(room)}px)`;
+      // R4 B3: measured after the width cap (a narrower menu wraps its labels and grows taller) and
+      // with any earlier cap cleared, so this reads the menu's own height.
+      list.style.maxHeight = '';
+      list.style.overflowY = '';
+      list.style.overflowX = '';
+      list.style.translate = '';
+      const own = list.getBoundingClientRect();
+      const shift = left + MENU_EDGE_GAP_PX - own.left;
+      list.style.translate = shift > 0.5 ? `${Math.ceil(shift)}px 0` : '';
+      const roomY = bottom - top - 2 * MENU_EDGE_GAP_PX;
+      if (roomY > 0 && own.height > roomY + 0.5) {
+        const firstItem = list.querySelector('button');
+        const oneItem = firstItem ? Math.ceil(firstItem.getBoundingClientRect().height) : 0;
+        list.style.maxHeight = `${Math.max(Math.floor(roomY), oneItem)}px`;
+        list.style.overflowY = 'auto';
+        list.style.overflowX = 'hidden';
+      }
+      if (reveal && typeof list.scrollIntoView === 'function') list.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    };
+    fit(true);
+    const refit = () => fit(false);
+    window.addEventListener('resize', refit);
+    return () => window.removeEventListener('resize', refit);
   }, [open]);
 
   // X13-7 (88.9-67): the keepOpen exits put focus on the item that was activated. A no-op when

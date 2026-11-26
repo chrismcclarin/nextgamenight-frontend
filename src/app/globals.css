@@ -3133,6 +3133,16 @@ body {
   --error-text: var(--color-status-error-text);
 }
 
+/* DECISION Phase 89.6-26 (toast-text): a styled toast's text is 0.8125rem, Sonner's 13px in rem, so it
+   grows with the reader's text size (13px at 100%, 26px at 200%), chosen OVER Sonner's fixed 13px
+   (sweep row O08, CI run 45786993394: "shrunk" in every 200% and font32 cell, SPEC P1: no text is
+   capped or shrunk) and OVER a larger fixed size (still capped). Unlayered and 0,3,0 for the reason
+   the marker above gives. At 100% nothing changes. The close button's 20px box is Sonner's and is
+   not changed here (a found-new row of plan 89.6-26). Changing this is a decision, not a cleanup. */
+:root [data-sonner-toaster] [data-sonner-toast][data-styled='true'] {
+  font-size: 0.8125rem;
+}
+
 /* DECISION Phase 88.9-52 (N1c, owner pick "Stripe", 2026-11-17): an If Need Be cell, and its
    legend swatch, carry a fine diagonal stripe over the fill in BOTH themes: a 2px line every 6px
    at 45 degrees, in a darker step of the cell's own hue (light rgb(207,184,58) on the yellow,
