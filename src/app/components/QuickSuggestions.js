@@ -94,6 +94,9 @@ function reducedSuggestionsFetchError(err) {
  * Try again link (`min-h-11`, the same floor token), so the slot reads 52 while the failure
  * shows and 44 again once a retry succeeds. Chosen OVER a sub-44 link inside the 44 slot (a
  * tap-floor failure) and OVER moving the link outside the slot (two rows for one failure).
+ * AMENDED Phase 89.6-18 (chips): a second exception, at large text only. Below the 12rem dialog
+ * switch the chips wrap as whole items (the 89.6-18 chips marker, at the slot), so the slot
+ * grows when chips arrive there; at ordinary sizes it keeps the one height above.
  *
  * THE PLACEHOLDER BAR IS `aria-hidden` and the HINT BOX IS NOT. The bar is a decorative skeleton
  * conveying nothing, and the effect deps re-fire on every create-event form edit, so a live region
@@ -148,10 +151,21 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
   }, [shown.kind]);
 
   return (
-    <div ref={slotRef} data-testid="quick-suggestions-slot" className="flex items-stretch gap-2 min-h-11 pb-1">
+    /* DECISION Phase 89.6-18 (chips): at large text in a narrow dialog (below the 12rem dialog
+       switch) the chips wrap as whole items, each showing its whole name wrapped by whole words, and
+       the browse link takes a line of its own; CHOSEN OVER the sideways strip showing one chip at a time
+       (register R5-03: 34px chips in a 14px box at 320 / 200%). The chip picture is dropped there
+       (the S2 rule, HR-5: the name is its text twin). The name's longest word is its floor (HR-2),
+       capped at the chip, so the player-count tag moves under the name instead of the name
+       splitting, and a word wider than the chip alone breaks inside it instead of spilling out. At
+       ordinary sizes the strip is kept as the D1 ruling built it, scrolling inside itself (an
+       unpicked look change otherwise): every variant here is dialog-named. The slot now grows when
+       chips arrive at large text (DECISION Phase 88.6-39 (D-18) is amended for it). Changing this is
+       a decision, not a cleanup. */
+    <div ref={slotRef} data-testid="quick-suggestions-slot" className="flex items-stretch gap-2 min-h-11 pb-1 @max-[12rem]/dialog:flex-wrap">
       {shown.kind === 'chips' ? (
         <>
-          <div className="flex items-center gap-2 overflow-x-auto flex-nowrap flex-1 min-w-0">
+          <div className="flex items-center gap-2 overflow-x-auto flex-nowrap flex-1 min-w-0 @max-[12rem]/dialog:basis-full @max-[12rem]/dialog:flex-wrap @max-[12rem]/dialog:overflow-visible">
             {shown.suggestions.map((game) => (
               <button
                 key={game.id}
@@ -163,7 +177,7 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
                    primary CTAs". `min-h-11` with `inline-flex items-center`; the content is
                    unchanged and just gains leading. This token is ALSO the slot's own floor
                    above, so raising it re-derives the slot and breaks no height constant. */
-                className="inline-flex items-center gap-1.5 min-h-11 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-hover transition-colors cursor-pointer shrink-0 max-w-full"
+                className="inline-flex items-center gap-1.5 min-h-11 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-hover transition-colors cursor-pointer shrink-0 max-w-full @max-[12rem]/dialog:flex-wrap"
                 title={game.name}
               >
                 {/* DECISION Phase 88.6-39 (T-88.6-111): the BGG thumbnail moves to `SafeImage` —
@@ -194,13 +208,14 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
                     — the token 88.6-02 (D-15) renamed from the card-hover fill with its value
                     unchanged, i.e. exactly the hand-rolled fallback colour this replaces — the
                     swap is colour-neutral by construction. */}
-                <span aria-hidden="true" className="block w-6 h-6 shrink-0">
+                <span aria-hidden="true" className="block w-6 h-6 shrink-0 @max-[12rem]/dialog:hidden">
                   <SafeImage
                     src={game.thumbnail_url}
                     alt=""
                     fallbackIcon=""
                     className="w-full h-full rounded-sm"
                     imgClassName="object-cover"
+                    loading="lazy"
                   />
                 </span>
                 {/* DECISION Phase 88.9-52 (R4 D1, owner 2026-11-18): the game name shows IN FULL. The chips
@@ -219,8 +234,11 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
                     so the slot (a floor, min-h-11, never a fixed height), taller for as long as that
                     chip is shown. That is the one way this slot can now change height: a name wider
                     than the whole row, about 30 letters on a phone. The title attribute stays (it
-                    was the only way to read a cut name; it is harmless now). */}
-                <span className="text-sm text-content-primary min-w-0 wrap-break-word">
+                    was the only way to read a cut name; it is harmless now).
+                    AMENDED Phase 89.6-18 (chips): below the 12rem dialog switch the chips wrap as
+                    whole items and the name keeps its longest word, capped at the chip (DECISION
+                    Phase 89.6-18 (chips), at the slot); at ordinary sizes this marker holds as written. */}
+                <span className="text-sm text-content-primary min-w-0 wrap-break-word @max-[12rem]/dialog:min-w-auto @max-[12rem]/dialog:max-w-full">
                   {game.name}
                 </span>
                 {(game.min_players || game.max_players) && (

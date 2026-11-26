@@ -1016,7 +1016,8 @@ describe('R4 D1 (88.9-52) — a quick-suggestion chip shows the whole game name'
     // The whole name is in the page, uncut: no truncate, no max width, no clamp of any kind.
     expect(name.textContent).toBe(LONG);
     expect(tokens(name).filter((t) => t === 'truncate' || t.startsWith('max-w-') || t.startsWith('line-clamp') || t === 'overflow-hidden' || t === 'text-ellipsis')).toEqual([]);
-    expect(tokens(name)).toEqual(['text-sm', 'text-content-primary', 'min-w-0', 'wrap-break-word']);
+    // AMENDED 89.6-18 (chips): the two dialog-named variants apply below the 12rem switch only.
+    expect(tokens(name)).toEqual(['text-sm', 'text-content-primary', 'min-w-0', 'wrap-break-word', '@max-[12rem]/dialog:min-w-auto', '@max-[12rem]/dialog:max-w-full']);
     // The chip: its 44px floor, never shrunk by the row, never wider than the row.
     const chip = name.closest('button') as HTMLElement;
     expect(tokens(chip)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'min-h-11', 'shrink-0', 'max-w-full']));
@@ -1035,5 +1036,36 @@ describe('R4 D1 (88.9-52) — a quick-suggestion chip shows the whole game name'
       expect(tokens(other)).not.toContain('truncate');
       expect(tokens(other).some((t) => t.startsWith('max-w-'))).toBe(false);
     }
+  });
+});
+
+// 89.6-18 (register R5-03, the D1 ruling "the game name shows IN FULL", GR and HR-5): below the
+// 12rem dialog switch the slot and the strip wrap, the strip takes the whole row, each chip wraps
+// as a whole item and drops its picture (the name is its text twin), and the name's longest word is
+// its floor, capped at the chip. Every variant is dialog-named, so the normal-text classes are
+// unchanged and the strip still scrolls inside itself at ordinary sizes. jsdom lays nothing out:
+// class pins. The marker is at src/app/components/QuickSuggestions.js ("DECISION Phase 89.6-18 (chips)").
+describe('R5-03 (89.6-18) — the chips wrap whole below the dialog switch', () => {
+  it('R5-03 (89.6-18): below the 12rem dialog switch the slot and strip wrap, the strip takes the row, the chip wraps and drops its picture; normal-text classes unchanged', async () => {
+    api.getGroupSuggestions.mockResolvedValue({ suggestions: GAMES.map((game) => ({ ...game, thumbnail_url: 'https://example.test/pic.png' })) });
+    renderSuggestions();
+    await runDebounce();
+    const name = await waitFor(() => screen.getByText(GAMES[0].name));
+    const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+    const slot = screen.getByTestId('quick-suggestions-slot');
+    const chip = name.closest('button') as HTMLElement;
+    const strip = chip.parentElement as HTMLElement;
+    const picture = chip.firstElementChild as HTMLElement;
+    expect(tokens(slot)).toContain('@max-[12rem]/dialog:flex-wrap');
+    expect(tokens(strip)).toEqual(expect.arrayContaining(['@max-[12rem]/dialog:flex-wrap', '@max-[12rem]/dialog:basis-full', '@max-[12rem]/dialog:overflow-visible']));
+    expect(tokens(chip)).toContain('@max-[12rem]/dialog:flex-wrap');
+    expect(picture).toHaveAttribute('aria-hidden', 'true');
+    expect(tokens(picture)).toContain('@max-[12rem]/dialog:hidden');
+    expect(picture.querySelector('img')).toHaveAttribute('loading', 'lazy');
+    expect(tokens(name)).toEqual(expect.arrayContaining(['@max-[12rem]/dialog:min-w-auto', '@max-[12rem]/dialog:max-w-full']));
+    // Normal text unchanged: the strip still scrolls inside itself, and Browse more keeps its classes.
+    expect(tokens(strip)).toEqual(expect.arrayContaining(['overflow-x-auto', 'flex-nowrap', 'flex-1', 'min-w-0']));
+    const browseMore = screen.getByRole('button', { name: 'Browse more' });
+    expect(tokens(browseMore)).toEqual(expect.arrayContaining(['whitespace-nowrap', 'shrink-0', 'px-1', 'min-h-11']));
   });
 });
