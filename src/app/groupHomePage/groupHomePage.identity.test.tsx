@@ -739,6 +739,9 @@ describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV
     expect(strip, 'the tab box does not scroll inside itself').toHaveClass('overflow-x-auto');
     expect(strip.parentElement, 'the strip line is not on the scroll box parent').toHaveClass('relative', 'border-b');
     expect(strip.parentElement!.querySelectorAll('[aria-hidden="true"][data-strip-cue]'), 'an edge fade renders while nothing overflows').toHaveLength(0);
+    // Each tab keeps its one-word label whole (shrink-0): min-w-11 replaces the automatic minimum, so
+    // without it flex squeezed Overview to two lines at 320 / 200% (CI run 45739112935).
+    for (const tab of [overview, library]) expect(tab, 'a tab can be squeezed below its word').toHaveClass('shrink-0');
     expectActive(overview);
     expectInactive(library);
     await userEvent.setup().click(library);

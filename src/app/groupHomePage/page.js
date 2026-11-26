@@ -1986,7 +1986,9 @@ function GroupHomePage(){
                 the fades by the one shared helper (src/lib/hooks/useScrollEdges.ts ("export function revealTabInStrip(")),
                 and no scroll padding is used: plan 89.6-21 measured that scroll-px-8 cut a pressed tab
                 wider than the room between the fades. The strip line stays on the outer box, outside
-                the scroll box.
+                the scroll box. Each tab is shrink-0: its min-w-11 replaces the automatic minimum width,
+                so without it flex squeezed Overview to two lines at 320 and 375 with text at 200% (CI
+                run 45739112935) instead of letting the strip scroll; a one-word label stays whole.
                 AMENDED Phase 89.6-17 (tab-edge): the selected tab's underline is the tab-indicator
                 token (owner pick O-3 = U1, 2026-11-22), a floor fix: purple-600 measured 2.9867 on the
                 dark page ground (floor 3.0), purple-500 measures 4.1790; light is unchanged. The
@@ -1998,7 +2000,7 @@ function GroupHomePage(){
                         onFocus={focusTab}
                         onClick={() => pressTab('home', overviewTabRef)}
                         aria-current={activeTab === 'home' ? 'true' : undefined}
-                        className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 rounded-t-btn ${
+                        className={`shrink-0 px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 rounded-t-btn ${
                             activeTab === 'home'
                                 ? 'text-btn-primary-text bg-btn-primary border-b-2 border-tab-indicator'
                                 : 'text-content-secondary hover:text-content-primary'
@@ -2011,7 +2013,7 @@ function GroupHomePage(){
                         onFocus={focusTab}
                         onClick={() => pressTab('library', libraryTabRef)}
                         aria-current={activeTab === 'library' ? 'true' : undefined}
-                        className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 rounded-t-btn ${
+                        className={`shrink-0 px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset min-h-11 min-w-11 rounded-t-btn ${
                             activeTab === 'library'
                                 ? 'text-btn-primary-text bg-btn-primary border-b-2 border-tab-indicator'
                                 : 'text-content-secondary hover:text-content-primary'
