@@ -1125,8 +1125,17 @@ export default function AvailabilityGrid({
               {/* Time label column — mirrors the header spacer width. Sticky
                   left-0 pins the time axis while the grid scrolls horizontally
                   (Phase 87.8 TOUCH); the opaque bg is required — sticky labels
-                  over painted cells are unreadable without one. */}
-              <div className="w-12 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary sticky left-0 z-10 bg-surface-card">
+                  over painted cells are unreadable without one.
+                  DECISION Phase 89.6-20 (grid-labels): the compact phone label's right padding is
+                  pr-1 (the full sm: label keeps pr-2), chosen OVER pr-2 at every width (the
+                  compact "10:00p" is 42px in the 48px w-12 gutter, so pr-2 pushed it 2px out of
+                  the gutter's left edge at normal text, clipped by the grid's scroll box, and 5px
+                  out at 200% text, measured; register R03 hand-off from plan 89.6-23) and OVER a
+                  wider gutter (it breaks the six-site 48 + 4x76 column arithmetic pinned in
+                  availabilityGridColumns.test.ts). GR (owner, 2026-11-22: nothing squeezed): the
+                  label now has its room; normal text moves it 4px toward the cells. Changing this
+                  is a decision, not a cleanup. */}
+              <div className="w-12 sm:w-20 shrink-0 flex items-center justify-end pr-1 sm:pr-2 text-xs sm:text-sm text-content-secondary sticky left-0 z-10 bg-surface-card">
                 <span className="sm:hidden">{formatTimeLabelCompact(timeSlot)}</span>
                 <span className="hidden sm:inline">{formatTimeLabel(timeSlot)}</span>
               </div>

@@ -301,10 +301,17 @@ function HeatmapTooltip({
   // now partly stale on one point: BOTH tones have been `text-base` since the 72-02 hotfix, so
   // "larger type" no longer distinguishes them. Visible delta 500 -> 400 on the mobile heatmap
   // tooltip, covered by V-6. Restoring 500 is a decision, not a cleanup.
+  // DECISION Phase 89.6-20 (O06-cap): the tooltip is capped at the smaller of 20rem and the window
+  // less the 8px shift padding each side, chosen OVER 20rem alone (640px at 200% text, wider than a
+  // phone, so a long name ran off screen) and OVER the mobile tone's rem gutter (it would change the
+  // cap at normal text). At 375 and 1280 with normal text the cap is still 20rem. GR (owner,
+  // 2026-11-22: nothing squeezed, shrunk, cut or broken to avoid stacking; scrolling sideways is
+  // not fine). The 16px is the two 8px paddings of shift() above, in px because that padding is px.
+  // Changing this is a decision, not a cleanup.
   const toneClassName =
     tone === 'mobile'
       ? 'bg-surface-elevated text-content-primary rounded-card px-edge-page py-3 text-base shadow-theme-lg max-w-[calc(100vw-2rem)] ring-1 ring-line'
-      : 'bg-surface-elevated text-content-primary rounded-card px-edge-page py-2.5 text-base shadow-theme-lg max-w-xs';
+      : 'bg-surface-elevated text-content-primary rounded-card px-edge-page py-2.5 text-base shadow-theme-lg max-w-[min(20rem,calc(100vw-16px))]';
 
   // Arrow positioning per floating-ui's arrow-middleware contract.
   // The arrow div is absolutely positioned by middlewareData.arrow.x/y on the
