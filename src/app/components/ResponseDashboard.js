@@ -660,52 +660,67 @@ export default function ResponseDashboard({
         /* Respondent list */
         <ul className="space-y-1" aria-busy={refreshing ? 'true' : undefined}>
           {respondents.map(r => (
+            /* DECISION Phase 89.6-20 (planning-rows): a respondent's name wraps by words and the
+               status line is a whole item that moves under the name, chosen OVER a truncated name
+               (register UR-01b; the owner's wrap ruling, UI-SPEC plan-52 amendment) and OVER
+               shrink-0 status spans (one pushed the page to 413px at 320 / 200%). GR (owner,
+               2026-11-22: 'A row stays a row while everything in it fits whole. When it does not,
+               items stack.'). The name-and-status cluster carries min-w-0 and flex-1 so the
+               CONTAINER takes the room left of the icon (review M019: without them its automatic
+               minimum is the whole 30-letter word and the row overflows); the name itself has no
+               minimum (HR-2) and breaks inside a word only when that word alone is wider than the
+               cluster. Normal text: a short name is pixel-identical; a long name wraps instead of
+               ending in an ellipsis. Changing this is a decision, not a cleanup. */
             <li
               key={r.user_id}
-              className="flex items-center justify-between py-2 px-2 rounded-sm hover:bg-surface-hover border-b border-line last:border-b-0"
+              className="bb-row items-center py-2 px-2 rounded-sm hover:bg-surface-hover border-b border-line last:border-b-0"
             >
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="bb-row-text flex items-center gap-2">
                 {r.has_responded ? (
                   <CheckIcon className="w-5 h-5 text-content-status-success shrink-0" />
                 ) : (
                   <ClockIcon className="w-5 h-5 text-content-muted shrink-0" />
                 )}
 
-                <span className="text-content-primary truncate">
-                  {r.username}
-                  {isMe(r.user_id) && (
-                    <span className="text-content-muted text-sm ml-1">(you)</span>
+                <span className="bb-cluster min-w-0 flex-1">
+                  <span className="text-content-primary">
+                    {r.username}
+                    {isMe(r.user_id) && (
+                      <span className="text-content-muted text-sm ml-1">(you)</span>
+                    )}
+                  </span>
+
+                  {r.has_responded && showSlotCounts && r.slot_count !== null && (
+                    <span className="text-sm text-content-muted">
+                      - {r.slot_count} slot{r.slot_count !== 1 ? 's' : ''} available
+                    </span>
+                  )}
+
+                  {r.has_responded && (!showSlotCounts || r.slot_count === null) && (
+                    <span className="text-sm text-content-muted">
+                      - responded
+                    </span>
+                  )}
+
+                  {!r.has_responded && (
+                    <span className="text-sm text-content-muted">
+                      - pending
+                    </span>
                   )}
                 </span>
-
-                {r.has_responded && showSlotCounts && r.slot_count !== null && (
-                  <span className="text-sm text-content-muted shrink-0">
-                    - {r.slot_count} slot{r.slot_count !== 1 ? 's' : ''} available
-                  </span>
-                )}
-
-                {r.has_responded && (!showSlotCounts || r.slot_count === null) && (
-                  <span className="text-sm text-content-muted shrink-0">
-                    - responded
-                  </span>
-                )}
-
-                {!r.has_responded && (
-                  <span className="text-sm text-content-muted shrink-0">
-                    - pending
-                  </span>
-                )}
               </div>
 
               {/* Remind button for admins on non-respondents */}
               {isAdmin && !r.has_responded && !isMe(r.user_id) && (
-                <RemindButton
-                  userId={r.user_id}
-                  lastRemindedAt={r.last_reminded_at}
-                  isReminding={remindingUserIds.includes(r.user_id)}
-                  statusId={statusIdFor(r.user_id)}
-                  onRemind={handleRemind}
-                />
+                <div className="bb-row-end">
+                  <RemindButton
+                    userId={r.user_id}
+                    lastRemindedAt={r.last_reminded_at}
+                    isReminding={remindingUserIds.includes(r.user_id)}
+                    statusId={statusIdFor(r.user_id)}
+                    onRemind={handleRemind}
+                  />
+                </div>
               )}
             </li>
           ))}

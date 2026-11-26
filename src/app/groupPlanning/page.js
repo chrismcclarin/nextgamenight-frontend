@@ -731,19 +731,40 @@ export default function GroupPlanningPage() {
                 title are inline text on the same lines, so the name always has the pill's full
                 line to break on and can never be squeezed into letter-stacks; no minimum width is
                 needed and none is set. CHOSEN OVER a wider cap (still a cut) and OVER a block
-                link (it would put every crumb on its own line at every width). */}
+                link (it would put every crumb on its own line at every width).
+                AMENDED Phase 89.6-20 (planning-crumbs): measured in CI run 44703587899, the name did
+                NOT have the full line: the JSX joins Home, the separator and the name with no space,
+                so 'Home > Weekend' was one run that broke inside Weekend at 320 / 200%. Plan 89.6-39's
+                narrower pill padding (px-edge-card) then gave this two-word name the room it needed
+                (its CI runs 45561514680 and 45562275271), but the glued run still broke any first
+                word too long to sit beside 'Home >' on one line. Each crumb is
+                now a .bb-crumbs item with its separator inside it, chosen OVER inline text (the glued
+                run) and OVER adding spaces (a separator could end a line apart from its crumb), and
+                still OVER the block link rejected above (crumbs share a line while they fit).
+                UI-SPEC: breadcrumb items wrap as units. GR (owner, 2026-11-22: 'A row stays a row
+                while everything in it fits whole. When it does not, items stack.'). */}
+            {/* DECISION Phase 89.6-20 (planning-crumbs): the crumbs are .bb-crumbs items, a div and
+                spans OVER an ol and li (what a screen reader hears stays byte-identical; spoken
+                output is Phase 89.8's, SPEC A7); each separator's left margin is the block's 0.5rem
+                column gap, so normal text is pixel-identical. The reasoning is the amendment above. */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-edge-card py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
-                <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
-                {group && (
-                    <>
-                        <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">
-                            {group.name}
-                        </Link>
-                        <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
-                    </>
-                )}
-                <span aria-current="page" className="text-content-primary font-bold">{PLAN_PAGE_TITLE}</span>
+                <div className="bb-crumbs">
+                    <span>
+                        <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
+                    </span>
+                    {group && (
+                        <span>
+                            <span aria-hidden="true" className="text-content-muted mr-2">{'>'}</span>
+                            <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">
+                                {group.name}
+                            </Link>
+                        </span>
+                    )}
+                    <span>
+                        <span aria-hidden="true" className="text-content-muted mr-2">{'>'}</span>
+                        <span aria-current="page" className="text-content-primary font-bold">{PLAN_PAGE_TITLE}</span>
+                    </span>
+                </div>
             </nav>
 
             {/* Header */}

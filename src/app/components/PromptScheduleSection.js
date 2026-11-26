@@ -222,6 +222,8 @@ export default function PromptScheduleSection({
     );
   };
 
+  const badge = renderBadge();
+
   return (
     <div>
       {/* DECISION Phase 88-28 (Req 4): this is `role="button"` + `tabIndex` + a key handler,
@@ -285,8 +287,15 @@ export default function PromptScheduleSection({
         }}
         className="p-3 cursor-pointer hover:bg-surface-hover active:opacity-75 rounded-card transition-colors focus:outline-hidden focus-visible:focus-ring-inset"
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        {/* DECISION Phase 89.6-20 (planning-pills): the Check-ins title and its open-poll count are
+            a bb-row: the count stays at the right while both fit and moves under the title when
+            they do not, chosen OVER flex justify-between (the pill was pushed past the edge at
+            320 / 200%, register R5-06) and OVER bb-cluster (the pill would leave the right edge at
+            normal text, an unpicked look change). GR (owner, 2026-11-22: 'A row stays a row while
+            everything in it fits whole. When it does not, items stack.'). Changing this is a
+            decision, not a cleanup. */}
+        <div className="bb-row items-center">
+          <div className="bb-row-text flex items-center gap-2">
             {/* DECISION Phase 88.6-15 (owner ruling #165, 2026-09-14): the chevron is marked
                 DECORATIVE, chosen OVER accepting the bare svg and OVER auditing the whole
                 Section (R7 stays scoped to modals — no Section axe audit is added here and R7's
@@ -308,7 +317,7 @@ export default function PromptScheduleSection({
                 mints no heading where none existed (P4). */}
             <span className="font-bold text-content-primary">Check-ins</span>
           </div>
-          {renderBadge()}
+          {badge !== null && <div className="bb-row-end">{badge}</div>}
         </div>
         {!isExpanded && isAdmin && !loading && nextPromptDay && (
           <p className="text-sm text-content-muted mt-1 ml-6">

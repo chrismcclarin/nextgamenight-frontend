@@ -302,3 +302,25 @@ describe('Check-ins: the selection passes through to the cards (quick-261026-pi6
     expect(onSelectPoll).toHaveBeenCalledWith('pa');
   });
 });
+
+// Phase 89.6-20 (planning-pills), register R5-06: the Check-ins header row is a bb-row (it keeps
+// items-center), the chevron-and-title group is its text slot and the open-poll count sits in its
+// end slot, so the count moves under the title when both do not fit instead of pushing past the
+// edge. The reasoning is the component's own marker,
+// src/app/components/PromptScheduleSection.js ("DECISION Phase 89.6-20 (planning-pills)").
+// Every comment in this block is a // line (CF-9).
+describe('89.6-20 planning-pills: the Check-ins header row on the shared blocks', () => {
+  it('the header row is a bb-row; the title group is its bb-row-text; the open-poll pill sits in a bb-row-end', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValueOnce({ prompts: [ROW_A, ROW_B] } as never);
+    renderSection({ defaultExpanded: false });
+    const pill = await within(header()).findByText('2 open polls');
+    const title = within(header()).getByText('Check-ins');
+    const titleGroup = title.parentElement!;
+    const row = titleGroup.parentElement!;
+    expect(row.className.split(/\s+/)).toEqual(expect.arrayContaining(['bb-row', 'items-center']));
+    expect(row.className.split(/\s+/)).not.toContain('justify-between');
+    expect(titleGroup.className.split(/\s+/)).toContain('bb-row-text');
+    expect(pill.parentElement!.className.split(/\s+/)).toContain('bb-row-end');
+    expect(pill.parentElement!.parentElement).toBe(row);
+  });
+});
