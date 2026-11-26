@@ -11,7 +11,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { settleAnimations } from '../inFlight';
 import { readCellUnderExceptions, readPageZoomCellUnderExceptions } from '../largeTextExceptions';
-import { expectLargeTextCell, expectPageZoomUsable } from '../wordLines';
+import { THIRTY_LETTER_WORD, expectLargeTextCell, expectPageZoomUsable } from '../wordLines';
 import type { SurfaceRow, SweepCell } from './index';
 
 const PATTERNS = [
@@ -42,6 +42,12 @@ async function settleFrames(page: Page): Promise<void> {
     await document.fonts.ready;
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   });
+}
+
+/** A reach reads at normal text: the sweep applies a cell's text mode only after the reach. */
+async function expectNormalText(page: Page, id: string): Promise<void> {
+  const fontSize = await page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
+  if (fontSize !== '16px') throw new Error(`${id}: STOP, the reach ran at a ${fontSize} root, not at normal text: the sweep's cell order changed`);
 }
 
 const sidewaysOf = (page: Page): Promise<number> => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -102,8 +108,7 @@ const reachAvailability: SurfaceRow['reach'] = async (page) => {
   await page.goto('/userProfile');
   await page.getByRole('heading', { level: 2, name: 'Availability Settings' }).waitFor({ state: 'visible', timeout: 15_000 });
   await page.getByRole('button', { name: 'Delete Wednesday schedule', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
-  const fontSize = await page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
-  if (fontSize !== '16px') throw new Error(`R16-availability: STOP, the reach ran at a ${fontSize} root, not at normal text: the sweep's cell order changed`);
+  await expectNormalText(page, 'R16-availability');
   for (const size of [
     { width: 320, height: 568 },
     { width: 375, height: 667 },
@@ -183,10 +188,104 @@ const availabilityExtras: NonNullable<SurfaceRow['extras']> = async (page: Page,
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
+// R16-specific: the Specific Dates tab with the override form open. Before any text mode the strip
+// is read at normal text at 320 and 375: every tab fits there, so no edge cue renders.
+const stripCues = (page: Page): Locator => page.locator('#availability-settings [data-strip-cue]');
+const reachSpecific: SurfaceRow['reach'] = async (page) => {
+  await page.goto('/userProfile');
+  await page.getByRole('heading', { level: 2, name: 'Availability Settings' }).waitFor({ state: 'visible', timeout: 15_000 });
+  await expectNormalText(page, 'R16-specific');
+  for (const size of [
+    { width: 320, height: 568 },
+    { width: 375, height: 667 },
+  ]) {
+    await page.setViewportSize(size);
+    await settleFrames(page);
+    expect(await stripCues(page).count(), `R16-specific: at ${size.width} x ${size.height} with normal text the availability strip shows an edge cue`).toBe(0);
+  }
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.getByRole('tab', { name: 'Specific Dates', exact: true }).click();
+  await page.getByRole('button', { name: '+ Add Override', exact: true }).click();
+  const root = page.locator('#availability-settings');
+  await settleAnimations(root);
+  return { root };
+};
+
+// R16-specific extras, the 320 x 568 dark 200% cell only (X-01, the strip half): the strip scrolls
+// there; scrolled to its start, the end that hides Specific Dates shows its aria-hidden cue. Then,
+// still at the start, the first tab is focused and ArrowRight moves focus to Specific Dates, which
+// must sit as clear of the cues as the geometry allows (review M027 / M115). Focus and the strip are
+// put back for the cells after this one.
+const STRIP_CELL = '320x568-dark-200';
+const specificExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  if (cell.id !== STRIP_CELL) return;
+  const tag = `R16-specific ${cell.id}`;
+  const strip = page.getByRole('tablist', { name: 'Availability settings' });
+  const scrolls = await strip.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+  if (!scrolls) throw new Error(`${tag}: the availability strip does not scroll at 320 / 200%, so the edge cue is not exercised`);
+  await strip.evaluate((el) => el.scrollTo({ left: 0 }));
+  const endCue = page.locator('#availability-settings [data-strip-cue="end"][aria-hidden="true"]');
+  await expect(endCue, `${tag}: the strip hides Specific Dates at its end but shows no end cue`).toBeVisible();
+  const first = page.getByRole('tab', { name: 'Schedules', exact: true });
+  const specific = page.getByRole('tab', { name: 'Specific Dates', exact: true });
+  await first.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(specific, `${tag}: ArrowRight from Schedules did not move focus to Specific Dates`).toBeFocused();
+  const coverage = () =>
+    specific.evaluate(async (tab) => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const t = tab.getBoundingClientRect();
+      const box = (tab.closest('[role="tablist"]') as HTMLElement).getBoundingClientRect();
+      const cues = Array.from(document.querySelectorAll('#availability-settings [data-strip-cue]')).map((el) => el.getBoundingClientRect());
+      const covered = cues.reduce((sum, c) => sum + Math.max(0, Math.min(t.right, c.right) - Math.max(t.left, c.left)), 0);
+      const cueWidth = cues[0]?.width ?? 32;
+      const allowed = Math.max(0, t.width - (box.width - 2 * cueWidth)) + 0.5;
+      return { covered, allowed };
+    });
+  await expect
+    .poll(async () => {
+      const read = await coverage();
+      return read.covered <= read.allowed ? 'clear' : `covered ${read.covered}px, allowed ${read.allowed}px`;
+    }, { message: `${tag}: the keyboard-focused Specific Dates tab stays under the edge cue` })
+    .toBe('clear');
+  await specific.evaluate((tab) => (tab as HTMLElement).blur());
+};
+
+// D32: Disconnect Google Calendar?, opened by Disconnect Calendar with the calendar status read
+// answered connected. Its Disconnect is NEVER pressed.
+const isCalendarStatus = (url: URL): boolean => /\/auth\/google\/status\/[^/]+$/.test(url.pathname);
+const answerConnected = (url: URL): unknown => (isCalendarStatus(url) ? { connected: true } : answerPatterns(url));
+const reachDisconnect: SurfaceRow['reach'] = async (page) => {
+  await page.goto('/userProfile');
+  await page.getByRole('heading', { level: 1 }).first().waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByRole('button', { name: 'Disconnect Calendar', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Disconnect Google Calendar?', exact: true });
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(dialog);
+  return { root: dialog, dialog };
+};
+
+// D33: Import your BGG collection?, opened by Import Collection with the 30-letter word typed as the
+// BoardGameGeek username. Its Continue is NEVER pressed.
+const reachImport: SurfaceRow['reach'] = async (page) => {
+  await page.goto('/userProfile');
+  await page.getByRole('heading', { level: 1 }).first().waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByRole('textbox', { name: 'BoardGameGeek username', exact: true }).fill(THIRTY_LETTER_WORD);
+  const importButton = page.getByRole('button', { name: 'Import Collection', exact: true });
+  await expect(importButton).toBeEnabled({ timeout: 15_000 });
+  await expect(importButton).not.toHaveAttribute('aria-disabled', 'true');
+  await importButton.click();
+  const dialog = page.getByRole('dialog', { name: 'Import your BGG collection?', exact: true });
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(dialog);
+  return { root: dialog, dialog };
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R16-availability', census: 'R16', kind: 'route', owner: '89.6-22', status: 'enforced', reach: reachAvailability, answers: answerPatterns, extras: availabilityExtras },
   { id: 'D25', census: 'D25', kind: 'dialog', owner: '89.6-41', status: 'pending' },
   { id: 'D26', census: 'D26', kind: 'dialog', owner: '89.6-41', status: 'pending' },
-  { id: 'D32', census: 'D32', kind: 'dialog', owner: '89.6-22', status: 'pending' },
-  { id: 'D33', census: 'D33', kind: 'dialog', owner: '89.6-22', status: 'pending' },
+  { id: 'R16-specific', census: 'R16', kind: 'route', owner: '89.6-22', state: 'specific-dates', status: 'enforced', reach: reachSpecific, answers: answerPatterns, extras: specificExtras },
+  { id: 'D32', census: 'D32', kind: 'dialog', owner: '89.6-22', status: 'enforced', reach: reachDisconnect, answers: answerConnected },
+  { id: 'D33', census: 'D33', kind: 'dialog', owner: '89.6-22', status: 'enforced', reach: reachImport, answers: answerPatterns },
 ];
