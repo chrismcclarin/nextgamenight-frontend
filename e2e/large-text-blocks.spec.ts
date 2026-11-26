@@ -1889,3 +1889,68 @@ test("mode (89.6-02): Chromium's default font 32 turns the 48rem media query off
   await expect(setTextMode(page, '100', tag), 'a page was taken out of font32').rejects.toThrow('font32 is one-way: use a fresh page');
   expect(requests, 'the page made a request').toEqual([]);
 });
+
+// R17 (2026-11-26). Overflow does not apply to an inline box that is not a replaced element: it
+// neither clips nor scrolls there. The marker is at e2e/support/wordLines.ts ("DECISION Phase 89.6 R17 (overflow applies)").
+test('check: spill, an inline box clips nothing (R17): a label drawn outside its button, inside an inline span that carries overflow hidden, reads as spill', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const read = await readLargeTextCell(await renderTwin(page, 'spill-inline-skip'));
+  const shape = await page.locator('.lt-moved').evaluate((el) => {
+    const span = el.parentElement as HTMLElement;
+    const button = span.parentElement as HTMLElement;
+    return {
+      display: getComputedStyle(span).display,
+      overflowX: getComputedStyle(span).overflowX,
+      wordLeft: el.getBoundingClientRect().left,
+      spanRight: span.getBoundingClientRect().right,
+      buttonRight: button.getBoundingClientRect().right,
+    };
+  });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ read, shape }, null, 2), contentType: 'application/json' });
+  expect({ display: shape.display, overflowX: shape.overflowX }, 'the span is not an inline box with overflow hidden: the harness is not the shape it says').toEqual({ display: 'inline', overflowX: 'hidden' });
+  expect(shape.wordLeft, `the word is not drawn clear of its inline span's own box: the harness is not the shape it says (${JSON.stringify(shape)})`).toBeGreaterThanOrEqual(shape.spanRight);
+  expect(shape.wordLeft, `the word is not drawn outside its button: the harness is not the shape it says (${JSON.stringify(shape)})`).toBeGreaterThanOrEqual(shape.buttonRight);
+  expect(read.spill.join(' | '), `a word painted whole outside its button does not read as spill: it was cut to an inline box that clips nothing (${JSON.stringify(read)})`).toContain('"Now" spills');
+  expect(read.spill.join(' | '), 'the spill read did not name the button').toContain('out of its button');
+  expect(requests, 'the page made a request').toEqual([]);
+});
+
+test('check: cut and page zoom, an inline box neither clips nor scrolls (R17): a word outside an inline overflow-hidden span is no cut and not unreachable, a real clip above an inline overflow-auto span is a cut, an inline svg still clips, and at page zoom a nowrap cut inside an inline overflow-auto span is lost and two texts that meet are an overlap', async ({ page }, testInfo) => {
+  const requests = await countRequests(page);
+  const inlineShape = () =>
+    page.locator('.lt-inline').first().evaluate((el) => ({ display: getComputedStyle(el).display, overflowX: getComputedStyle(el).overflowX }));
+
+  const whole = await readLargeTextCell(await renderTwin(page, 'cut-inline-overflow-hidden'));
+  const wholeShape = await inlineShape();
+  const wholePlaced = await page.locator('.lt-moved').evaluate((el) => ({ wordLeft: el.getBoundingClientRect().left, spanRight: (el.parentElement as HTMLElement).getBoundingClientRect().right }));
+  const clipped = await readLargeTextCell(await renderTwin(page, 'cut-inline-overflow-auto-under-clip'));
+  const clippedShape = { ...(await inlineShape()), past: await page.locator('.lt-clip').evaluate((el) => el.scrollWidth - el.clientWidth) };
+  const svg = await readLargeTextCell(await renderTwin(page, 'cut-inline-svg-clips'));
+  const svgShape = await page.locator('.lt-svg').evaluate((el) => ({
+    display: getComputedStyle(el).display,
+    overflowX: getComputedStyle(el).overflowX,
+    textLeft: (el.querySelector('text') as SVGTextElement).getBoundingClientRect().left,
+    right: el.getBoundingClientRect().right,
+  }));
+  const zoom = await readPageZoomCell(await renderTwin(page, 'zoom-inline-overflow', ZOOM_CHECK_CELL));
+  const zoomShape = await page.locator('.lt-inline').evaluateAll((els) => els.map((el) => `${getComputedStyle(el).display} ${getComputedStyle(el).overflowX}`));
+  await testInfo.attach('twin-read', { body: JSON.stringify({ whole, wholeShape, wholePlaced, clipped, clippedShape, svg, svgShape, zoom, zoomShape }, null, 2), contentType: 'application/json' });
+
+  expect(wholeShape, 'the span is not an inline box with overflow hidden: the harness is not the shape it says').toEqual({ display: 'inline', overflowX: 'hidden' });
+  expect(wholePlaced.wordLeft, `the word is not drawn clear of its inline span's own box: the harness is not the shape it says (${JSON.stringify(wholePlaced)})`).toBeGreaterThanOrEqual(wholePlaced.spanRight);
+  expect(whole.cut, `a word that is whole on screen reads as cut by an inline box that clips nothing (${JSON.stringify(whole)})`).toEqual([]);
+
+  expect({ display: clippedShape.display, overflowX: clippedShape.overflowX }, 'the span is not an inline box with overflow auto: the harness is not the shape it says').toEqual({ display: 'inline', overflowX: 'auto' });
+  expect(clippedShape.past, `the 100px box cuts nothing: the harness is not the shape it says (${JSON.stringify(clippedShape)})`).toBeGreaterThan(1);
+  expect(clipped.cut, `a line cut by a box that hides its overflow is not read as cut: the climb stopped at an inline box that scrolls nothing (${JSON.stringify(clipped)})`).toContain('hidden: "Weekend Warriors meet"');
+
+  expect({ display: svgShape.display, overflowX: svgShape.overflowX }, 'the svg is not drawn inline with its overflow hidden: the harness is not the shape it says').toEqual({ display: 'inline', overflowX: 'hidden' });
+  expect(svgShape.textLeft, `the svg's text is not outside its viewport: the harness is not the shape it says (${JSON.stringify(svgShape)})`).toBeGreaterThanOrEqual(svgShape.right);
+  expect(svg.cut.join(' | '), `text an inline svg clips is not read as cut: an svg is a replaced element and does clip (${JSON.stringify(svg)})`).toContain('hidden: "Go"');
+
+  expect(zoomShape, 'the two spans are not inline boxes with overflow auto and hidden: the harness is not the shape it says').toEqual(['inline auto', 'inline hidden']);
+  expect(zoom.lost.join(' | '), `a nowrap cut inside an inline overflow-auto span is not lost: nothing scrolls there (${JSON.stringify(zoom)})`).toContain('cut: nowrap');
+  expect(zoom.lost.filter((line) => line.startsWith('unreachable') && line.includes('Sunday')), 'a line that is whole on screen reads as unreachable, clipped by an inline box that clips nothing').toEqual([]);
+  expect(zoom.lost.join(' | '), `two texts that meet are not read as an overlap: one was cut away by an inline box that clips nothing (${JSON.stringify(zoom)})`).toContain('overlap: the text of');
+  expect(requests, 'the page made a request').toEqual([]);
+});

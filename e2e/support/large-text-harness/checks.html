@@ -1543,3 +1543,42 @@
     </div>
   </main>
 </section>
+
+<!-- R17, the skip of an overflow on an inline box in the SPILL read. The second word is placed 70px from the left edge of its 60px button, outside it. The inline span around it carries overflow hidden, which clips nothing (overflow does not apply to an inline box), so the word is painted whole outside the button. SPILL. With the skip taken out, the word is cut to that span's own box (the first word's), nothing of it is left, and no spill is read. -->
+<section data-case="spill-inline-skip">
+  <main data-frame class="lt-frame px-4 py-4">
+    <button type="button" class="lt-button relative w-[60px] bg-surface-card p-0 text-base text-content-primary"><span class="lt-inline overflow-hidden">Go<span class="lt-moved absolute left-[70px] top-0">Now</span></span></button>
+  </main>
+</section>
+
+<!-- R17, the CUT check's climb. The same shape in running text: the last word is placed 150px from the left of its line, outside its inline span, which carries overflow hidden and clips nothing. The word is whole on screen. NOT A CUT. -->
+<section data-case="cut-inline-overflow-hidden">
+  <main data-frame class="lt-frame px-4 py-4">
+    <p class="relative text-base text-content-primary">Row <span class="lt-inline overflow-hidden">is<span class="lt-moved absolute left-[150px] top-0">Go</span></span></p>
+  </main>
+</section>
+
+<!-- R17, the CUT check's climb. A 100px box that hides its overflow cuts a nowrap line. Between the two stands an inline span with overflow auto, which scrolls nothing. A CUT (the hidden kind): the climb must not stop at the inline span as if it were a scroller. -->
+<section data-case="cut-inline-overflow-auto-under-clip">
+  <main data-frame class="lt-frame px-4 py-4">
+    <div class="lt-clip w-[100px] overflow-hidden"><span class="lt-inline overflow-auto"><span class="lt-line whitespace-nowrap text-base text-content-primary">Weekend Warriors meet</span></span></div>
+  </main>
+</section>
+
+<!-- R17, the CUT check's climb, a REPLACED inline element: an svg drawn inline hides its overflow and DOES clip. Its text lies outside its viewport and is not drawn. A CUT (the hidden kind), as before R17. -->
+<section data-case="cut-inline-svg-clips">
+  <main data-frame class="lt-frame px-4 py-4">
+    <p class="text-base text-content-primary">Row <svg class="lt-svg inline h-8 w-8" viewBox="0 0 32 32" role="img" aria-label="Go"><text x="40" y="20" font-size="16" fill="currentColor">Go</text></svg></p>
+  </main>
+</section>
+
+<!-- R17, the page-zoom read's two climbs (read at 215 wide, normal text). (1) A nowrap line wider than its 80px box, inside an inline span with overflow auto: nothing scrolls, so the cut is LOST. (2) A line placed 24px above its paragraph, on top of the line before it, outside its inline span, which carries overflow hidden: it is whole on screen (not unreachable) and the two texts OVERLAP. -->
+<section data-case="zoom-inline-overflow">
+  <main data-frame class="lt-frame px-4 py-4">
+    <span class="lt-inline overflow-auto"><div class="lt-nowrap w-[80px] whitespace-nowrap text-base text-content-primary">A long line of words here</div></span>
+    <div class="lt-text-overlap mt-3 text-base text-content-primary">
+      <p>Hosted by Bob</p>
+      <p class="relative"><span class="lt-inline overflow-hidden">On<span class="lt-moved absolute left-0 -top-6">Sunday at noon</span></span></p>
+    </div>
+  </main>
+</section>
