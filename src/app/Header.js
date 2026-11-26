@@ -151,6 +151,7 @@ function Header(){
                 }`}
                 onClick={() => setMobileMenuOpen(false)}
                 aria-hidden="true"
+                data-slot="header-menu-dim"
             />
 
             {/* DECISION Phase 88.3 (Req 7 / UI-SPEC §5.8.2): the focus ring is scoped to
@@ -512,6 +513,7 @@ function Header(){
                                 : '-translate-y-full opacity-0 pointer-events-none'
                         }`}
                         inert={mobileMenuOpen ? undefined : ''}
+                        data-slot="header-menu-panel"
                     >
                         <ul className="flex flex-col py-2">
                             {navLinks.map(({ href, label, isLink }) => (
