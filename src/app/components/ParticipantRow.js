@@ -66,10 +66,16 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
     // WHAT MOVES WITH IT: the three type-in boxes carry the Input primitive's phone floor (44px
     // below md). Left alone they would be 44px between 640 and 767 beside a 42px read-only name box
     // and the bottoms would not be level, so each box here switches that floor off below md and
-    // puts it back below sm (max-md:min-h-0 max-sm:min-h-11): 44px on a phone as before, 42px on
+    // puts it back below sm (the md-down floor switch-off): 44px on a phone as before, 42px on
     // the one-line row. Chosen OVER a 44px floor on the read-only box between 640 and 767 (the
     // picked mock shows 42 / 42 / 42). The New Player label's 44 by 44 box is likewise kept below
     // sm only. Below 640 nothing changes. Going back to md is a decision, not a cleanup.
+    // AMENDED Phase 89.6-24 (S5, owner first look 2026-11-22 'S5: Fix'): from 640 to 767 the boxes
+    // are 44px (the phone floor kept to md), the read-only box matching; 42px from md up as before.
+    // Text above kept as history. HOW: the three type-in boxes no longer switch the Input's floor
+    // off (it holds below md, 44px), and the read-only box takes the same 44px floor in the 640 to
+    // 767 band only, so its bottom stays level with theirs; on a phone it stays 42px (O-4's
+    // measured promise) and from md every box is 42px. Changing this is a decision, not a cleanup.
     //
     // DECISION Phase 88-26 (D-35/D-34): this row divider is the ONE site in the 41-site sweep
     // promoted to the STRONG hairline instead of taking the mechanical `-line` default. Rows
@@ -79,14 +85,28 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
     // neutral was rejected as a 280-site re-theme). In-repo precedent for the same role:
     // gameDetail/page.js's between-session rule and Header.js's sticky-header underline.
     // Demoting this to the neutral is a decision, not a consistency cleanup.
-    <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 p-2 border-b border-line-strong">
-      <div className="sm:flex-1 sm:min-w-0">
+    //
+    // DECISION Phase 89.6-24 (participant-controls): from sm the row wraps (sm:flex-wrap) and the name
+    // column takes a 12rem basis, so Score, Faction and Remove move under the name as one group when
+    // they cannot fit whole beside it, chosen OVER the squeezed name column (flip run 45827953808:
+    // at 768 / 200% Alice broke over five lines beside the controls) and OVER narrowing the controls.
+    // At normal text from 640 the row is still one line and the name gets all the controls leave
+    // (12rem is 192px; 277px at 640, R4 D6's number). GR (owner 2026-11-22: 'A row stays a row while
+    // everything in it fits whole. When it does not, items stack. Nothing is squeezed, shrunk, cut or
+    // broken to avoid stacking.'). Changing this is a decision, not a cleanup.
+    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-start gap-2 sm:gap-4 p-2 border-b border-line-strong">
+      <div className="sm:flex-[1_1_12rem] sm:min-w-0">
         {/* DECISION Phase 88.9-65 (X40, owner at N32: right justified on the participant name line): ONE New Player checkbox there at every width, its label a real 44px box (WCAG 2.5.8 floor 24, house floor 44), chosen OVER two width-gated twins (two controls for one value) and OVER an invisible extension (it would cover the name input). The line grows about 24px.
             It replaces the owner refinement of 2026-08-04 on F-3, which put a phone-only twin on this line and kept a second checkbox in the controls row from the small breakpoint up.
             AMENDED Phase 88.9-52 (R15b, owner 2026-11-17: "couldn't they sit closer to the form? Does the checkbox need that much space around it?"): from md up the label is COMPACT (no 44px box, a 6px gap), so the line is one 20px text line and Participant Name sits 4px above its box (was 15.5px, held off by the 44px box); the desktop compaction is the owner's ruling, chosen OVER the 44px box at every width. Below md the 44 by 44 tap box is KEPT (max-md:min-h-11 / max-md:min-w-11). Still ONE checkbox, on this line, at every width: never a second copy. The line is centred (items-center, was items-baseline) so the phone's 44px box and the name label share a middle.
             AMENDED Phase 88.9-52 (R4 D6, owner 2026-11-18): compact from sm (640px), with the one-line row; the 44 by 44 box is kept below sm (max-sm:min-h-11 / max-sm:min-w-11). The marker is at the top of this row. */}
         {/* DECISION Phase 88.9-65 (X43): every label here reads text-content-primary, R2-14's measured ink (17.97 / 10.64), chosen OVER the lighter ink Participant Name alone carried. */}
-        <div className="flex items-center justify-between mb-1">
+        {/* DECISION Phase 89.6-24 (participant-label): the label line is the shared bb-cluster, so New
+            Player moves under Participant Name when both cannot fit whole on the line, chosen OVER the
+            plain flex line that pushed the dialog sideways at 320 / 200% (flip run 45827953808) and
+            OVER cutting or narrowing the label. Normal text: the same one line, the two ends apart.
+            GR (owner 2026-11-22). Changing this is a decision, not a cleanup. */}
+        <div className="bb-cluster items-center justify-between mb-1">
           {/* 88-33 Task 8 (census class B — the 3 red-tag broken label[for]): member rows
               render a read-only DIV, so a label[for] here pointed at a nonexistent form
               element — an actively wrong association. The <label> renders ONLY when the
@@ -131,6 +151,8 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
              picked phone mock keeps this box at 42px. Edge against the list box fill around it (the same
              input fill): 4.11 light, 2.79 dark, exactly what Score and Faction already measure here
              (was 2.31 light, 1.45 dark with the lighter edge).
+             AMENDED Phase 89.6-24 (S5): from 640 to 767 it does take a 44px floor, to stay level
+             with the type-in boxes there (explained at the top of this row); 42px elsewhere.
              AMENDED Phase 89.6-24 (R1, owner pick O-4 = R1, 2026-11-22: 'A quiet box: no fill, dashed
              edge, no icon'): the fill is removed and the edge is dashed in the same border-input colour
              (plan 89.6-09's E1 value: 4.0156 dark, 4.1120 light on the list box fill, pinned by
@@ -159,7 +181,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
              the lock). GR (owner 2026-11-22: 'A row stays a row while everything in it fits whole.
              When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid
              stacking.'). Changing this is a decision, not a cleanup. */
-          <div className="p-2 border border-dashed border-input rounded-btn text-content-primary text-base break-words">
+          <div className="p-2 border border-dashed border-input rounded-btn sm:max-md:min-h-11 text-content-primary text-base break-words">
             {participant.username || `Participant ${index + 1}`}
             {participant.is_guest && (
               /* §4.5's pill/chip-ink row: 600/500 -> 700, with 400 REJECTED because a FILLED
@@ -203,8 +225,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                   user_id: matchingMember ? matchingMember.id : '',
                 });
               }}
-              // R4 D6: the phone floor holds below sm only (the marker at the top of this row).
-              className="max-md:min-h-0 max-sm:min-h-11"
+              // S5 (89.6-24): the Input's own phone floor holds below md (the marker at the top of this row).
               placeholder="Type name (group member or custom)"
               // 88-33 Task 6 (fork 2, RULED 2026-08-17): person names cap at 50 AT
               // ENTRY (matches the username cap in userProfile); display always
@@ -283,7 +304,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             step="0.01"
             value={participant.score || ''}
             onChange={(e) => onParticipantChange(index, 'score', e.target.value)}
-            className="w-16 max-md:min-h-0 max-sm:min-h-11"
+            className="w-16"
             placeholder="0"
           />
         </div>
@@ -296,7 +317,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             type="text"
             value={participant.faction || ''}
             onChange={(e) => onParticipantChange(index, 'faction', e.target.value)}
-            className="w-full sm:w-24 max-md:min-h-0 max-sm:min-h-11"
+            className="w-full sm:w-24"
             placeholder="Optional"
           />
         </div>

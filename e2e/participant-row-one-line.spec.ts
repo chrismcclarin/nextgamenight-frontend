@@ -205,7 +205,11 @@ test.describe('Phase 88.9-21 C5a — the participant row at 375 (phone project)'
   // Remove (44px), Score is 64px and Faction 96px wide, each label is 4px above its box; at 620
   // the row is still the phone's two lines with 44px boxes. Same opener as above; nothing is
   // submitted; closed with Escape.
-  test('R4 D6 (88.9-52): the participant row is one line at 700 (boxes level, 42px) and two lines at 620 (44px boxes)', async ({ page }) => {
+  // AMENDED Phase 89.6-24 (S5, owner first look 2026-11-22 'S5: Fix'): from 640 to 767 the boxes keep
+  // the phone floor, so at 700 the three are 44px (was 42px), still one height with bottoms level
+  // with Remove, and the row is 85px (was 83); 42px from 768 up as before
+  // (src/app/components/ParticipantRow.js ("AMENDED Phase 89.6-24 (S5, owner first look 2026-11-22")).
+  test('R4 D6 (88.9-52): the participant row is one line at 700 (boxes level, 44px since 89.6-24 S5) and two lines at 620 (44px boxes)', async ({ page }) => {
     const groupId = process.env.E2E_GROUP_ID ?? '1';
     await page.goto(`/groupHomePage?id=${groupId}`);
     await page.getByRole('button', { name: 'Create Event', exact: true }).click();
@@ -258,9 +262,9 @@ test.describe('Phase 88.9-21 C5a — the participant row at 375 (phone project)'
     expect(wide.name.right, `R4 D6, 700: the name box runs into Score (${wideLine})`).toBeLessThanOrEqual(wide.score.left - 15.5);
     expect(wide.score.right, `R4 D6, 700: Score runs into Faction (${wideLine})`).toBeLessThanOrEqual(wide.faction.left - 15.5);
     expect(wide.faction.right, `R4 D6, 700: Faction runs into Remove (${wideLine})`).toBeLessThanOrEqual(wide.remove.left - 15.5);
-    // The three boxes: one height, the Input's own 42px (no phone floor here), bottoms level with Remove.
+    // The three boxes: one height, the Input's own phone floor (44px, 89.6-24 S5), bottoms level with Remove.
     for (const [what, box] of [['the name box', wide.name], ['Score', wide.score], ['Faction', wide.faction]] as const) {
-      expect(Math.abs(box.height - 42), `R4 D6, 700: ${what} is ${box.height}px tall, not 42px (${wideLine})`).toBeLessThanOrEqual(1);
+      expect(Math.abs(box.height - 44), `R4 D6 + S5, 700: ${what} is ${box.height}px tall, not 44px (${wideLine})`).toBeLessThanOrEqual(1);
       expect(Math.abs(box.bottom - wide.remove.bottom), `R4 D6, 700: ${what} ends ${box.bottom - wide.remove.bottom}px off Remove's bottom (${wideLine})`).toBeLessThanOrEqual(1);
     }
     expect(wide.remove.height, `R4 D6, 700: Remove is ${wide.remove.height}px tall`).toBeGreaterThanOrEqual(44);
@@ -272,7 +276,7 @@ test.describe('Phase 88.9-21 C5a — the participant row at 375 (phone project)'
     for (const [what, label, box] of [['Participant Name', wide.nameLabel, wide.name], ['Score', wide.scoreLabel, wide.score], ['Faction', wide.factionLabel, wide.faction]] as const) {
       expect(Math.abs(box.top - label.bottom - 4), `R4 D6, 700: ${what} is ${box.top - label.bottom}px above its box, not 4px (${wideLine})`).toBeLessThanOrEqual(1);
     }
-    expect(Math.abs(wide.row.height - 83), `R4 D6, 700: the row is ${wide.row.height}px tall, not 83px (${wideLine})`).toBeLessThanOrEqual(2);
+    expect(Math.abs(wide.row.height - 85), `R4 D6 + S5, 700: the row is ${wide.row.height}px tall, not 85px (${wideLine})`).toBeLessThanOrEqual(2);
     expect(wide.overflow, 'R4 D6: no sideways page scroll at 700').toBeLessThanOrEqual(0);
 
     // Below 640 nothing changes: two lines, 44px type-in boxes.

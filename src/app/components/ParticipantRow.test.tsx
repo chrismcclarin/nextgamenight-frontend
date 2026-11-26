@@ -290,7 +290,9 @@ describe('X40 + X43 (88.9-65) — one New Player box, one label ink', () => {
       expect(tokensOf(label as Element)).not.toContain('min-h-11');
       expect(tokensOf(label as Element)).not.toContain('min-w-11');
       const line = (label as Element).parentElement as HTMLElement;
-      expect(tokensOf(line)).toEqual(expect.arrayContaining(['flex', 'items-center', 'justify-between', 'mb-1']));
+      // AMENDED Phase 89.6-24 (participant-label): the line is the shared bb-cluster (it wraps when
+      // the two cannot fit whole), still centred and its two ends apart.
+      expect(tokensOf(line)).toEqual(expect.arrayContaining(['bb-cluster', 'items-center', 'justify-between', 'mb-1']));
       const nameLabel = screen.getByText('Participant Name', { exact: true });
       expect(nameLabel.parentElement, `${what}: New Player shares the Participant Name line`).toBe(line);
 
@@ -375,6 +377,59 @@ describe('R15c (88.9-52) — the three boxes take the type-in field look', () =>
   });
 });
 
+// Phase 89.6-24, S5 (owner first look 2026-11-22, 'S5: Fix'): from 640 to 767 the typed name, Score
+// and Faction boxes keep the Input primitive's phone floor (44px; it was switched off there, so the
+// boxes were 42px in a band a finger still uses), and the read-only name box takes the same floor in
+// that band so the row's bottoms stay level; 42px from 768 up and the read-only box 42px on a phone,
+// as before. jsdom lays nothing out: these are class pins; the heights are read by the sweep row D21
+// at 700 (e2e/support/largeTextSurfaces/event.ts ("S5 normal-text pass")).
+describe('89.6-24 S5 — 44px boxes from 640 to 767', () => {
+  const tokensOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter((token) => token.length > 0);
+
+  it('89.6-24 S5: the name, Score and Faction inputs carry no max-md:min-h-0; the read-only box carries sm:max-md:min-h-11', () => {
+    renderRow();
+    for (const input of [screen.getByLabelText('Participant Name'), screen.getByLabelText('Score'), screen.getByLabelText('Faction')]) {
+      expect(tokensOf(input), input.id).not.toContain('max-md:min-h-0');
+      expect(tokensOf(input), input.id).toContain('max-md:min-h-11');
+    }
+    cleanup();
+    renderRow({ participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } });
+    const box = screen.getByText('Alice', { exact: false }).closest('div')!;
+    expect(tokensOf(box)).toContain('sm:max-md:min-h-11');
+    expect(tokensOf(box)).not.toContain('min-h-11');
+    expect(tokensOf(box)).not.toContain('max-md:min-h-11');
+  });
+});
+
+// Phase 89.6-24, GR (owner 2026-11-22: 'A row stays a row while everything in it fits whole. When it
+// does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking.'). Flip run
+// 45827953808 read the Edit Event dialog: at 768 / 200% the one-line row squeezed the name column
+// until Alice broke over five lines, and at 320 / 200% the label line (Participant Name beside New
+// Player) pushed the dialog sideways. The label line is the shared cluster (New Player moves under
+// the label when both cannot fit), and the row wraps with a 12rem basis on the name column, so the
+// controls move under the name when they cannot fit whole beside it; at normal text from 640 the
+// name column still gets everything the controls leave (277px at 640, as R4 D6 measured).
+describe('89.6-24 GR — the participant row stacks by whole items', () => {
+  const tokensOf = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter((token) => token.length > 0);
+
+  it('89.6-24 GR: the label line is a bb-cluster; the row wraps and the name column has a 12rem basis', () => {
+    for (const overrides of [{}, { participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } }]) {
+      renderRow(overrides);
+      const remove = screen.getByRole('button', { name: 'Remove' });
+      const row = remove.closest('.border-line-strong') as HTMLElement;
+      expect(tokensOf(row)).toEqual(expect.arrayContaining(['flex', 'flex-col', 'sm:flex-row', 'sm:flex-wrap', 'sm:items-start']));
+      const name = row.firstElementChild as HTMLElement;
+      expect(tokensOf(name)).toEqual(expect.arrayContaining(['sm:flex-[1_1_12rem]', 'sm:min-w-0']));
+      expect(tokensOf(name)).not.toContain('sm:flex-1');
+      const newPlayer = screen.getByText('New Player', { exact: true }).closest('label') as HTMLElement;
+      const line = newPlayer.parentElement as HTMLElement;
+      expect(tokensOf(line)).toEqual(expect.arrayContaining(['bb-cluster', 'items-center', 'justify-between', 'mb-1']));
+      expect(tokensOf(line)).not.toContain('flex');
+      cleanup();
+    }
+  });
+});
+
 // Phase 88.9-52, R15b (owner pick "As is", 2026-11-17; mock one-line-remove-as-is, and phone-two-line).
 // From md up: Participant Name, Score and Faction on ONE line, every label a block 4px above its box
 // (mb-1), the columns top-aligned so the three boxes sit level (same 20px label line, same 42px box),
@@ -395,18 +450,23 @@ describe('R15b (88.9-52) — one line from sm up (R4 D6; from md until then), la
       const row = remove.closest('.border-line-strong') as HTMLElement;
       expect(tokensOf(row)).toEqual(expect.arrayContaining(['flex', 'flex-col', 'sm:flex-row', 'sm:items-start', 'gap-2', 'sm:gap-4']));
       // Nothing in the row is left on the md breakpoint, in either direction, except the Input
-      // primitive's own phone floor, which each box switches off again (read below).
+      // primitive's own phone floor.
+      // AMENDED Phase 89.6-24 (S5, owner first look 'S5: Fix'): the type-in boxes no longer switch
+      // that floor off from sm, so it holds below md (44px from 640 to 767; the 89.6-24 S5 test
+      // above pins the boxes, this one the row).
       const mdGated = [row, ...Array.from(row.querySelectorAll('*'))].flatMap((el) =>
         tokensOf(el).filter((token) => /^(max-)?md:/.test(token)),
       );
-      expect(mdGated.filter((token) => token !== 'max-md:min-h-0')).toEqual([]);
-      // The type-in boxes: 44px below sm, the Input's own 42px from sm (level with the read-only name box).
+      expect(mdGated.filter((token) => token !== 'max-md:min-h-11')).toEqual([]);
+      // The type-in boxes: the Input's own 44px below md, 42px from md.
       for (const input of Array.from(row.querySelectorAll('input:not([type="checkbox"])'))) {
-        expect(tokensOf(input), input.id).toEqual(expect.arrayContaining(['max-md:min-h-0', 'max-sm:min-h-11']));
-        expect(tokensOf(input), input.id).not.toContain('max-md:min-h-11');
+        expect(tokensOf(input), input.id).toContain('max-md:min-h-11');
+        expect(tokensOf(input), input.id).not.toContain('max-md:min-h-0');
       }
       const name = row.firstElementChild as HTMLElement;
-      expect(tokensOf(name)).toEqual(['sm:flex-1', 'sm:min-w-0']);
+      // AMENDED Phase 89.6-24 (participant-controls): the name column's basis is 12rem (was flex-1),
+      // so the row wraps instead of squeezing it (the 89.6-24 GR test above).
+      expect(tokensOf(name)).toEqual(['sm:flex-[1_1_12rem]', 'sm:min-w-0']);
 
       const score = screen.getByLabelText('Score');
       const controls = score.parentElement!.parentElement as HTMLElement;

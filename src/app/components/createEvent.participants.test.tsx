@@ -313,6 +313,25 @@ describe('R15a (88.9-52) — the participant list box shows two whole people on 
   });
 });
 
+// Phase 89.6-24, F4 (owner pick F1-F3 = F4, 2026-11-22): the Create Event action row sits in the
+// dialog Body, so it takes the in-body form of src/app/components/FeedbackButton.js ("DECISION Phase 89.6-25 (F4-in-body)"):
+// below the 12rem dialog container Cancel and the submit stack full width, Cancel first in the DOM
+// and so on screen; at normal text the row is one right-aligned line as before. jsdom evaluates no
+// container query: these are class and order pins; the sweep rows D21 and D22 measure the boxes.
+describe('89.6-24 F4 — the Create Event action row on the in-body footer form', () => {
+  it('89.6-24 F4: the Create Event action row carries flex-wrap and the dialog variants flex-col and items-stretch, Cancel before the submit in DOM', async () => {
+    await renderModal();
+    const submit = screen.getByTestId('create-event-submit');
+    const row = submit.parentElement as HTMLElement;
+    const tokens = row.className.split(/\s+/);
+    expect(tokens).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'gap-2', 'justify-end', '@max-[12rem]/dialog:flex-col', '@max-[12rem]/dialog:items-stretch']));
+    for (const reorder of ['flex-col-reverse', 'flex-row-reverse']) expect(tokens, reorder).not.toContain(reorder);
+    const cancel = within(row).getByRole('button', { name: 'Cancel' });
+    expect(Array.from(row.children).indexOf(cancel)).toBeLessThan(Array.from(row.children).indexOf(submit));
+    for (const button of [cancel, submit]) expect(button.className.split(/\s+/).filter((token) => token.startsWith('order-')), 'no order utility').toEqual([]);
+  });
+});
+
 // Plan 88.6.1-26 (D-35 rule of POSITION, copy row C7, plan 88.6.1-15's finding). Create Event's
 // submit had NO in-flight guard: one double tap created two events and sent two rounds of
 // notifications, and the button gave no sign it was working. It now refuses a second submit on

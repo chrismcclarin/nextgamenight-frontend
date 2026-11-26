@@ -1926,7 +1926,15 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
           </div>
 
           {/* Submit Buttons */}
-          <div className="flex gap-2 justify-end">
+          {/* DECISION Phase 89.6-24 (F4-event): pick F1-F3 = F4 (2026-11-22), the in-body form of
+              src/app/components/FeedbackButton.js ("DECISION Phase 89.6-25 (F4-in-body)"), chosen OVER moving the
+              buttons into Modal.Footer (a restructure across the latch markers, P2). Below the 12rem
+              dialog container Cancel and the submit stack full width, Cancel first in the DOM and on
+              screen (no order utility, no reversed direction). GR (owner 2026-11-22: 'A row stays a
+              row while everything in it fits whole. When it does not, items stack. Nothing is
+              squeezed, shrunk, cut or broken to avoid stacking.'). Normal text unchanged. Changing
+              this is a decision, not a cleanup. */}
+          <div className="flex flex-wrap gap-2 justify-end @max-[12rem]/dialog:flex-col @max-[12rem]/dialog:items-stretch">
             {/* DECISION Phase 88.6.1-26 (closable mid-create): the dialog stays closable while a
                 create or update is in flight — Cancel, the header close, Escape and an outside press
                 (the last three reach `onClose` through `Modal`'s `handleOpenChange`) are NOT gated;
