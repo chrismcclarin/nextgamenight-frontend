@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useId, useRef } from 'react';
 import { Input } from '@/components/ui/Input';
-import { Icon } from '@/components/ui/Icon';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 
 export default function ParticipantRow({ participant, index, groupMembers, onParticipantChange, onToggleParticipant, duplicateOfName = null, requestNameFocus = false, onNameFocusHandled = undefined }) {
@@ -131,7 +130,11 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
              The phone floor (max-md:min-h-11) is NOT copied: nothing here is tappable, and the
              picked phone mock keeps this box at 42px. Edge against the list box fill around it (the same
              input fill): 4.11 light, 2.79 dark, exactly what Score and Faction already measure here
-             (was 2.31 light, 1.45 dark with the lighter edge). */
+             (was 2.31 light, 1.45 dark with the lighter edge).
+             AMENDED Phase 89.6-24 (R1, owner pick O-4 = R1, 2026-11-22: 'A quiet box: no fill, dashed
+             edge, no icon'): the fill is removed and the edge is dashed in the same border-input colour
+             (plan 89.6-09's E1 value: 4.0156 dark, 4.1120 light on the list box fill, pinned by
+             tokenContrast 'R13 R1'). Text above kept as history. */
           /* DECISION Phase 88.9-52 (R15c, owner 2026-11-18): a lock icon, chosen OVER plain text with
              no box (reads as a second label) and OVER leaving the two boxes identical. INTERIM by
              the owner's ruling: 'locks ... represent a field that you chose to tie down. Generally
@@ -146,9 +149,17 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
              role, nothing new shown or spoken, and it takes no pointer events. The box stays the
              plain read-only div it was. The name's right padding is 2rem (pr-8) in place of
              0.5rem, so a long name wraps before it reaches the icon (0.5rem + 1rem icon + 0.5rem
-             clear). The editable hand-typed box below is unchanged: no lock. */
-          <div className="relative p-2 pr-8 border border-input rounded-btn bg-surface-input text-content-primary text-base break-words">
-            <Icon name="Lock" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-content-muted" />
+             clear). The editable hand-typed box below is unchanged: no lock.
+             AMENDED Phase 89.6-24 (R1): the lock is REMOVED by the owner's pick (the different look he
+             asked for on 2026-11-18); the HOW (R4 D9) paragraph and the pr-8 reserve go with it, which
+             also stops 'Alice' breaking at 320 / 200%. Text above kept as history. */
+          /* DECISION Phase 89.6-24 (R1): no fill and a dashed border-input edge, chosen OVER the lock
+             (owner: a lock implies an unlock), OVER a muted fill with no edge (vanishes in dark: the
+             fill equals the list box) and OVER initials in a chip (breaks the name at 320 / 200% like
+             the lock). GR (owner 2026-11-22: 'A row stays a row while everything in it fits whole.
+             When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid
+             stacking.'). Changing this is a decision, not a cleanup. */
+          <div className="p-2 border border-dashed border-input rounded-btn text-content-primary text-base break-words">
             {participant.username || `Participant ${index + 1}`}
             {participant.is_guest && (
               /* §4.5's pill/chip-ink row: 600/500 -> 700, with 400 REJECTED because a FILLED

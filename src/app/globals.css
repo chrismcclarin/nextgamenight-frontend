@@ -2856,8 +2856,9 @@
      Chosen OVER a declaration of `--input` inside `.dark`: this bridge `:root` comes later in the
      file with equal specificity and would win.
      The consumer count above is also history: the read-only name box in
-     src/app/components/ParticipantRow.js ("border border-input rounded-btn bg-surface-input") draws
-     this edge too (88.9-52 R15c), and the shared control class now draws its FOCUSED edge with it.
+     src/app/components/ParticipantRow.js ("border border-dashed border-input rounded-btn") draws
+     this edge too (88.9-52 R15c; dashed, with no fill of its own, since 89.6-24 R1), and the shared
+     control class now draws its FOCUSED edge with it.
      Pins: src/app/tokenContrast.test.ts ("89.6 R7 E1") and e2e/contrast.spec.ts ("89.6 R7 E1").
      Pointing this back at the strong border is a decision, not a cleanup. */
   --input: var(--color-border-input);

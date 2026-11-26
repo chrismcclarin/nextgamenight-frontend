@@ -3206,17 +3206,26 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
   });
 
-  it('R15c lock (88.9-52 R4 D9): the lock on the read-only participant name box clears 3.0 on the box fill in both themes', () => {
-    // Owner pick Lock (an interim, 2026-11-18). The lock is a graphic (WCAG 1.4.11, 3:1), drawn in
-    // the muted ink on the box's own input fill. The capture's mock measured 6.58 light and 4.88
-    // dark. Both classes are read from the call site.
-    const src = withoutComments(
+  it('R13 R1 (89.6-24; was R15c lock 88.9-52 R4 D9): the dashed edge of the read-only participant name box clears 3.0 on the participant list box fill in both themes', () => {
+    // Owner pick O-4 = R1 (2026-11-22: a quiet box, no fill, dashed edge, no icon) replaces the lock
+    // this test held (R15c lock, owner pick Lock, an interim of 2026-11-18). The box has no fill, so
+    // its dashed edge is read on the fill of the participant list box around it; the edge is a
+    // control boundary (WCAG 1.4.11, 3:1). Both class keys are read from source: the edge from the
+    // read-only box in ParticipantRow.js, the ground from the list box in createEvent.js. The edge
+    // key resolves through the @theme inline bridge (border-input to var(--input), plan 89.6-09's E1
+    // value in dark). Measured with src/lib/wcag.ts: light 4.1120 (#8c7a6a on #ffffff), dark 4.0156
+    // (#8a9bba on #2f3b50).
+    const row = withoutComments(
       fs.readFileSync(path.join(__dirname, 'components', 'ParticipantRow.js'), 'utf8'),
     );
-    const box = /className="relative p-2 pr-8 border border-input rounded-btn bg-([a-z0-9-]+) /.exec(src);
-    expect(box, 'LOCATOR: the read-only name box names its fill').not.toBeNull();
-    const icon = /<Icon name="Lock" className="[^"]*\btext-([a-z0-9-]+)\b[^"]*"/.exec(src);
-    expect(icon, 'LOCATOR: the lock names its colour').not.toBeNull();
+    const box = /className="p-2 border border-dashed border-([a-z0-9-]+) rounded-btn [^"]*"/.exec(row);
+    expect(box, 'LOCATOR: the read-only name box names a dashed edge colour').not.toBeNull();
+    expect(box![0], 'R13 R1: the read-only name box carries no fill of its own').not.toMatch(/\bbg-/);
+    const form = withoutComments(
+      fs.readFileSync(path.join(__dirname, 'components', 'createEvent.js'), 'utf8'),
+    );
+    const list = /aria-labelledby="participants-section-label"\s+className="[^"]*\bbg-([a-z0-9-]+)\b[^"]*"/.exec(form);
+    expect(list, 'LOCATOR: the participant list box names its fill').not.toBeNull();
     const themeBlock = blockOf('theme');
     const runtimeProp = (key: string): string => {
       const ref = VAR_REF.exec(declIn(themeBlock, `--color-${key}`) ?? '');
@@ -3224,7 +3233,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       return ref[1];
     };
     for (const theme of ['light', 'dark'] as const) {
-      expectRatio(theme, runtimeProp(icon![1]), runtimeProp(box![1]), 3.0, 'R15c the lock on the read-only name box');
+      expectRatio(theme, runtimeProp(box![1]), runtimeProp(list![1]), 3.0, 'R13 R1 the dashed edge on the participant list box');
     }
   });
 

@@ -329,11 +329,13 @@ describe('R15c (88.9-52) — the three boxes take the type-in field look', () =>
     expect(tokensOf(screen.getByLabelText('Score'))).toContain('w-16');
   });
 
+  // AMENDED Phase 89.6-24 (R13 R1, owner pick O-4 = R1): the member row's box keeps the field look
+  // except its fill, which pick R1 removes (the R1 test below pins the rest).
   it('R15c (88.9-52): the read-only member name box wears the same look and is still not a control', () => {
     renderRow({ participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } });
     const box = screen.getByText('Alice', { exact: false }).closest('div')!;
     const tokens = tokensOf(box);
-    expect(tokens).toEqual(expect.arrayContaining(FIELD_LOOK));
+    expect(tokens).toEqual(expect.arrayContaining(FIELD_LOOK.filter((token) => token !== 'bg-surface-input')));
     for (const old of ['border-line', 'rounded-sm', 'bg-surface-elevated']) {
       expect(tokens, old).not.toContain(old);
     }
@@ -343,25 +345,20 @@ describe('R15c (88.9-52) — the three boxes take the type-in field look', () =>
     expect(screen.queryByRole('textbox', { name: 'Participant Name' })).toBeNull();
   });
 
-  // R4 D9 (88.9-52, owner pick Lock, an INTERIM, 2026-11-18): the read-only member name box and
-  // the editable hand-typed one looked the same. The read-only box now carries a small lock at
-  // its right inside edge, in the muted ink, decorative (no new visible or spoken string). The
-  // name keeps 2rem on that side so a long name never runs under the icon. The editable box is
-  // unchanged. The marker is at src/app/components/ParticipantRow.js ("DECISION Phase 88.9-52 (R15c, owner 2026-11-18): a lock icon").
-  it('R4 D9 (88.9-52): the read-only member name box carries a decorative lock at its right inside edge; the editable name box does not', () => {
+  // R13 R1 (89.6-24, owner pick O-4 = R1, 2026-11-22: a quiet box, no fill, dashed edge, no icon).
+  // Was R4 D9 (88.9-52, owner pick Lock, an INTERIM, 2026-11-18): the read-only member name box
+  // carried a small lock at its right inside edge and kept 2rem on that side for it. Pick R1
+  // replaces the lock: the box has no fill (the list box's own fill shows through), a dashed edge in
+  // the house input edge colour, no icon and no 2rem reserve, so a short name is whole at 320 / 200%.
+  // The editable box is unchanged. The marker is at src/app/components/ParticipantRow.js ("DECISION Phase 89.6-24 (R1)").
+  it('R13 R1 (89.6-24; was R4 D9 88.9-52): the read-only name box has border-dashed and border-input, no bg- utility, no pr-8, no relative, and no svg; its text is the name alone', () => {
     renderRow({ participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true } });
     const box = screen.getByText('Alice', { exact: false }).closest('div')!;
-    expect(tokensOf(box)).toEqual(expect.arrayContaining(['relative', 'pr-8', ...FIELD_LOOK]));
-    const locks = box.querySelectorAll('svg');
-    expect(locks).toHaveLength(1);
-    const lock = locks[0];
-    expect(lock).toHaveAttribute('aria-hidden', 'true');
-    expect(lock).not.toHaveAttribute('role');
-    expect(lock).not.toHaveAttribute('aria-label');
-    expect(lock.querySelector('title')).toBeNull();
-    expect((lock.getAttribute('class') ?? '').split(/\s+/)).toEqual(
-      expect.arrayContaining(['lucide-lock', 'absolute', 'right-2', 'top-1/2', '-translate-y-1/2', 'w-4', 'h-4', 'text-content-muted', 'pointer-events-none']),
-    );
+    const tokens = tokensOf(box);
+    expect(tokens).toEqual(expect.arrayContaining(['p-2', 'border', 'border-dashed', 'border-input', 'rounded-btn', 'text-base', 'text-content-primary']));
+    expect(tokens.filter((token) => token.startsWith('bg-'))).toEqual([]);
+    for (const gone of ['pr-8', 'relative']) expect(tokens, gone).not.toContain(gone);
+    expect(box.querySelectorAll('svg')).toHaveLength(0);
     // Nothing new is read or shown: the box's words are the name alone, and it is still no control.
     expect(box.textContent).toBe('Alice');
     expect(box).not.toHaveAttribute('tabindex');
@@ -369,10 +366,10 @@ describe('R15c (88.9-52) — the three boxes take the type-in field look', () =>
     expect(within(box).queryByRole('img')).toBeNull();
     cleanup();
 
-    // The hand-typed row: a real text box, no lock anywhere in the name column.
+    // The hand-typed row: a real text box, solid edge, no icon anywhere in the name column.
     renderRow({ participant: { user_id: '', username: 'Sam', isFromGroup: false } });
     const input = screen.getByRole('textbox', { name: 'Participant Name' });
-    expect(tokensOf(input)).not.toContain('pr-8');
+    expect(tokensOf(input)).not.toContain('border-dashed');
     const row = input.closest('.border-line-strong') as HTMLElement;
     expect(row.querySelectorAll('svg')).toHaveLength(0);
   });
