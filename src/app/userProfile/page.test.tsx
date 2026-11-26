@@ -7715,4 +7715,36 @@ describe('Phase 89.6-22 — Profile part 1 at large text', () => {
     expect(source.split('@max-[14rem]/pattern-list:grid-cols-1').length - 1, 'the schedule and override rows').toBe(2);
     expect(source.split('space-y-2 @container/pattern-list').length - 1, 'the two lists').toBe(2);
   });
+
+  // HR-5 with GR (lead from plan 89.6-17): the picture beside the profile title is not drawn while the
+  // identity row is narrower than the picture, the gaps, a 7.5rem title and the pencil. The marker is
+  // DECISION Phase 89.6-22 (profile-title) above the identity row.
+  it('89.6-22 HR-5: the avatar and its skeleton circle carry the profile-title drop variants; the identity row and the skeleton row are profile-title containers', async () => {
+    const before = h.authUser;
+    h.authUser = { ...(before ?? {}), picture: 'https://example.test/self.png' };
+    try {
+      renderProfile();
+      const title = await screen.findByRole('heading', { level: 1, name: 'Self' });
+      const identityRow = title.parentElement?.parentElement?.parentElement ?? null;
+      expect(classesOf(identityRow)).toContain('@container/profile-title');
+      const avatar = within(identityRow as HTMLElement).getByRole('img', { name: 'Self' });
+      const drop = ['max-md:@max-[14.5rem]/profile-title:hidden', 'md:@max-[15.75rem]/profile-title:hidden'];
+      for (const variant of drop) expect(classesOf(avatar)).toContain(variant);
+      expect(classesOf(avatar)).toContain('shrink-0');
+    } finally {
+      h.authUser = before;
+    }
+    // The skeleton is gone once the row resolves, so its classes are held at the source.
+    const source = await pageSource();
+    expect(source).toContain('<div className="flex items-center gap-3 md:gap-4 w-full @container/profile-title">');
+    expect(source).toContain('w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-muted animate-pulse shrink-0 max-md:@max-[14.5rem]/profile-title:hidden md:@max-[15.75rem]/profile-title:hidden');
+    expect(source.split('/profile-title:hidden').length - 1, 'the avatar and the skeleton circle only').toBe(4);
+  });
+
+  it('89.6-22: the skeleton bars are capped at the row and their column is min-w-0', async () => {
+    const source = await pageSource();
+    expect(source).toContain('<div className="flex-1 min-w-0 space-y-2">');
+    expect(source).toContain('h-7 w-40 max-w-full bg-surface-muted');
+    expect(source).toContain('h-4 w-56 max-w-full bg-surface-muted');
+  });
 });

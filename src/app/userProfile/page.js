@@ -2638,9 +2638,10 @@ function Profile(){
                             <FetchErrorBanner state={selfIdentityErrorState} thing="your profile" />
                         </div>
                     ) : profileLoaded ? (
-                        <div className="flex items-center gap-3 md:gap-4">
+                        /* DECISION Phase 89.6-22 (profile-title): GR (owner, 2026-11-22: 'A row stays a row while everything in it fits whole. When it does not, items stack.') with HR-5: the avatar is not drawn while the identity row is narrower than the picture, gaps, a 7.5rem title and the pencil (14.5rem on a phone, 15.75rem from md); the h1 prints the same name as the picture's alt, so nothing is lost. Chosen OVER the picture on its own line (a 128px circle alone above the name at 320 / 200%) because the owner ruled Drop for pictures beside words at large text (plan 89.6-17's title-icon, the same rule), and OVER shrinking the picture (P1). Normal text is pixel-identical at 320 and 375; at the page-zoom widths the picture is not drawn either (recorded). The loading skeleton's circle drops the same way and its bars are held to the row. Changing this is a decision, not a cleanup. */
+                        <div className="flex items-center gap-3 md:gap-4 @container/profile-title">
                             {user.picture && (
-                                <img src={user.picture} alt={userData?.username || user.name} className="w-16 h-16 md:w-20 md:h-20 rounded-full shrink-0" />
+                                <img src={user.picture} alt={userData?.username || user.name} className="w-16 h-16 md:w-20 md:h-20 rounded-full shrink-0 max-md:@max-[14.5rem]/profile-title:hidden md:@max-[15.75rem]/profile-title:hidden" />
                             )}
                             <div className="min-w-0 flex-1">
                                 {editingUsername ? (
@@ -2865,11 +2866,11 @@ function Profile(){
                     ) : (
                         // Skeleton placeholder — shimmer bars sized to typical username + email.
                         // Uses bg-surface-muted token so it auto-themes.
-                        <div className="flex items-center gap-3 md:gap-4 w-full">
-                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-muted animate-pulse shrink-0" />
-                            <div className="flex-1 space-y-2">
-                                <div className="h-7 w-40 bg-surface-muted rounded-sm animate-pulse" />
-                                <div className="h-4 w-56 bg-surface-muted rounded-sm animate-pulse" />
+                        <div className="flex items-center gap-3 md:gap-4 w-full @container/profile-title">
+                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-muted animate-pulse shrink-0 max-md:@max-[14.5rem]/profile-title:hidden md:@max-[15.75rem]/profile-title:hidden" />
+                            <div className="flex-1 min-w-0 space-y-2">
+                                <div className="h-7 w-40 max-w-full bg-surface-muted rounded-sm animate-pulse" />
+                                <div className="h-4 w-56 max-w-full bg-surface-muted rounded-sm animate-pulse" />
                             </div>
                         </div>
                     )}
