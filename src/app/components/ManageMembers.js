@@ -991,21 +991,53 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                        chosen OVER converting it to .bb-row (its flex-start alignment would move the
                                        actions at normal text) and OVER removing min-w-0 with nothing failing. The pending
                                        rows above keep the same rule (removal-owned, Phase 91.1, CONTEXT D-07). Changing
-                                       this is a decision, not a cleanup. */
+                                       this is a decision, not a cleanup.
+                                       AMENDED Phase 89.6-11 (R17, members-rows), 2026-11-26: GR (owner, 2026-11-22: 'A row
+                                       stays a row while everything in it fits whole. When it does not, items stack.
+                                       Nothing is squeezed, shrunk, cut or broken to avoid stacking.'). Something now
+                                       fails: in the sweep's 320 x 568 normal-text cell (row D12, added by R16) the name
+                                       'Featherstonehaugh-Cholmondeley' read 'Featherstonehau / gh- / Cholmondeley' in a
+                                       148px column beside the chip, though the block's own 192px holds each half whole
+                                       (measured on the real dialog). min-w-0 on the block, the text column and the name,
+                                       with wrap-anywhere on the name, let each shrink under its longest word, so the
+                                       word broke before anything stacked. The ACTIVE row's name block is now a bb-row
+                                       (items-center and the 4px row gap kept by utility, the 12px column gap is the
+                                       block's own), its text column the row's text slot (the same 6rem start, capped to
+                                       its row, no min-width) and its name line a bb-cluster; the name carries no wrap
+                                       class of its own (break-word comes from the text slot). The two rules above stand
+                                       and now act on the longest word: when chip, gap and that word do not fit, the
+                                       text column drops under the chip and has the whole block; when 10rem and the
+                                       actions do not fit, the actions drop under the name. max-w-full on the block
+                                       takes over from min-w-0 as what keeps the row inside the dialog (G4): a word
+                                       longer than the whole row still breaks, and only then. A break at the hyphen is
+                                       ordinary wrapping (owner, 2026-11-25).
+                                       Chosen OVER keeping the squeeze (the red cell); OVER converting the OUTER row to
+                                       bb-row too (its column gap would move the wrap point and its flex-start the
+                                       actions at normal text; the outer row already wraps whole items); and OVER the
+                                       same change on the address line under the name (wrap-anywhere stays there: a
+                                       long address would otherwise drop the text column under the chip at normal text
+                                       on a 375 phone, a look change no cell asks for; recorded as found-new in
+                                       planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/R17-CENSUS-FIXES-RECORD.md ("Found, not fixed")).
+                                       The pending rows above and the invite rows below are not changed here (the
+                                       pending rows are removal-owned, Phase 91.1; neither fails a cell). Normal text
+                                       with the seed's names is pixel-identical at 320, 375, 430, 768 and 1280 (measured
+                                       before and after on the real dialog). Pinned by
+                                       src/app/components/ManageMembers.modals.test.tsx ("G4: an active row wraps, its name block shrinks and breaks, and its actions keep to the right").
+                                       Changing this is a decision, not a cleanup. */
                                     <div
                                         key={member.id}
                                         className="flex flex-wrap items-center justify-between gap-y-2 p-edge-page border border-line rounded-lg hover:bg-surface-hover"
                                     >
-                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 flex-[1_1_10rem] min-w-0">
+                                        <div className="bb-row items-center gap-y-1 flex-[1_1_10rem] max-w-full">
                                             {/* DECISION Phase 88.9-30 D4a (owner pick D4a, 88.9-PICKS-B3.json, votes-b3 v12 + chat
                                                 2026-11-06 'the manage members spot is great'): a 32px D1b chip opens each ACTIVE
                                                 row, chosen OVER name text alone (W62) and OVER chips on the pending rows too (the
                                                 build contract's pin names active rows; a pending row is a request on the warning
                                                 box, not a member yet). The chip is aria-hidden: identity is the name beside it. */}
                                             <MemberChip label={member.username || member.email} colorKey={member.id} />
-                                            <div className="flex-[1_1_6rem] min-w-0">
-                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                                    <p className="font-bold text-content-primary min-w-0 wrap-anywhere">
+                                            <div className="bb-row-text">
+                                                <div className="bb-cluster gap-y-1">
+                                                    <p className="font-bold text-content-primary">
                                                         <ClickableMemberName userId={member.id} username={member.username || member.email} />
                                                     </p>
                                                     {isCurrentUser && (

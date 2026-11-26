@@ -533,7 +533,9 @@ describe('Phase 88.9-30 — D4a row chips in Manage Members', () => {
         .find(Boolean) as HTMLElement | undefined;
       expect(row, `${name}: an active row`).toBeTruthy();
       // 88.9-52 R4 B3: the name block's gap is gap-x-3 (with gap-y-1), no longer gap-3.
-      const container = row!.querySelector('.gap-x-3') as HTMLElement;
+      // AMENDED 89.6-11 (R17): the name block is a bb-row (its 12px column gap is the block's own,
+      // so the gap-x-3 token is gone); it is found by the block's class.
+      const container = row!.querySelector('.bb-row') as HTMLElement;
       const chip = container.firstElementChild as HTMLElement;
       expect(chip.tagName, `${name}: the chip opens the row`).toBe('SPAN');
       expect(chip).toHaveAttribute('aria-hidden', 'true');
@@ -642,24 +644,35 @@ describe('G4 (88.9-52) — a member row fits the dialog at large text', () => {
 
     // The name block: a 10rem start that grows and shrinks, so the actions wrap under it only when
     // 10rem plus the actions no longer fit (never at normal text on a 375 or 320 phone).
+    // AMENDED 89.6-11 (R17, 2026-11-26): the name block, its text column and the name line are the
+    // house blocks (bb-row, its text slot, bb-cluster), and nothing in the chain carries min-w-0 or
+    // wrap-anywhere any more: with them the name was squeezed beside the chip and broke inside a
+    // word (sweep row D12 at 320 x 568 with normal text) before anything stacked. Each box is
+    // capped to its container instead (max-w-full on the block; the blocks cap their items), so the
+    // G4 failure (a row wider than the dialog) stays closed. The marker is at
+    // src/app/components/ManageMembers.js ("AMENDED Phase 89.6-11 (R17, members-rows)").
     const block = row.firstElementChild as HTMLElement;
-    for (const t of ['flex-[1_1_10rem]', 'min-w-0']) expect(tokens(block), `the name block lacks ${t}`).toContain(t);
+    for (const t of ['bb-row', 'items-center', 'flex-[1_1_10rem]', 'max-w-full']) expect(tokens(block), `the name block lacks ${t}`).toContain(t);
+    expect(tokens(block), 'min-w-0 lets the name block shrink under its longest word, so the name breaks before the row stacks').not.toContain('min-w-0');
     expect(tokens(block), 'the name block keeps the no-shrink basis').not.toContain('flex-1');
     // R4 B3 (88.9-52, CI run 44381640391: at 320 with 200% text the body was 275px of content in
     // 270): the chip took 64px and its gap 24px of the row's 156px, which left the text column
     // 68px, and the role pill (about 130px, one word that cannot break) ran past the dialog body.
     // The block may now wrap inside itself: the text column asks for 6rem and drops under the
     // chip when chip, gap and 6rem no longer fit, where it has the whole row.
-    for (const t of ['flex-wrap', 'gap-x-3', 'gap-y-1']) expect(tokens(block), `the name block lacks ${t}`).toContain(t);
+    // bb-row wraps and carries the 12px column gap; gap-y-1 keeps the wrapped lines 4px apart.
+    expect(tokens(block), 'the wrapped lines of the name block are not 4px apart').toContain('gap-y-1');
     expect(tokens(block), 'gap-3 would also space the wrapped lines 12px apart').not.toContain('gap-3');
     const text = block.lastElementChild as HTMLElement;
-    for (const t of ['flex-[1_1_6rem]', 'min-w-0']) expect(tokens(text), `the text column lacks ${t}`).toContain(t);
+    // The text slot of bb-row asks for 6rem (the block's own default), is capped to the row, and has no min-width.
+    expect(tokens(text), 'the text column is not the row block\'s text slot').toContain('bb-row-text');
+    expect(tokens(text), 'min-w-0 lets the text column shrink under its longest word').not.toContain('min-w-0');
     expect(tokens(text), 'a zero basis never wraps: the text column would be squeezed beside the chip').not.toContain('flex-1');
     const line = text.firstElementChild as HTMLElement;
-    for (const t of ['flex', 'flex-wrap', 'items-center', 'gap-x-2', 'gap-y-1']) expect(tokens(line), `the name line lacks ${t}`).toContain(t);
+    for (const t of ['bb-cluster', 'gap-y-1']) expect(tokens(line), `the name line lacks ${t}`).toContain(t);
     const name = line.firstElementChild as HTMLElement;
     expect(name.tagName).toBe('P');
-    for (const t of ['min-w-0', 'wrap-anywhere']) expect(tokens(name), `the name lacks ${t}`).toContain(t);
+    for (const t of ['min-w-0', 'wrap-anywhere']) expect(tokens(name), `the name carries ${t}: it shrinks and breaks inside a word before the row stacks`).not.toContain(t);
     const address = screen.getByText('target-with-a-long-address');
     expect(tokens(address)).toContain('wrap-anywhere');
 
