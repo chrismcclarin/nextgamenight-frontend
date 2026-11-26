@@ -24,7 +24,8 @@
 // backend so the banner clears on a real answer. Changing this is a decision, not a cleanup.
 import { test, expect, type Route } from '@playwright/test';
 
-import { holdWrites } from './support/inFlight';
+import { GROUP_ICON_EMOJI, GROUP_ICON_PICTURE, routeGroupRead } from './support/groupRead';
+import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
 import { expectHeldInside, expectWholeWords, readWordLines, setNarrowLargeText, TWO_WORD_NAME } from './support/wordLines';
 
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
@@ -43,11 +44,18 @@ test.describe('group home games refresh — phone', () => {
     'phone-project block — the fix is viewport-independent; jsdom GR-1..GR-4 cover the logic',
   );
 
+  // AMENDED Phase 89.6-17 (review M072): the hold's handle is kept, and expectNoApiWrites runs
+  // immediately BEFORE every unrouteAll, because an unroute hands every held write on to the network
+  // (the 88.9-03 incident). An unset hold (a skipped desktop test) returns early.
+  let hold: WriteHold | undefined;
+
   test.beforeEach(async ({ page }) => {
-    await holdWrites(page);
+    hold = await holdWrites(page);
   });
 
   test.afterEach(async ({ page }) => {
+    expectNoApiWrites(hold);
+    hold = undefined;
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
@@ -115,6 +123,7 @@ test.describe('group home games refresh — phone', () => {
 
     release();
     await expect(page.getByText(GAMES_TITLE, { exact: true })).toHaveCount(0, { timeout: 15_000 });
+    expectNoApiWrites(hold);
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
@@ -138,6 +147,13 @@ test.describe('group home games refresh — phone', () => {
   // the picture here is the shared placeholder box, which takes the same class string as a real
   // image (src/app/components/SafeImage.js ("Applied to both img and fallback div")). The picture
   // is found by position (the first box in the card's row), never by a class. The title is kept.
+  // AMENDED Phase 89.6-17 (title-icon): the group read is answered with a picture icon, then an emoji
+  // icon, so the title row's icon is on screen whatever the seed holds (backend PR #79 seeds one only
+  // after this fix lands), then with the real group row unchanged, which proves the seeded icon itself
+  // once PR #79 is on the CI database. The icon box is found by position (the element before the h1's
+  // column), never by a class: drawn at 375 and 320 with ordinary text, not drawn at 320 with text at
+  // 200% (its decision marker on the page lands with the fix commit). The seeded pass prints
+  // one line, never the URL or any other field of the row.
   test('R4-A3 (88.9-52): at 320px with text at 200% a play-history card with a review count does not make the group page scroll sideways', async ({
     page,
   }) => {
@@ -164,6 +180,29 @@ test.describe('group home games refresh — phone', () => {
         ],
       });
     });
+
+    // The group read: the real row with the icon staged; with icon null the real row reaches the page unchanged.
+    let icon: string | null = GROUP_ICON_PICTURE;
+    let seededIcon = false;
+    await routeGroupRead(page, E2E_GROUP_ID, (group) => {
+      seededIcon = Boolean(group.profile_picture_url);
+      return icon === null ? group : { ...group, profile_picture_url: icon };
+    });
+    // The title row's icon box, by position: the element before the h1's column.
+    const readIconBox = () =>
+      page.getByRole('heading', { level: 1 }).evaluate((h1) => {
+        const box = h1.parentElement?.previousElementSibling ?? null;
+        return { present: box !== null, drawn: box !== null && box.getClientRects().length > 0 };
+      });
+    const setLargeText = async (at: string) => {
+      await page.addStyleTag({ content: 'html{font-size:200% !important}' });
+      await expect
+        .poll(async () => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize)), {
+          message: `R4-A3 (${at}): the root font size did not become 32px after the 200% style tag`,
+        })
+        .toBe(32);
+    };
+    const pageWidth = () => page.evaluate(() => ({ viewport: document.documentElement.clientWidth, pageScrollWidth: document.documentElement.scrollWidth }));
 
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
@@ -222,19 +261,16 @@ test.describe('group home games refresh — phone', () => {
       expect(card.broken, `R4 C3 (${at}): words broken across lines: ${card.broken.join(' ')}`).toEqual([]);
     };
     expectPictureDrawn(await readCard(), '375, ordinary text');
+    expect(await readIconBox(), 'R4-A3 title-icon: at 375 with ordinary text the group icon box is not drawn').toEqual({ present: true, drawn: true });
 
     await page.setViewportSize({ width: 320, height: 667 });
     await expect
       .poll(async () => page.evaluate(() => document.documentElement.clientWidth), { message: 'R4-A3: the viewport did not become 320px wide' })
       .toBe(320);
     expectPictureDrawn(await readCard(), '320, ordinary text');
+    expect(await readIconBox(), 'R4-A3 title-icon: at 320 with ordinary text the group icon box is not drawn').toEqual({ present: true, drawn: true });
 
-    await page.addStyleTag({ content: 'html{font-size:200% !important}' });
-    await expect
-      .poll(async () => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize)), {
-        message: 'R4-A3: the root font size did not become 32px after the 200% style tag',
-      })
-      .toBe(32);
+    await setLargeText('picture icon');
     await reviews.scrollIntoViewIfNeeded();
 
     // One read, after the layout has settled at 200%.
@@ -264,6 +300,42 @@ test.describe('group home games refresh — phone', () => {
       read.pageScrollWidth,
       `R4-A3: at 320px and 200% text the group page is ${read.pageScrollWidth}px wide — it scrolls sideways by ${read.pageScrollWidth - read.viewport}px`,
     ).toBeLessThanOrEqual(read.viewport);
+    expect(await readIconBox(), 'R4-A3 title-icon: at 320 with text at 200% the picture icon box is still drawn').toEqual({ present: true, drawn: false });
+
+    // The emoji icon: a reload drops the style tag, so the 200% tag is set again.
+    icon = GROUP_ICON_EMOJI;
+    await page.reload();
+    await expect(reviews, 'R4-A3: the card did not render after the reload with the emoji icon').toBeVisible({ timeout: 15_000 });
+    await setLargeText('emoji icon');
+    const emoji = await pageWidth();
+    expect(emoji.viewport, 'R4-A3 (emoji icon): the viewport is not 320px wide').toBe(320);
+    expect(
+      emoji.pageScrollWidth,
+      `R4-A3 (emoji icon): at 320px and 200% text the group page is ${emoji.pageScrollWidth}px wide — it scrolls sideways by ${emoji.pageScrollWidth - emoji.viewport}px`,
+    ).toBeLessThanOrEqual(emoji.viewport);
+    expect(await readIconBox(), 'R4-A3 title-icon: at 320 with text at 200% the emoji icon box is still drawn').toEqual({ present: true, drawn: false });
+
+    // The seeded pass: the real group row unchanged. Until backend PR #79 seeds an icon there is
+    // none, and nothing more is asserted; plan 89.6-35 reads this line after that merge.
+    icon = null;
+    seededIcon = false;
+    await page.reload();
+    await expect(reviews, 'R4-A3: the card did not render after the reload with the real group row').toBeVisible({ timeout: 15_000 });
+    await setLargeText('seeded icon');
+    if (seededIcon) {
+      const seeded = await pageWidth();
+      expect(
+        seeded.pageScrollWidth,
+        `R4-A3 (seeded icon): at 320px and 200% text the group page is ${seeded.pageScrollWidth}px wide — it scrolls sideways by ${seeded.pageScrollWidth - seeded.viewport}px`,
+      ).toBeLessThanOrEqual(seeded.viewport);
+      expect(await readIconBox(), 'R4-A3 title-icon: at 320 with text at 200% the seeded icon box is still drawn').toEqual({ present: true, drawn: false });
+      // eslint-disable-next-line no-console -- plan 89.6-35 reads this line from the CI log
+      console.log('[89.6-17 R4-A3] seeded icon pass: ran');
+    } else {
+      // eslint-disable-next-line no-console -- plan 89.6-35 reads this line from the CI log
+      console.log('[89.6-17 R4-A3] seeded icon pass: no icon in the seed');
+    }
+    expectNoApiWrites(hold);
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
