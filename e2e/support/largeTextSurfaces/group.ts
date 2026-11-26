@@ -150,18 +150,42 @@ const reachHistoryLoading: SurfaceRow['reach'] = async (page) => {
 };
 
 // The title row's icon (src/app/groupHomePage/page.js ("DECISION Phase 89.6-17 (title-icon)")): not
-// drawn while the row is narrower than picture, gaps, a 7.5rem title and the 44px gear. Drawn in the
-// two 768 cells; not drawn in the 320 and 375 cells at 200% or in the two page-zoom cells. Found by
-// position (the element before the h1's column), never by a class.
-const iconDrawnIn = (cell: SweepCell): boolean => cell.width >= 768;
+// drawn while the title row is narrower than picture, gaps, a 7.5rem title and the 44px gear. The
+// product's own threshold, as that marker states it: 13rem + 44px below the md step, 14.5rem + 44px
+// from it, against the WIDTH OF THE TITLE ROW (a container query on the row).
+// AMENDED Phase 89.6-17 (R17, 2026-11-26): the expectation follows that threshold. It was
+// "drawn from 768 wide", written when every cell under 768 was at 200% text or a page-zoom width;
+// the 320 x 568 normal-text cell (R16) has a 264px row against a 252px threshold, so the icon is
+// drawn there and that is the product rule, not a defect. The numbers are written HERE, not read
+// from the icon's class: a changed threshold in the page must red this row.
+//   - rem: the cell's text size. A container query reads rem from the root's own font size: 16px at
+//     normal text and at the page-zoom widths, 32px at 200% and at a default font of 32.
+//   - the md step is a media query, and a media query reads rem from the browser's DEFAULT font
+//     size: 768px, and 1536px in the default-font-32 cell (where 768 wide is below md).
+//   - the row's width is read in the page (it is the cell's width less the page's own edges).
+// Found by position (the element before the h1's column), never by a class.
+const ICON_DROPS_UNDER = { belowMd: { rem: 13, px: 44 }, fromMd: { rem: 14.5, px: 44 } } as const;
+const iconThresholdIn = (cell: SweepCell): { px: number; said: string } => {
+  const rem = cell.mode === '100' ? 16 : 32;
+  const mdFrom = 48 * (cell.mode === 'font32' ? 32 : 16);
+  const step = cell.width >= mdFrom ? ICON_DROPS_UNDER.fromMd : ICON_DROPS_UNDER.belowMd;
+  return { px: step.rem * rem + step.px, said: `${step.rem}rem at ${rem}px + ${step.px}px` };
+};
 const titleRowExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
   const icon = await page.getByRole('heading', { level: 1 }).evaluate((h1) => {
     const box = h1.parentElement?.previousElementSibling ?? null;
-    return { present: box !== null, drawn: box !== null && box.getClientRects().length > 0 };
+    const row = h1.parentElement?.parentElement ?? null;
+    return { present: box !== null, drawn: box !== null && box.getClientRects().length > 0, rowWidth: row ? row.getBoundingClientRect().width : null };
   });
-  expect(icon, `title-icon: in ${cell.id} the group icon box is ${icon.present ? (icon.drawn ? 'drawn' : 'not drawn') : 'absent'}`).toEqual({
+  const threshold = iconThresholdIn(cell);
+  expect(icon.rowWidth, `title-icon: in ${cell.id} the title row has no box to measure`).not.toBeNull();
+  const rowWidth = icon.rowWidth ?? 0;
+  expect(
+    { present: icon.present, drawn: icon.drawn },
+    `title-icon: in ${cell.id} the group icon box is ${icon.present ? (icon.drawn ? 'drawn' : 'not drawn') : 'absent'}; the title row is ${rowWidth}px and the icon drops under ${threshold.px}px (${threshold.said})`,
+  ).toEqual({
     present: true,
-    drawn: iconDrawnIn(cell),
+    drawn: rowWidth >= threshold.px,
   });
 };
 
