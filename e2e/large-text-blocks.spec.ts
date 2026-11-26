@@ -1742,17 +1742,21 @@ test('check: shrunk, a stretched SVG text (R16, F1 7-A): an SVG text drawn tall 
 /** The sideways boxes of a read, each reduced to what a case asserts. */
 const boxesOf = (read: LargeTextCellRead) => read.sidewaysBoxes.map((box) => ({ name: box.name, fits: box.widest <= box.window + 1, scrolls: box.content > box.window + 1, excepted: box.excepted ?? null, fails: box.fails }));
 
-test('check: sideways boxes (R16, F2): a strip whose items all fit its window is listed and passes, one item wider than the window fails, a grid on the excepted list is listed and passes, and a box with only overflow-y and a too-wide word fails', async ({ page }, testInfo) => {
+test('check: sideways boxes (R16, F2): a strip whose items all fit its window is listed and passes, in one wide wrapper too, one item wider than the window fails, a grid on the excepted list is listed and passes, and a box with only overflow-y and a too-wide word fails', async ({ page }, testInfo) => {
   const requests = await countRequests(page);
   const fits = await readLargeTextCell(await renderTwin(page, 'sideways-box-fits'));
+  const wrapped = await readLargeTextCell(await renderTwin(page, 'sideways-box-wrapper'));
+  const wrappedShape = await page.locator('.lt-wrapper').evaluate((el) => ({ wrapper: el.getBoundingClientRect().width, window: (el.parentElement as HTMLElement).clientWidth }));
   const wideItem = await readLargeTextCell(await renderTwin(page, 'sideways-box-wide-item'));
   const grid = await readLargeTextCell(await renderTwin(page, 'sideways-box-grid'));
   const yOnly = await readLargeTextCell(await renderTwin(page, 'sideways-box-overflow-y-only'));
   const yOnlyShape = await page.locator('.lt-ybox').evaluate((el) => ({ overflowX: getComputedStyle(el).overflowX, past: el.scrollWidth - el.clientWidth }));
-  await testInfo.attach('twin-read', { body: JSON.stringify({ fits, wideItem, grid, yOnly, yOnlyShape }, null, 2), contentType: 'application/json' });
+  await testInfo.attach('twin-read', { body: JSON.stringify({ fits, wrapped, wrappedShape, wideItem, grid, yOnly, yOnlyShape }, null, 2), contentType: 'application/json' });
   const fails = 'an item inside a box that scrolls sideways is wider than the window of that box';
   expect(boxesOf(fits), 'the strip whose items all fit is not listed once, as scrolling, fitting and passing').toEqual([{ name: expect.stringContaining('lt-strip'), fits: true, scrolls: true, excepted: null, fails: false }]);
   expect(() => expectLargeTextCell(fits, 'the strip whose items all fit'), 'a strip whose items all fit its window failed the cell').not.toThrow();
+  expect(wrappedShape.wrapper, `the one wrapper is not wider than the strip's window: the harness is not the shape it says (${JSON.stringify(wrappedShape)})`).toBeGreaterThan(wrappedShape.window + 1);
+  expect(boxesOf(wrapped), 'the strip whose chips sit in one wide wrapper is not listed once, as fitting and passing: the wrapper was taken for the item').toEqual([{ name: expect.stringContaining('lt-strip'), fits: true, scrolls: true, excepted: null, fails: false }]);
   expect(boxesOf(wideItem), 'the strip with a 400px item is not listed once, as failing').toEqual([{ name: expect.stringContaining('lt-strip'), fits: false, scrolls: true, excepted: null, fails: true }]);
   expect(wideItem.sidewaysBoxes[0].widestItem, 'the failing entry does not name the item that is too wide').toContain('lt-too-wide');
   expect(() => expectLargeTextCell(wideItem, 'the strip with a 400px item'), 'a strip with an item wider than its window passed the cell').toThrow(fails);

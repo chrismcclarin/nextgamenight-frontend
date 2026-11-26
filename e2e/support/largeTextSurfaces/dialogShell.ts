@@ -28,7 +28,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
 import { settleAnimations } from '../inFlight';
-import { expectLargeTextCell, expectPageZoomUsable, readLargeTextCell, readPageZoomCell } from '../wordLines';
+import { SIDEWAYS_SCROLL_FAILS_AT_PAGE_ZOOM, expectLargeTextCell, expectPageZoomUsable, readLargeTextCell, readPageZoomCell } from '../wordLines';
 // The group page, Customize Group's opening steps and its prompt-settings answer are shared with
 // the Customize Group surface rows (Phase 89.6-25), in one place: e2e/support/largeTextSurfaces/dialogs.ts ("export async function openCustomizeGroup").
 import { answerPromptSettings, customizeGroup, groupPage, openCustomizeGroup } from './dialogs';
@@ -184,9 +184,9 @@ const px = (value: number): string => `${Math.round(value * 100) / 100}`;
  * What is wrong with one dialog shell, one line per problem, each starting with `tag`. `mode` is
  * the cell's TEXT mode: the close icon is 20px at normal text (the page-zoom cells too) and 32px
  * at 200% and with a 32px default font; a mode between them (150%) checks only that it follows.
+ * `options.zoom` says the cell is one of the two page-zoom cells of the sweep.
  */
 export function shellProblems(read: ShellGeometry, mode: string, tag: string, options: { zoom?: boolean } = {}): string[] {
-  void options;
   const problems: string[] = [];
   // Every button of the shell can be reached: a header button lies inside the dialog box with the
   // dialog scrolled to its top; a footer button, scrolled into view, lies whole inside the dialog
@@ -234,8 +234,10 @@ export function shellProblems(read: ShellGeometry, mode: string, tag: string, op
       problems.push(`${tag}: the close is neither beside the title nor on a row above it (close ${px(read.close.top)} to ${px(read.close.bottom)}px, title ${px(read.title.top)} to ${px(read.title.bottom)}px)`);
     }
   }
-  // The dialog box does not scroll sideways.
-  if (read.sideways > 0) problems.push(`${tag}: the dialog box scrolls sideways by ${read.sideways}px`);
+  // The dialog box does not scroll sideways. At a page-zoom cell (options.zoom) that is printed, not
+  // failed, by the owner's ruling L2 (e2e/support/wordLines.ts ("DECISION Phase 89.6 R16 (L2)")):
+  // the sweep's own read of the cell records the dialog box's sideways scroll there.
+  if (read.sideways > 0 && (!options.zoom || SIDEWAYS_SCROLL_FAILS_AT_PAGE_ZOOM)) problems.push(`${tag}: the dialog box scrolls sideways by ${read.sideways}px`);
   // The footer's buttons are seen in the order of the page (owner pick F4): each one sits right of
   // the one before it on its row, or below it. Under the 12rem dialog container (large text on a
   // phone) they are stacked, each as wide as the footer's content box.
@@ -333,7 +335,7 @@ const shellExtras =
     } catch (error) {
       problems.push(firstLine(error));
     }
-    problems.push(...shellProblems(await readShell(dialog), cell.mode, tag));
+    problems.push(...shellProblems(await readShell(dialog), cell.mode, tag, { zoom: cell.zoom }));
     if (problems.length > 0) throw new Error(problems.join(' || '));
   };
 

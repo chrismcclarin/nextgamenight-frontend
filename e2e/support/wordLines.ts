@@ -301,6 +301,72 @@ export async function setTextMode(page: Page, mode: TextMode, tag: string): Prom
   await rootBecomes(mode === '200' ? '32px' : mode === '150' ? '24px' : '16px');
 }
 
+// DECISION Phase 89.6 R16 (sideways boxes), owner-approved 2026-11-26 (decision review F2, his
+// word "yes"): every box inside the read's root that scrolls sideways is LISTED in the cell's
+// record, and it FAILS the cell when one item in it is wider than the box's visible window, chosen
+// OVER an allow-list of named strips (a strip then stays invisible until someone names it) and OVER
+// no generic read at all (since R13 nothing saw text scrolled sideways inside a box, so a sideways
+// page scroll could be turned into a sideways box scroll and pass). The test is the standard's own,
+// WCAG 2.2 SC 1.4.10 (Understanding page, heading Carousels and carousel-like widgets; technique
+// G225): a section may scroll sideways inside a page that scrolls down 'As long as each individual
+// panel within the carousel can fit within a 320 CSS pixel viewport'.
+//   A BOX is any element at or under the root whose computed overflow-x is auto or scroll (a box
+//   with only overflow-y set computes to auto, so it counts) and whose content is more than 1px
+//   wider than its window (scrollWidth against clientWidth).
+//   AN ITEM is a direct child that takes part in the flow and draws something; when the box has a
+//   single child wider than the window, that wrapper's children are the items (and so on down);
+//   text lying directly in the box is one item per word. An item's width is its box, or its
+//   content when that runs out of it visibly.
+//   EXCEPTED, by name, is the list below and nothing else: the content the standard excepts
+//   ('images required for understanding (such as maps and diagrams), video, games, presentations,
+//   data tables (not individual cells), and interfaces where it is necessary to keep toolbars in
+//   view'). An entry excepts a box it matches, the box's single wrapper, or every too-wide item.
+//   The sweep's row-list test pins the list and each source snippet.
+// At the two page-zoom widths a failing box is printed, not failed: the L2 marker below.
+// Changing the test, the item rule or the list is a decision, not a cleanup.
+export interface SidewaysBoxException {
+  id: string;
+  what: string;
+  /** The standard's words for why this content may scroll sideways. */
+  reason: string;
+  /** Matches the scroll box, its single wrapper, or the too-wide item. */
+  selector: string;
+  /** The site the selector was read from: the snippet occurs exactly once in the file. Absent on the generic entry. */
+  source?: { file: string; snippet: string };
+}
+
+export const SIDEWAYS_BOX_EXCEPTIONS: readonly SidewaysBoxException[] = [
+  { id: 'SB-1', what: 'any table, and any element with the grid role', reason: 'data tables (not individual cells)', selector: 'table, [role="grid"]' },
+  {
+    id: 'SB-2',
+    what: 'the availability paint grid (days across, hours down)',
+    reason: 'data tables (not individual cells): a two-dimensional grid',
+    selector: 'div.overflow-x-auto.pb-2:has(> div.min-w-max)',
+    source: { file: 'src/app/components/AvailabilityGrid.js', snippet: 'className="overflow-x-auto pb-2"' },
+  },
+  {
+    id: 'SB-3',
+    what: 'the heatmap week grid',
+    reason: 'data tables (not individual cells): a two-dimensional grid',
+    selector: 'div.pb-2:has(> div.grid[role="grid"])',
+    source: { file: 'src/app/components/heatmap/WeekGrid.tsx', snippet: "const scrollerClassName = maxBodyHeight ? 'overflow-auto pb-2 scroll-p-2' : 'overflow-x-auto pb-2';" },
+  },
+  {
+    id: 'SB-4',
+    what: "the tutorial's simulated grid",
+    reason: 'data tables (not individual cells): a two-dimensional grid',
+    selector: 'div.inline-block.max-w-full.overflow-x-auto',
+    source: { file: 'src/app/components/tutorial/simulated/TutorialGrid.js', snippet: 'p-3 inline-block max-w-full overflow-x-auto' },
+  },
+  {
+    id: 'SB-5',
+    what: "the QR code's box (decision D25: the code keeps its 200px)",
+    reason: 'images required for understanding (such as maps and diagrams): a code that must keep its size to be scanned',
+    selector: 'div.mx-auto.w-fit:has(> svg)',
+    source: { file: 'src/app/components/QRCodeModal.js', snippet: '<div className="mx-auto mb-4 w-fit">' },
+  },
+];
+
 export interface LargeTextReadOptions {
   /** An open dialog's content box: its own sideways scroll is read as well as the page's. */
   dialog?: Locator;
@@ -373,7 +439,15 @@ interface LargeTextPageArg {
   surfaceClamps: string[];
   /** The exceptions that excuse their own clamp only (LargeTextReadOptions cutOnlyExceptions). */
   cutOnly: string[];
+  /** SIDEWAYS_BOX_EXCEPTIONS, as the page needs it. */
+  sidewaysExceptions: Array<{ id: string; selector: string }>;
 }
+
+/** The excepted list of the sideways-box check, in the shape the page read takes. */
+const SIDEWAYS_EXCEPTIONS_ARG = SIDEWAYS_BOX_EXCEPTIONS.map((entry) => ({ id: entry.id, selector: entry.selector }));
+
+/** One failing sideways box as a line of text. */
+const sidewaysBoxLine = (box: SidewaysBox): string => `${box.name}: ${box.widestItem} is ${box.widest}px wide in a window of ${box.window}px (content ${box.content}px)`;
 
 interface LargeTextPageResult extends LargeTextCellRead {
   /** The A8 read's losses; empty when the read was not asked for. */
@@ -1425,7 +1499,54 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       }
     }
 
+    // ---- sideways boxes --------------------------------------------------------------------------
+    // The rule, the items and the excepted list: the marker above SIDEWAYS_BOX_EXCEPTIONS.
+    const exceptedBy = (el: Element): string | undefined => arg.sidewaysExceptions.find((entry) => el.matches(entry.selector))?.id;
+    /** The children of a box that take part in its flow and draw something; a display: contents child stands for its own children. */
+    const flowChildrenOf = (el: Element): Element[] =>
+      Array.from(el.children).flatMap((child) => {
+        const cs = getComputedStyle(child);
+        if (cs.display === 'none' || cs.position === 'absolute' || cs.position === 'fixed') return [];
+        if (cs.display === 'contents') return flowChildrenOf(child);
+        return drawsNothing(child) ? [] : [child];
+      });
+    /** How wide an item is in the sideways flow: its box, or its content when that runs out of it visibly. */
+    const extentOf = (el: Element): number => {
+      const width = el.getBoundingClientRect().width;
+      return getComputedStyle(el).overflowX === 'visible' ? Math.max(width, el.scrollWidth) : width;
+    };
+    interface SidewaysItem {
+      name: string;
+      width: number;
+      excepted: string | undefined;
+    }
     const sidewaysBoxes: SidewaysBox[] = [];
+    for (const box of [rootEl, ...Array.from(rootEl.querySelectorAll('*'))]) {
+      const cs = getComputedStyle(box);
+      if ((cs.overflowX !== 'auto' && cs.overflowX !== 'scroll') || CLIPS_NOTHING.test(cs.display)) continue;
+      if (box.scrollWidth <= box.clientWidth + 1 || drawsNothing(box)) continue;
+      const windowWidth = box.clientWidth;
+      let excepted = exceptedBy(box);
+      let holder: Element = box;
+      let items = flowChildrenOf(box);
+      // A single wrapper wider than the window is not the item: its children are.
+      while (!excepted && items.length === 1 && extentOf(items[0]) > windowWidth + 1) {
+        excepted = exceptedBy(items[0]);
+        const inner = flowChildrenOf(items[0]);
+        if (excepted || inner.length === 0) break;
+        holder = items[0];
+        items = inner;
+      }
+      const sized: SidewaysItem[] = [
+        ...items.map((item) => ({ name: nameOf(item), width: extentOf(item), excepted: exceptedBy(item) })),
+        // Text lying directly in the box, or in its one wrapper: each word is an item.
+        ...words.filter((w) => w.el === holder).map((w) => ({ name: `"${w.text}"`, width: Math.max(...w.rects.map((r) => r.width)), excepted: undefined })),
+      ];
+      const widest = sized.reduce<SidewaysItem>((a, b) => (b.width > a.width ? b : a), { name: 'nothing', width: 0, excepted: undefined });
+      const tooWide = sized.filter((item) => item.width > windowWidth + 1);
+      if (!excepted && tooWide.length > 0 && tooWide.every((item) => item.excepted !== undefined)) excepted = tooWide[0].excepted;
+      sidewaysBoxes.push({ name: nameOf(box), window: windowWidth, content: box.scrollWidth, widest: round(widest.width), widestItem: widest.name, ...(excepted ? { excepted } : {}), fails: !excepted && tooWide.length > 0 });
+    }
 
     return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split, held, wide, spill, selectCut, sidewaysBoxes, lost, ownClamp };
   } finally {
@@ -1439,7 +1560,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
  */
 export async function readLargeTextCell(root: Locator, options: LargeTextReadOptions = {}): Promise<LargeTextCellRead> {
   const dialogEl = options.dialog ? await options.dialog.elementHandle() : null;
-  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: false, surfaceClamps: [], cutOnly: [...(options.cutOnlyExceptions ?? [])] });
+  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: false, surfaceClamps: [], cutOnly: [...(options.cutOnlyExceptions ?? [])], sidewaysExceptions: SIDEWAYS_EXCEPTIONS_ARG });
   return {
     rootFontSize: read.rootFontSize,
     window: read.window,
@@ -1479,6 +1600,10 @@ export function expectLargeTextCell(read: LargeTextCellRead, tag: string): void 
   }
   expect(read.spill, `${tag}: text paints outside its own box (${line})`).toEqual([]);
   expect(read.selectCut, `${tag}: a select's chosen value is cut (${line})`).toEqual([]);
+  expect(
+    read.sidewaysBoxes.filter((box) => box.fails).map(sidewaysBoxLine),
+    `${tag}: an item inside a box that scrolls sideways is wider than the window of that box (${line})`,
+  ).toEqual([]);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1519,16 +1644,36 @@ export interface PageZoomRead {
 
 /** The entries of a page-zoom record that are a sideways scroll: of the page, of the dialog box, or inside a sideways box. */
 export function sidewaysRecorded(read: PageZoomRead): string[] {
-  void read;
-  return [];
+  return read.recorded.filter((entry) => /^(the page scrolls sideways by |the dialog's content box scrolls sideways by |sideways box: )/.test(entry));
 }
+
+// DECISION Phase 89.6 R16 (L2), the owner's ruling of 2026-11-26, his words "Loosening L2": at the
+// two page-zoom widths (215 and 187 wide) a sideways scroll of the PAGE, of a DIALOG box, and an
+// item wider than the window of a box that scrolls sideways are PRINTED in the cell's record and
+// in the CI log, and do not fail the cell; at every other cell each fails as before. Chosen OVER
+// failing them at those two widths too (the phase as planned) and OVER printing them at 200% text
+// as well (the literal standard, option L1: the owner kept 200% failing on 320, 375 and 768). The
+// standard's sentence, WCAG 2.2 Understanding SC 1.4.10 Reflow: 'If zooming in a web page by 200%
+// results in a viewport that is smaller than the sizing requirements of Reflow then
+// two-dimensional scrolling may occur. This would not be a failure of Reflow'. Everything else at
+// those widths is unchanged: lost, unreachable, overlapping, cut with no way to reach it, and the
+// read failing itself. This constant is the whole decision; the dialog shell reads it for its own
+// line: e2e/support/largeTextSurfaces/dialogShell.ts ("the dialog box scrolls sideways by").
+// Changing this is a decision, not a cleanup.
+export const SIDEWAYS_SCROLL_FAILS_AT_PAGE_ZOOM = false;
 
 /** Read one page-zoom cell under `root`: what is lost, and what is only recorded. */
 export async function readPageZoomCell(root: Locator, options: LargeTextReadOptions = {}): Promise<PageZoomRead> {
   const dialogEl = options.dialog ? await options.dialog.elementHandle() : null;
-  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: true, surfaceClamps: [...(options.surfaceClamps ?? [])], cutOnly: [...(options.cutOnlyExceptions ?? [])] });
-  const recorded = [...(read.pageSideways > 0 ? [`the page scrolls sideways by ${read.pageSideways}px`] : []), ...read.split.map((s) => `split: ${s}`), ...read.held.map((s) => `held: ${s}`), ...read.spill.map((s) => `spill: ${s}`)];
-  return { lost: read.lost, recorded, ...(read.ownClamp.length > 0 ? { ownClamp: read.ownClamp } : {}) };
+  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: true, surfaceClamps: [...(options.surfaceClamps ?? [])], cutOnly: [...(options.cutOnlyExceptions ?? [])], sidewaysExceptions: SIDEWAYS_EXCEPTIONS_ARG });
+  // The three sideways entries of the L2 marker above, first; sidewaysRecorded finds them by how they start.
+  const sideways = [
+    ...(read.pageSideways > 0 ? [`the page scrolls sideways by ${read.pageSideways}px`] : []),
+    ...(read.dialogSideways !== null && read.dialogSideways > 0 ? [`the dialog's content box scrolls sideways by ${read.dialogSideways}px`] : []),
+    ...read.sidewaysBoxes.filter((box) => box.fails).map((box) => `sideways box: ${sidewaysBoxLine(box)}`),
+  ];
+  const recorded = [...sideways, ...read.split.map((s) => `split: ${s}`), ...read.held.map((s) => `held: ${s}`), ...read.spill.map((s) => `spill: ${s}`)];
+  return { lost: read.lost, recorded, ...(read.ownClamp.length > 0 ? { ownClamp: read.ownClamp } : {}), ...(read.sidewaysBoxes.length > 0 ? { sidewaysBoxes: read.sidewaysBoxes } : {}) };
 }
 
 /**
@@ -1545,4 +1690,7 @@ export function expectPageZoomUsable(read: PageZoomRead, tag: string): void {
     read.recorded.filter((entry) => READ_FAILED.test(entry)),
     `${tag}: the read could not measure a word, or could not put the page back, at this page-zoom width (${JSON.stringify(read)})`,
   ).toEqual([]);
+  if (SIDEWAYS_SCROLL_FAILS_AT_PAGE_ZOOM) {
+    expect(sidewaysRecorded(read), `${tag}: the page, the dialog box or a box inside it scrolls sideways at this page-zoom width (${JSON.stringify(read)})`).toEqual([]);
+  }
 }
