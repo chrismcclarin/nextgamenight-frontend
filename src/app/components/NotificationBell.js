@@ -918,7 +918,27 @@ function NotificationBell({ user, variant = 'icon', label }) {
                               </p>
                             )}
 
-                            <div className="flex gap-2 mt-2">
+                            {/* DECISION Phase 89.6-26 (R18, notification-actions), 2026-11-26: GR, the governing
+                                rule (owner, 2026-11-22: 'A row stays a row while everything in it fits whole. When
+                                it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid
+                                stacking. Scrolling down is fine; scrolling sideways is not.'): Accept and Decline
+                                are the house bb-cluster, so Decline moves under Accept, each on a full line, when
+                                the two do not fit side by side. Measured on the real panel at 200% text: the pair
+                                needs 347px (163 + 16 + 168) and its row holds 256px on a 320 phone and 311px on a
+                                375 one, so the notifications list box scrolled sideways to 379px, with ordinary
+                                names as much as with a long one (sweep row O03; WCAG 2.2 SC 1.4.10, Carousels and
+                                carousel-like widgets). CHOSEN OVER: a list that scrolls sideways (the plain flex
+                                row this replaces); a min-width of 0 on the two buttons (their labels would break
+                                inside a word, the squeeze GR forbids; the cluster block never sets one on a
+                                control); an ellipsis or a line clamp on anything in the row; a media query (it
+                                cannot see the text size). items-stretch and flex-1 are KEPT by utility: side by
+                                side the two buttons share the row evenly and keep one height, so normal text is
+                                unchanged (measured at 320, 375, 430, 768 and 1280). The group name above takes no
+                                class: a word wider than its whole row already breaks by the base rule
+                                (src/app/globals.css ("DECISION Phase 89.6-02 (HR-1)")).
+                                The friend-request row below takes the same block. Changing this is a decision,
+                                not a cleanup. */}
+                            <div className="bb-cluster items-stretch mt-2">
                               <Button
                                 variant="primary"
                                 onClick={(e) => handleAccept(invite, e.currentTarget)}
@@ -972,7 +992,8 @@ function NotificationBell({ user, variant = 'icon', label }) {
                               wants to be your friend
                             </p>
 
-                            <div className="flex gap-2 mt-2">
+                            {/* The same block as the invite row's pair above (its R18 notification-actions marker). */}
+                            <div className="bb-cluster items-stretch mt-2">
                               <Button
                                 variant="primary"
                                 onClick={(e) => handleAcceptFriend(request, e.currentTarget)}

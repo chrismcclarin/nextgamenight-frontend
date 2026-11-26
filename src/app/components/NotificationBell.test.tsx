@@ -1552,3 +1552,45 @@ describe('O07a (88.9) — the desktop bell trigger matches the theme toggle', ()
     expectFocusRingInset(trigger, 'the bell trigger');
   });
 });
+
+// R18 (89.6-26, census row O03): at 200% text on a 320 or 375 phone the Accept and Decline pair of a
+// notification row was 347px wide in a 256px / 311px row and could not wrap, so the notifications
+// list scrolled sideways (measured on the real panel, with ordinary names as well as a long one).
+// Site: src/app/components/NotificationBell.js ("DECISION Phase 89.6-26 (R18, notification-actions)").
+// jsdom has no layout: this pins the classes that let the pair stack; the widths are read by the
+// sweep row O03 in e2e/support/largeTextSurfaces/chrome.ts ("id: 'O03'").
+describe('R18 (89.6-26) — a notification row stacks its Accept and Decline before the list scrolls sideways', () => {
+  const SQUEEZE_OR_CUT = ['min-w-0', 'truncate', 'flex-nowrap', 'whitespace-nowrap', 'overflow-x-auto', 'overflow-hidden'];
+
+  it('R18 actions: in an invite row and in a friend-request row the two buttons are a bb-cluster of two flex-1 items, kept one height, and nothing in the row is squeezed or cut', async () => {
+    unreadState.invites = [{ id: 'inv-r18', group_name: 'Grandmasterboardgamecollective', invited_by_name: 'Bee' }];
+    unreadState.friendRequests = [{ id: 'fr-r18', Requester: { username: 'Cee' } }];
+    unreadState.totalCount = 2;
+    renderBell();
+    await openBell();
+
+    const region = screen.getByRole('region', { name: 'Notifications' });
+    const rows = Array.from(region.querySelectorAll('li')) as HTMLElement[];
+    expect(rows, 'one invite row and one friend-request row').toHaveLength(2);
+
+    for (const row of rows) {
+      const what = (row.querySelector('p')?.textContent ?? '').trim();
+      const buttons = within(row).getAllByRole('button');
+      expect(buttons.map((b) => b.textContent), `${what}: Accept then Decline`).toEqual(['Accept', 'Decline']);
+      const pair = buttons[0].parentElement as HTMLElement;
+      expect(buttons[1].parentElement, `${what}: the two buttons share one parent`).toBe(pair);
+      expect(pair, `${what}: the pair is not the house cluster, so it cannot wrap and the list scrolls sideways at large text`).toHaveClass('bb-cluster');
+      expect(pair, `${what}: side by side the two buttons keep one height`).toHaveClass('items-stretch');
+      expect(pair, `${what}: the pair keeps its 8px top margin`).toHaveClass('mt-2');
+      for (const button of buttons) {
+        expect(button, `${what}: ${button.textContent} shares the row evenly, and fills its own line when stacked`).toHaveClass('flex-1');
+      }
+      for (const el of [row, pair, ...buttons, ...Array.from(row.querySelectorAll('p'))] as HTMLElement[]) {
+        for (const token of SQUEEZE_OR_CUT) {
+          expect(el.classList.contains(token), `${what}: ${el.tagName.toLowerCase()} carries ${token}`).toBe(false);
+        }
+        expect(Array.from(el.classList).some((token) => token.startsWith('line-clamp')), `${what}: ${el.tagName.toLowerCase()} is line-clamped`).toBe(false);
+      }
+    }
+  });
+});
