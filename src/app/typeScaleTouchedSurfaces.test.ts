@@ -954,9 +954,10 @@ const RUNG_ROSTER: ExemptionRoster = {
   //        never `btn`, so its sizing is ALIVE). The SIZE half is not countable here: this
   //        file's rules are heading-scoped and `:57` is an `<a>`.
   // All three are the SAME owner ruling of 2026-09-08 and all three carry a site comment.
+  // Pick O-6 Ratify (89.6, owner 2026-11-22): symbol and emoji sizes are icon sizes; the landing headline keeps its size.
   'app/components/LandingPage.js': {
     sites: 1,
-    why: 'Phase 88.9 W55 owns the landing hero block: 1 heading off the 4-size working set (h1:15 text-5xl md:text-6xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    why: 'Phase 88.9 W55 owns the landing hero block: 1 heading off the 4-size working set (h1:15 text-5xl md:text-6xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file; pick O-6 Ratify (89.6): symbol and emoji sizes are icon sizes; the landing headline keeps its size',
     owner: { kind: 'owner', date: '2026-09-08', ruling: 'Phase 88.9 W55 owns the landing hero block\'s sizes' },
   },
   // DELETED by plan 88.6-19 task 2 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
@@ -1210,7 +1211,7 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
 const BREAKPOINT_ROSTER: ExemptionRoster = {
   'app/components/LandingPage.js': {
     sites: 1,
-    why: 'Phase 88.9 W55 owns the landing hero block: 1 heading whose size changes at a breakpoint (h1:15 text-5xl md:text-6xl) — a heading that changes size at a breakpoint is a SECOND scale; pick ONE rung from the working set',
+    why: 'Phase 88.9 W55 owns the landing hero block: 1 heading whose size changes at a breakpoint (h1:15 text-5xl md:text-6xl) — a heading that changes size at a breakpoint is a SECOND scale; pick ONE rung from the working set; pick O-6 Ratify (89.6): symbol and emoji sizes are icon sizes; the landing headline keeps its size',
     owner: { kind: 'owner', date: '2026-09-08', ruling: 'Phase 88.9 W55 owns the landing hero block\'s sizes' },
   },
   // DELETED by plan 88.6-53 task 1 (gap closure, 2026-09-28): `app/groupPlanning/page.js`

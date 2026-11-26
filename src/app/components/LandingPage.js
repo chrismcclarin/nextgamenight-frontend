@@ -268,7 +268,20 @@ export default function LandingPage() {
           {/* DECISION Phase 88.9-58 (X14, owner 2026-11-11, applied by the orchestrator): static
               feature cards, so no hover lift or border, chosen OVER the shipped lift (it promised a
               press that does nothing). */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* DECISION Phase 89.6-40 (landing-grid; orchestrator D30): GR, the governing rule (owner,
+              2026-11-22: 'A row stays a row while everything in it fits whole. When it does not,
+              items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking. Scrolling
+              down is fine; scrolling sideways is not.'): at 768 / 200% the three fixed columns
+              (192px each) broke six words (Sessions, everyone, Coordinate, Availability, Remember,
+              collection), so the columns are auto-fit with a floor of 11rem: three equal columns
+              while a column holds its card, one column (the cards stacked) when it cannot, chosen
+              OVER the fixed md:grid-cols-3 (it squeezes) and OVER shrinking any text (RULED Phase
+              88.9-33 O01a and pick O-6 Ratify keep the hero's sizes). The column width is a third of
+              the row less the two 2rem gaps, minus 0.1px so three columns always fit after
+              rounding: at normal text the boxes are identical to the fixed three at 768, 1024 and
+              1280 (measured). The 0.1px and the 4rem are load-bearing. Changing this is a
+              decision, not a cleanup. */}
+          <div className="grid grid-cols-1 md:grid-cols-[repeat(auto-fit,minmax(max(11rem,calc((100%_-_4rem)/3_-_0.1px)),1fr))] gap-8">
             {/* DECISION Phase 88.6-35 (UI-SPEC §4.3 row 4): the `text-4xl` on each of the
                 three emoji tiles below is ICON SIZING, not type — §4.3 rules glyph-only spans
                 (`×`, `⋮`, `+`, emoji) OUT of the type scale explicitly, so they are left
