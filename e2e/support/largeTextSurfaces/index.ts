@@ -110,11 +110,18 @@ const cell = (width: number, height: number, theme: 'light' | 'dark', mode: '100
   zoom,
 });
 
-// The PR lane, one per line: two page-zoom cells at normal text (SPEC A8), three 200% cells in
-// dark (the journeys scheme), ONE light cell, and the default-font-32 cell.
+// The PR lane, one per line: two page-zoom cells at normal text (SPEC A8), the 320 normal-text
+// cell, three 200% cells in dark (the journeys scheme), ONE light cell, and the default-font-32 cell.
+// DECISION Phase 89.6 R16 (320 normal text), the owner's ruling of 2026-11-26, his words "Add the
+// 320px normal text check.": 320 x 568 in dark at normal text is read with the FULL checks (it is
+// no page-zoom cell), chosen OVER leaving normal text to the full lane's close run alone: 320 CSS
+// pixels wide at normal text is the size WCAG 2.2 SC 1.4.10 Reflow itself tests at, and the PR
+// lane had no cell there. It sits with the other normal-text cells, before the 200% ones, so a
+// row's page changes text mode once. Changing this is a decision, not a cleanup.
 export const PR_CELLS: readonly SweepCell[] = [
   cell(215, 466, 'dark', '100', true),
   cell(187, 333, 'dark', '100', true),
+  cell(320, 568, 'dark', '100'),
   cell(320, 568, 'dark', '200'),
   cell(375, 667, 'dark', '200'),
   cell(768, 1024, 'dark', '200'),
