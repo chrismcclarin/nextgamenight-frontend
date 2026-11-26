@@ -333,7 +333,7 @@ const identityExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cel
 // ---------------------------------------------------------------------------------------------
 // THE SCHEDULE DIALOGS AND THE RECURRING CHECK-INS LIST (Phase 89.6-41: census D25, D26, R08).
 // Create Schedule and Edit Schedule are opened from the planning page's inline Recurring
-// Check-ins card (src/app/components/PromptScheduleManager.js ("Recurring Check-ins")), which only
+// Check-ins card (src/app/components/PromptScheduleManager.js ("// Inline variant: no modal backdrop, rendered directly in page flow")), which only
 // an owner or admin sees; the CI login owns the E2E group. The card reads
 // GET /groups/<id>/prompt-settings, a GET that WRITES: every row here answers it in the browser
 // with a staged body (answerSettings), so the CI login's real schedules are never read or touched.
