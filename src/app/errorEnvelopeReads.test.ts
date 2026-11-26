@@ -216,7 +216,9 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // shared Icon and usePhoneViewport (X52d: the collection bar and its phone card count).
     // RE-DERIVED by plan 88.9-68 (Task 2, 2026-11-15): 270 -> 271. One import line above it, the
     // shared DelayedSpinner (X36a: the busy removes on this page show the house spinner).
-    declaredAt: 271,
+    // RE-DERIVED by plan 89.6-22 (Task 2, 2026-11-25): 271 -> 272. One import line above it, the
+    // shared useScrollEdges and revealTabInStrip (X-01: the availability strip's edge cue).
+    declaredAt: 272,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +
