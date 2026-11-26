@@ -423,12 +423,13 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             semantic level to preserve and P4 forbids inventing one — which is the conclusion the
             marker above reaches by a different route, and both still stand.
           */}
-          {/* DECISION Phase 88.9-52 (W19): the time and its zone sit in one no-wrap span, chosen OVER the free wrap, where a line carrying the year (a night outside the current year) broke between them at 375px and left PST alone on the second line. The line now breaks before the time. The text content is the same string as whenLine. REJECTED: no-wrap on the whole line (it would run off a 375px card with the year). Taking the span out is a decision, not a cleanup. */}
+          {/* DECISION Phase 88.9-52 (W19): the time and its zone sit in one no-wrap span, chosen OVER the free wrap, where a line carrying the year (a night outside the current year) broke between them at 375px and left PST alone on the second line. The line now breaks before the time. The text content is the same string as whenLine. REJECTED: no-wrap on the whole line (it would run off a 375px card with the year). Taking the span out is a decision, not a cleanup.
+              AMENDED Phase 89.6-40 (D28, Rule 3 under orchestrator ruling D28): GR (owner, 2026-11-22: 'A row stays a row while everything in it fits whole. When it does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking. Scrolling down is fine; scrolling sideways is not.'): the span is an inline-block, chosen OVER whitespace-nowrap: it still moves to the next line whole when it does not fit beside the day (the W19 behaviour; measured identical at normal text, 2892 cases of width 180 to 420px and four day and three time strings), and where the time alone is wider than the card (320 / 200%, where 'UTC' spilled 29px out of this button) it wraps inside itself instead of painting past the card. Restoring the no-wrap is a decision, not a cleanup. */}
           <span className="mt-1 block text-xl font-bold leading-tight text-content-primary">
             {whenParts.time ? (
               <>
                 {`${whenParts.day} · `}
-                <span className="whitespace-nowrap">{whenParts.time}</span>
+                <span className="inline-block">{whenParts.time}</span>
               </>
             ) : (
               whenLine

@@ -209,11 +209,14 @@ describe('NextGameNightCard — content and navigation (SPEC Req 3 / D-05, D-14)
   // 88.9-52 W19: with the year on the line the when-line wrapped at 375px and left the zone alone on
   // the second line (7:00 PM / PST). The time and its zone now sit in one no-wrap span, so the line
   // breaks before the time. jsdom lays nothing out: this pins the span, its class and the full text.
-  it('W19 (88.9-52): the time and its zone share one no-wrap span inside the when-line, and the line still reads whole', () => {
+  // AMENDED Phase 89.6-40 (D28): the span is an inline-block, not no-wrap: it still moves to the next
+  // line whole, and at large text it wraps inside itself instead of spilling out of the card.
+  it('W19 (88.9-52): the time and its zone share one span that moves whole (inline-block) inside the when-line, and the line still reads whole', () => {
     renderCard();
     const time = screen.getByText('7:00 PM EDT');
     expect(time.tagName).toBe('SPAN');
-    expect(time).toHaveClass('whitespace-nowrap');
+    expect(time).toHaveClass('inline-block');
+    expect(time).not.toHaveClass('whitespace-nowrap');
     const line = time.parentElement as HTMLElement;
     expect(line).toHaveClass('block', 'text-xl', 'font-bold');
     expect(line.textContent).toBe(WHEN_LINE);
