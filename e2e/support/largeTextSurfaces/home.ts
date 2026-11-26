@@ -474,6 +474,17 @@ const calendarSheetEmptyExtras: SurfaceRow['extras'] = async (page, cell) => {
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
+// R01-landing: the signed-out landing page (src/app/components/LandingPage.js), the R01 route with no
+// session. The reach clears the context's cookies (nothing is written; the context is this test's
+// own) and opens /, where the app renders the landing page; the root is main (the header is the
+// chrome module's read, not this row's).
+const reachLanding: SurfaceRow['reach'] = async (page) => {
+  await page.context().clearCookies();
+  await page.goto('/');
+  await page.getByRole('heading', { level: 1 }).waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: page.locator('main') };
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R01', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', reach: reachHome, extras: homeExtras },
   { id: 'R01-one', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'one group', reach: reachWithGroups(oneGroup), extras: oneCardNotStretched },
@@ -481,6 +492,7 @@ export const rows: SurfaceRow[] = [
   { id: 'R01-empty', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'no groups', reach: reachNoGroups, answers: (url) => (isGroupsRead(url) ? [] : undefined) },
   { id: 'R01-upcoming-empty', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'nothing on the calendar', reach: reachNothingUpcoming, answers: (url) => (isEventsRead(url) ? [] : undefined), extras: upcomingEmptyShown },
   { id: 'R01-error', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'the groups read failed', reach: reachGroupsError },
+  { id: 'R01-landing', census: 'R01', kind: 'route', owner: '89.6-40', status: 'enforced', state: 'signed out', reach: reachLanding },
   { id: 'R01-loading', census: 'R01', kind: 'route', owner: '89.6-16', status: 'enforced', state: 'the groups read in flight', reach: reachGroupsLoading },
   { id: 'D01', census: 'D01', kind: 'dialog', owner: '89.6-16', status: 'enforced', reach: reachCreateGroup },
   { id: 'D01-error', census: 'D01', kind: 'dialog', owner: '89.6-16', status: 'enforced', state: 'the create failed', reach: reachCreateError },
