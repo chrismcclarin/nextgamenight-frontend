@@ -251,8 +251,91 @@ const editEventExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, ce
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
+// D21-scheduler: the visual calendar inside Create Event (the dialog opens in it), on the week that
+// holds today. At a phone width it is the week strip over one day column; from 768 the desktop week
+// grid with its day headers. The root is the scheduler: the nearest ancestor of its availability grid
+// that is the component's own space-y-4 root. Read from the dialog's top, as every dialog row is.
+const schedulerGrid = (dialog: Locator): Locator => dialog.getByRole('grid', { name: 'Group availability by day and time', exact: true });
+const reachScheduler: SurfaceRow['reach'] = async (page) => {
+  const dialog = await openCreateEvent(page);
+  const grid = schedulerGrid(dialog);
+  await grid.waitFor({ state: 'visible', timeout: 15_000 });
+  const root = grid.locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " space-y-4 ")][1]');
+  await settleAnimations(dialog);
+  return { root, dialog };
+};
+
+interface SchedulerRead {
+  phone: boolean;
+  /** Each strip tab whose text runs past its box: the tab's label and the overrun. */
+  spills: string[];
+  /** Today's cue: the element that carries it, whether it is underlined, and its box. */
+  today: { found: boolean; underline: boolean; width: number; height: number };
+  /** The day column's window and its first slot row. */
+  window: { height: number; header: number; row: number } | null;
+}
+
+/** Read the scheduler in the dialog: strip spill, today's shape cue, the day column's window. */
+async function readScheduler(dialog: Locator): Promise<SchedulerRead> {
+  return schedulerGrid(dialog).evaluate((grid) => {
+    const dialogEl = grid.closest('[role="dialog"]') ?? document.body;
+    const strip = dialogEl.querySelector('[role="tablist"][aria-label="Choose a day"]');
+    const spills: string[] = [];
+    if (strip) {
+      for (const tab of Array.from(strip.querySelectorAll('[role="tab"]'))) {
+        const box = tab.getBoundingClientRect();
+        for (const span of Array.from(tab.querySelectorAll('span'))) {
+          const r = span.getBoundingClientRect();
+          if (r.height === 0) continue;
+          const over = Math.max(r.bottom - box.bottom, box.top - r.top, r.right - box.right, box.left - r.left);
+          if (over > 0.5) spills.push(`${tab.getAttribute('aria-label') ?? tab.textContent ?? ''} "${(span.textContent ?? '').trim()}" by ${over.toFixed(1)}px`);
+        }
+      }
+    }
+    const cue = strip
+      ? strip.querySelector('[role="tab"][aria-current="date"] [data-testid="strip-day-number"]')
+      : grid.querySelector('[role="columnheader"] .text-content-accent');
+    const cueBox = cue?.getBoundingClientRect();
+    const scroller = grid.parentElement as HTMLElement | null;
+    const header = grid.querySelector('[role="columnheader"]');
+    const cell = grid.querySelector('[role="gridcell"]');
+    return {
+      phone: strip !== null,
+      spills,
+      today: {
+        found: cue !== null,
+        underline: cue ? getComputedStyle(cue).textDecorationLine.includes('underline') : false,
+        width: cueBox ? cueBox.width : 0,
+        height: cueBox ? cueBox.height : 0,
+      },
+      window: scroller && header && cell ? { height: scroller.clientHeight, header: header.getBoundingClientRect().height, row: cell.getBoundingClientRect().height } : null,
+    };
+  });
+}
+
+// D21-scheduler extras, every cell: no strip tab's text runs past its box (spill, CI-01e); today is
+// told by a shape as well as colour (an underline on today's strip number or desktop day label,
+// with a non-empty box, CI-01b); and at the page-zoom and 200% cells the day column's window shows
+// its header and at least one whole slot row (CI-01f). One joined line is thrown.
+const schedulerExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const tag = `D21-scheduler ${cell.id}`;
+  const dialog = createEventDialog(page);
+  const read = await readScheduler(dialog);
+  const problems: string[] = [];
+  say(`D21-scheduler ${cell.id} phone=${read.phone} spills=${read.spills.length} today=${read.today.found ? `${read.today.underline ? 'underlined' : 'plain'} ${r1(read.today.width)}x${r1(read.today.height)}` : 'none'} window=${read.window ? `${read.window.height}/${r1(read.window.header)}+${r1(read.window.row)}` : 'none'}`);
+  if (read.spills.length > 0) problems.push(`${tag}: strip text runs past its cell: ${read.spills.join('; ')}`);
+  if (!read.today.found) problems.push(`${tag}: today's ${read.phone ? 'strip number' : 'day label'} was not found`);
+  else if (!read.today.underline || read.today.width < 0.5 || read.today.height < 0.5) problems.push(`${tag}: today's ${read.phone ? 'strip number' : 'day label'} carries no underline (${r1(read.today.width)} x ${r1(read.today.height)}): today is told by colour alone (WCAG 1.4.1)`);
+  if (cell.mode !== 'font32') {
+    if (!read.window) problems.push(`${tag}: the day column's window, header or first slot row was not found`);
+    else if (read.window.height < read.window.header + read.window.row - 0.5) problems.push(`${tag}: the day column's window (${read.window.height}px) does not show its header (${r1(read.window.header)}) and one whole slot row (${r1(read.window.row)})`);
+  }
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'D21', census: 'D21', kind: 'dialog', owner: '89.6-24', status: 'enforced', state: 'one custom row added', reach: reachCreateEvent, extras: createEventExtras },
   { id: 'D21-readonly', census: 'D21', kind: 'dialog', owner: '89.6-24', status: 'enforced', state: 'a group member row with the name Alice and a member with a 40-letter name', reach: reachReadonly, extras: readonlyExtras },
+  { id: 'D21-scheduler', census: 'D21', kind: 'dialog', owner: '89.6-24', status: 'enforced', state: 'visual calendar, the week holding today, phone strip and day column', reach: reachScheduler, extras: schedulerExtras },
   { id: 'D22', census: 'D22', kind: 'dialog', owner: '89.6-24', status: 'enforced', reach: reachEditEvent, extras: editEventExtras },
 ];
