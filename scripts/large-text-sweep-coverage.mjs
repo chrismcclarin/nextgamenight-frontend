@@ -5,7 +5,7 @@
  * Usage: node scripts/large-text-sweep-coverage.mjs [--results <dir>] [--mode pr|full] [--close]
  *        node scripts/large-text-sweep-coverage.mjs --self-test
  *   --results    the folder e2e/large-text-sweep.spec.ts wrote (default test-results/large-text-sweep/results)
- *   --mode       the lane that was run: pr (7 cells, the default) or full (18 cells)
+ *   --mode       the lane that was run: pr (8 cells, the default) or full (18 cells)
  *   --close      the phase-close run: a pending row and an open empty state are failures too
  *   --self-test  plants eleven faults in folders under the system temp folder; exits 0 only when
  *                each is caught (takes no other flag)
@@ -45,6 +45,7 @@ const cells = (sizes, themes, mode, zoom = false) =>
 const PR_CELL_IDS = [
   '215x466-dark-100-zoom',
   '187x333-dark-100-zoom',
+  '320x568-dark-100',
   '320x568-dark-200',
   '375x667-dark-200',
   '768x1024-dark-200',
@@ -212,7 +213,7 @@ function selfTest() {
     ['a pending row under --close', folder({ 'rows.json': rowsFile(), 'R17.json': resultFile() }), { close: true }, false, /^pending: R02 until 89\.6-23$/],
     ['a row with no owner', folder({ 'rows.json': rowsFile({ rows: [...allEnforced, { id: 'R02', census: 'R02', kind: 'route', status: 'pending' }] }), 'R17.json': resultFile() }), {}, false, /^bad row: R02 has no owning plan$/],
     ['a duplicate id', folder({ 'rows.json': rowsFile({ rows: [...allEnforced, ...allEnforced] }), 'R17.json': resultFile() }), {}, false, /^bad row: R17 is declared twice$/],
-    ['a full-mode run whose rows.json lists the 7 PR cells', folder({ 'rows.json': rowsFile({ mode: 'full' }), 'R17.json': resultFile() }), { mode: 'full' }, false, /^cells: rows\.json lists 7 cells, and the full lane is 18 /],
+    ['a full-mode run whose rows.json lists the 8 PR cells', folder({ 'rows.json': rowsFile({ mode: 'full' }), 'R17.json': resultFile() }), { mode: 'full' }, false, /^cells: rows\.json lists 8 cells, and the full lane is 18 /],
     ['a pr-mode run whose rows take 901 s', folder({ 'rows.json': rowsFile(), 'R17.json': resultFile(PR_CELL_IDS, { ms: 901_000 }) }), {}, false, /^over budget: 901s, /],
     ['an empty state no enforced row holds, under --close', folder({ 'rows.json': rowsFile({ rows: allEnforced, emptyStates: [{ census: 'R01', state: 'No groups yet', row: 'R01-empty', owner: '89.6-16', shownBy: 'R01' }] }), 'R17.json': resultFile() }), { close: true }, false, /^empty-state open: R01-empty \(R01 "No groups yet"\) until 89\.6-16$/],
     ['a clean folder, its one empty state held by an enforced row, under --close', folder({ 'rows.json': rowsFile({ rows: allEnforced }), 'R17.json': resultFile() }), { close: true }, true, /^empty-state parity: 0$/],

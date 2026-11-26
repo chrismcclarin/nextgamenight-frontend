@@ -33,7 +33,7 @@
 // which rows are pending, and which cell of an enforced row is missing or failed.
 //
 // DECISION Phase 89.6-08 (sweep): one test per surface row runs every cell of the lane on one
-// reached page (zoom cells at normal text first, then the 200% style-tag cells, then the font32
+// reached page (zoom cells at normal text first, then the 320 normal-text cell R16 added, then the 200% style-tag cells, then the font32
 // cell on a fresh page in the same context, which registers its own sweepWriteGuard before its
 // first navigation, re-runs reach, and ends with its own expectNoApiWrites; holdWrites routes one
 // page only, so the fresh page needs its own guard), chosen OVER one test per row and cell (about
@@ -408,13 +408,25 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
   expect(ALL_ROWS.filter((row) => !/^(R|D|O)\d\d$/.test(row.census)).map((row) => row.id), 'a row has no census id').toEqual([]);
   expect(ALL_ROWS.filter((row) => row.status !== 'pending' && row.status !== 'enforced').map((row) => row.id), 'a row has no status').toEqual([]);
   expect(ALL_ROWS.filter((row) => row.status === 'enforced' && !row.reach).map((row) => row.id), 'an enforced row has no reach').toEqual([]);
-  expect(PR_CELLS.length, 'the PR lane is seven cells').toBe(7);
+  // R16 (owner, 2026-11-26: "Add the 320px normal text check."): the lane's third cell is 320 x 568 at normal text, the
+  // size WCAG 2.2 SC 1.4.10 Reflow itself tests at (320 CSS pixels wide), which the lane did not have.
+  expect(PR_CELLS.map((cell) => cell.id), 'the PR lane is eight cells: the two page-zoom widths, 320 at normal text, three 200% cells in dark, one in light, and font32').toEqual([
+    '215x466-dark-100-zoom',
+    '187x333-dark-100-zoom',
+    '320x568-dark-100',
+    '320x568-dark-200',
+    '375x667-dark-200',
+    '768x1024-dark-200',
+    '375x667-light-200',
+    '768x1024-dark-font32',
+  ]);
+  expect(PR_CELLS.filter((cell) => cell.mode === '100' && !cell.zoom).map((cell) => `${cell.width}x${cell.height}`), "the PR lane reads the standard's own size, 320 wide at normal text, with the full checks").toEqual(['320x568']);
   expect(PR_CELLS.filter((cell) => cell.theme === 'light').map((cell) => cell.id), 'the PR lane holds exactly one light cell').toEqual(['375x667-light-200']);
   expect(FULL_CELLS.length, 'the full lane is eighteen cells').toBe(18);
   expect(new Set(FULL_CELLS.map((cell) => cell.id)).size, 'a cell id is declared twice').toBe(FULL_CELLS.length);
   expect(PR_CELLS.filter((cell) => !FULL_CELLS.some((other) => other.id === cell.id)).map((cell) => cell.id), 'a PR-lane cell is missing from the full lane').toEqual([]);
   expect(FULL_CELLS.filter((cell) => cell.theme === 'light').length, 'the full lane reads every cell in both themes').toBe(9);
-  expect(LANE.length, 'the lane is the mode\'s').toBe(MODE === 'full' ? 18 : 7);
+  expect(LANE.length, 'the lane is the mode\'s').toBe(MODE === 'full' ? 18 : 8);
 
   // The rows and the census cannot drift apart: a module removed, or a skipped id given a row.
   expect([...new Set(ALL_ROWS.map((row) => row.census))].sort(), 'the census ids of the surface rows differ from CENSUS_IDS').toEqual([...new Set(CENSUS_IDS)].sort());
