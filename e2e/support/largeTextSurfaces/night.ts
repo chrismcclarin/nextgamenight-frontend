@@ -1,6 +1,6 @@
 // Surface rows: the night page (the event view of census R05), Participants and Delete this session. Owner: plan 89.6-19.
-// One row per line, each with its census id. Plan 89.6-19 turned all three on; D31 waits under plan 89.6-29 (its
-// marker).
+// One row per line, each with its census id. Plan 89.6-19 turned all three on; D31 went pending under plan 89.6-29,
+// which turned it on again (its marker).
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
 // WHAT IS STAGED (stageNight). The real event read of the CI fixture night, answered in the browser
@@ -29,7 +29,7 @@ import type { SurfaceRow, SweepCell } from './index';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login owns.
 // No fallback id, as in e2e/support/largeTextSurfaces/members.ts ("No fallback id").
-const groupId = (): string => {
+export const groupId = (): string => {
   const id = process.env.E2E_GROUP_ID ?? '';
   if (id === '') throw new Error('E2E_GROUP_ID must be set: the CI step that runs scripts/e2e-fixtures.js exports it, and the night rows open that group');
   return id;
@@ -41,7 +41,7 @@ const eventId = (): string => new URL(eventPath(), 'http://localhost').searchPar
 
 export const LONG_NAME = 'Bartholomew Featherstonehaugh-Cholmondeley';
 export const SHORT_GUEST = 'Pat Lee';
-const uuid = (tail: string): string => `8861a072-0000-4000-8000-${tail.padStart(12, '0')}`;
+export const uuid = (tail: string): string => `8861a072-0000-4000-8000-${tail.padStart(12, '0')}`;
 
 export const NIGHT_PARTICIPANTS = [
   { id: uuid('a1'), user_id: null, username: TWO_WORD_NAME, is_guest: true, is_custom: true },
@@ -62,14 +62,14 @@ function tomorrowEvening(): string {
 }
 
 type RosterRow = { id?: string; username?: string; UserGroup?: { role?: string } | null };
-const everyMemberAnOwner = (rows: unknown[]): unknown[] =>
+export const everyMemberAnOwner = (rows: unknown[]): unknown[] =>
   rows.map((row) => {
     const member = row as RosterRow;
     return member.UserGroup ? { ...member, UserGroup: { ...member.UserGroup, role: 'owner' } } : row;
   });
 
 /** GET only: everything else falls back, so a write still reaches the sweep's hold. */
-async function onGet(route: Route, answer: (route: Route) => Promise<void>): Promise<void> {
+export async function onGet(route: Route, answer: (route: Route) => Promise<void>): Promise<void> {
   if (route.request().method() !== 'GET') {
     await route.fallback();
     return;
@@ -362,5 +362,8 @@ export const rows: SurfaceRow[] = [
   // weighing them belongs to the plan that sweeps that surface with its context. Plan 89.6-29 turns this row back on
   // with its fix; the coverage script's --close run fails on any pending row, so the phase cannot close with it off.
   // Changing this is a decision, not a cleanup.
-  { id: 'D31', census: 'D31', kind: 'dialog', owner: '89.6-29', status: 'pending', reach: reachDeleteSession, extras: deleteSessionExtras },
+  // AMENDED Phase 89.6-29 (D31 enforced again): plan 89.6-29 turned the row back on with its sweep of the game view, in
+  // the commit before its fix of the Reviews header (so the row is shown red, then green), chosen OVER moving the row
+  // to the game module (a row keeps its module; its reach and extras are here).
+  { id: 'D31', census: 'D31', kind: 'dialog', owner: '89.6-29', status: 'enforced', reach: reachDeleteSession, extras: deleteSessionExtras },
 ];
