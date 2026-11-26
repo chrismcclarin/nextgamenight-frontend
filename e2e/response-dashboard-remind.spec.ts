@@ -178,7 +178,14 @@ async function measuredBox(locator: Locator, what: string): Promise<Box> {
 }
 
 test.describe('Response dashboard Remind (plan 88.6.1-11)', () => {
-  test('Remind floor: the button is at least 44px tall and its row is at most 45px', async ({ page }) => {
+  // AMENDED Phase 89.6-20 (planning-rows): a respondent's name now wraps by words and its status
+  // line moves under it (src/app/components/ResponseDashboard.js ("DECISION Phase 89.6-20 (planning-rows)")),
+  // so at 375 this row's 20-character name takes two lines and the row is taller than 45px by its
+  // TEXT. The floor's promise is unchanged and still measured: the Remind button adds no height, so
+  // the row is its text block (or the button's 28px margin box, whichever is taller) plus the 16px
+  // padding and the 1px border; on a one-line row that is the 45px this test first pinned. CI run
+  // 45765057767 read row A at 93px (a two-line name, then the status line).
+  test('Remind floor: the button is at least 44px tall and adds no height to its row', async ({ page }) => {
     await mockDashboard(page);
     const card = await openDashboard(page);
     const row = rowOf(card, MEMBERS[0].username);
@@ -189,7 +196,8 @@ test.describe('Response dashboard Remind (plan 88.6.1-11)', () => {
     const buttonBox = await measuredBox(button, 'row A Remind button');
     const rowBox = await measuredBox(row, 'row A');
     expect(buttonBox.height, `Remind button ${JSON.stringify(buttonBox)}`).toBeGreaterThanOrEqual(44);
-    expect(rowBox.height, `row A ${JSON.stringify(rowBox)}`).toBeLessThanOrEqual(45);
+    const textBox = await measuredBox(row.locator('div.bb-row-text'), 'row A name and status');
+    expect(rowBox.height, `row A ${JSON.stringify(rowBox)}, its text ${JSON.stringify(textBox)}`).toBeLessThanOrEqual(Math.max(textBox.height, 28) + 17 + 0.5);
   });
 
   test('Remind focus: the pressed button keeps focus in flight, a second Enter sends nothing, and focus lands on "Reminded ..." after success', async ({ page }) => {
