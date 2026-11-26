@@ -71,9 +71,28 @@ const titleRowExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => 
   });
 };
 
+// The Group settings gear (owner picks O-9b = B and O-M4 = Fixed+): its box is held at 44 x 44 in
+// every cell (within 0.5px) and its cog follows the text up to 32px. The CI login owns the group, so
+// the gear is on screen.
+const gearExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
+  const gear = page.getByRole('button', { name: 'Group settings', exact: true });
+  const read = await gear.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const svg = el.querySelector('svg')?.getBoundingClientRect() ?? null;
+    return { width: box.width, height: box.height, svg: svg ? Math.max(svg.width, svg.height) : null };
+  });
+  const line = `${cell.id}: gear ${read.width} x ${read.height}, cog ${read.svg}`;
+  expect(Math.abs(read.width - 44) <= 0.5 && Math.abs(read.height - 44) <= 0.5, `O-M4: the gear box is not 44 x 44 (${line})`).toBe(true);
+  expect(read.svg !== null && read.svg <= 32.5, `O-M4: the gear cog is missing or over 32px (${line})`).toBe(true);
+};
+const headerExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
+  await titleRowExtras(page, cell);
+  await gearExtras(page, cell);
+};
+
 export const rows: SurfaceRow[] = [
-  { id: 'R07-games', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', reach: reachGames, answers: answerNoGames, extras: titleRowExtras },
-  { id: 'R07-emoji', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'emoji icon', reach: reachEmoji, answers: answerNoGames, extras: titleRowExtras },
+  { id: 'R07-games', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', reach: reachGames, answers: answerNoGames, extras: headerExtras },
+  { id: 'R07-emoji', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'emoji icon', reach: reachEmoji, answers: answerNoGames, extras: headerExtras },
   { id: 'R07-library', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
   { id: 'R07-checkins', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
   { id: 'R07-history', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
