@@ -1358,9 +1358,9 @@ describe('ResponseDashboard — the first load names what is loading (88.6.1-86,
 // Phase 89.6-20 (planning-rows), register UR-01b and R5-06: a respondent row is a bb-row whose
 // name wraps by words and whose status line is a whole item that moves under the name. The row
 // keeps items-center (the block aligns to the top by default); the name and its status sit in one
-// bb-cluster that carries min-w-0 and flex-1 (the container takes the room left of the icon, so a
-// 30-letter name cannot push the row past the page); no status span keeps shrink-0; the Remind
-// button sits in the row's end slot. The reasoning is this component's own marker,
+// bb-cluster that grows beside the icon (flex-1) and is capped at the row (max-w-full), and the
+// icon and the cluster wrap (flex-wrap), so a word too long to sit beside the icon moves under it
+// instead of breaking; no status span keeps shrink-0; the Remind button sits in the row's end slot. The reasoning is this component's own marker,
 // src/app/components/ResponseDashboard.js ("DECISION Phase 89.6-20 (planning-rows)").
 describe('89.6-20 planning-rows: a respondent row on the shared blocks', () => {
   it('the row is a bb-row with the name and status in one cluster, no truncate, no shrink-0, Remind in the end slot', async () => {
@@ -1375,7 +1375,9 @@ describe('89.6-20 planning-rows: a respondent row on the shared blocks', () => {
     expect(row!.className.split(/\s+/)).toEqual(expect.arrayContaining(['bb-row', 'items-center']));
     expect(name.className.split(/\s+/)).not.toContain('truncate');
     const cluster = name.parentElement!;
-    expect(cluster.className.split(/\s+/)).toEqual(expect.arrayContaining(['bb-cluster', 'min-w-0', 'flex-1']));
+    expect(cluster.className.split(/\s+/)).toEqual(expect.arrayContaining(['bb-cluster', 'flex-1', 'max-w-full']));
+    expect(cluster.className.split(/\s+/)).not.toContain('min-w-0');
+    expect(cluster.parentElement!.className.split(/\s+/)).toEqual(expect.arrayContaining(['bb-row-text', 'flex-wrap']));
     expect(within(cluster).getByText('- pending')).toBeInTheDocument();
     const slots = within(screen.getByText('Weekend Warriors').parentElement!).getByText('- 3 slots available');
     for (const status of [within(cluster).getByText('- pending'), slots]) {

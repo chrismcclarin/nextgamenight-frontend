@@ -665,24 +665,27 @@ export default function ResponseDashboard({
                (register UR-01b; the owner's wrap ruling, UI-SPEC plan-52 amendment) and OVER
                shrink-0 status spans (one pushed the page to 413px at 320 / 200%). GR (owner,
                2026-11-22: 'A row stays a row while everything in it fits whole. When it does not,
-               items stack.'). The name-and-status cluster carries min-w-0 and flex-1 so the
-               CONTAINER takes the room left of the icon (review M019: without them its automatic
-               minimum is the whole 30-letter word and the row overflows); the name itself has no
-               minimum (HR-2) and breaks inside a word only when that word alone is wider than the
-               cluster. Normal text: a short name is pixel-identical; a long name wraps instead of
-               ending in an ellipsis. Changing this is a decision, not a cleanup. */
+               items stack.'). The icon and the name-and-status cluster WRAP: the cluster grows
+               beside the icon (flex-1) and moves under it when the name's longest word does not fit
+               beside the icon, capped at the row (max-w-full), so the name breaks inside a word only
+               when that word alone is wider than the whole row (HR-1). Chosen OVER min-w-0 on the
+               cluster (the first cut, after review M019): it held the cluster beside the icon, so in
+               CI run 45767320517 "Weekend" (320 / 200%) and the 30-letter name (768 / 200%) broke
+               although they would have been whole with the icon above them. Normal text: a short
+               name is pixel-identical; a long name wraps instead of ending in an ellipsis.
+               Changing this is a decision, not a cleanup. */
             <li
               key={r.user_id}
               className="bb-row items-center py-2 px-2 rounded-sm hover:bg-surface-hover border-b border-line last:border-b-0"
             >
-              <div className="bb-row-text flex items-center gap-2">
+              <div className="bb-row-text flex flex-wrap items-center gap-2">
                 {r.has_responded ? (
                   <CheckIcon className="w-5 h-5 text-content-status-success shrink-0" />
                 ) : (
                   <ClockIcon className="w-5 h-5 text-content-muted shrink-0" />
                 )}
 
-                <span className="bb-cluster min-w-0 flex-1">
+                <span className="bb-cluster flex-1 max-w-full">
                   <span className="text-content-primary">
                     {r.username}
                     {isMe(r.user_id) && (
