@@ -12,6 +12,7 @@ import { settleAnimations } from '../inFlight';
 import { toDialogTop } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
 import { stageNight } from './night';
+import { rows as planningRows } from './planning';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
 // owns. No fallback id, as in e2e/support/largeTextSurfaces/members.ts ("No fallback id").
@@ -244,11 +245,96 @@ const failedBranchHolds = async (page: Page): Promise<void> => {
   if (problems.length > 0) throw new Error(`D28-load-failed: ${problems.join('; ')}`);
 };
 
+// THE SUGGESTION SLOT (register R5-03), in Create Event on the group page (census R07) and on the
+// planning page (census R08). The root is the slot itself; the rest of the Create Event body is plan
+// 89.6-24's row (D21), so no dialog is handed back. The planning page opens Create Event from its
+// email-link parameters (src/app/groupPlanning/page.js ("Auto-open the createEvent modal when the URL carries prefill params OR")),
+// and its own reads are answered as planning.ts's R08 row answers them (the prompt-settings read
+// writes), imported, never copied.
+const planningAnswers = planningRows.find((row) => row.id === 'R08')?.answers;
+if (!planningAnswers) throw new Error('browse.ts: planning.ts has no R08 row with answers for R08-suggestions');
+const tomorrow = (): string => {
+  const day = new Date();
+  day.setDate(day.getDate() + 1);
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+};
+type SlotState = 'chips' | 'empty' | 'failed';
+const failRouted = new WeakSet<Page>();
+async function reachSuggestionSlot(page: Page, path: string, state: SlotState = 'chips'): Promise<{ root: Locator }> {
+  if (state === 'failed' && !failRouted.has(page)) {
+    failRouted.add(page);
+    await page.route(
+      (url) => isSuggestionsRead(url),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.fallback();
+          return;
+        }
+        await route.abort('failed');
+      },
+    );
+  }
+  await page.goto(path);
+  if (path.startsWith('/groupHomePage')) await page.getByRole('button', { name: 'Create Event', exact: true }).click();
+  const slot = page.getByTestId('quick-suggestions-slot');
+  await slot.waitFor({ state: 'visible', timeout: 15_000 });
+  if (state === 'chips') await slot.getByRole('button', { name: 'Browse more' }).waitFor({ state: 'visible', timeout: 15_000 });
+  if (state === 'empty') await page.getByTestId('quick-suggestions-empty').waitFor({ state: 'visible', timeout: 15_000 });
+  if (state === 'failed') await page.getByTestId('quick-suggestions-failed').waitFor({ state: 'visible', timeout: 15_000 });
+  await slot.scrollIntoViewIfNeeded();
+  await settleAnimations(slot);
+  return { root: slot };
+}
+const groupPath = (): string => `/groupHomePage?id=${groupId()}`;
+const planningPath = (): string => `/groupPlanning?group_id=${groupId()}&prefillDate=${tomorrow()}&prefillTime=19:00`;
+const answerNoSuggestions = (url: URL): unknown => (isSuggestionsRead(url) ? { suggestions: [] } : undefined);
+const answerPlanningSuggestions = (url: URL): unknown => answerSuggestions(url) ?? planningAnswers(url);
+
+// D23-loading: Browse games on its first load. The slot's reads are answered (its chips bring Browse
+// more: the button renders only with chips, src/app/components/QuickSuggestions.js ("Browse more")
+// sits inside the chips branch, so the slot always reads before the dialog), and every suggestions
+// read after Browse more is pressed is held, never answered, so the dialog shows its loading line.
+const loadingHeld = new WeakMap<Page, { holding: boolean }>();
+const reachBrowseLoading: SurfaceRow['reach'] = async (page) => {
+  let gate = loadingHeld.get(page);
+  if (!gate) {
+    const fresh = { holding: false };
+    gate = fresh;
+    loadingHeld.set(page, fresh);
+    await page.route(
+      (url) => isSuggestionsRead(url),
+      async (route) => {
+        if (route.request().method() !== 'GET' || !fresh.holding) {
+          await route.fallback();
+          return;
+        }
+        // Held: never answered, never handed on.
+      },
+    );
+  }
+  gate.holding = false;
+  await page.goto(groupPath());
+  await page.getByRole('button', { name: 'Create Event', exact: true }).click();
+  const browseMore = page.getByTestId('quick-suggestions-slot').getByRole('button', { name: 'Browse more' });
+  await browseMore.waitFor({ state: 'visible', timeout: 15_000 });
+  gate.holding = true;
+  await browseMore.click();
+  const dialog = browseDialog(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  await dialog.getByText('Loading suggestions...', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(dialog);
+  await toDialogTop(dialog);
+  return { root: dialog, dialog };
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'D23', census: 'D23', kind: 'dialog', owner: '89.6-18', status: 'enforced', reach: reachBrowseGames, answers: answerSuggestions, extras: browseToolbarExtras },
   { id: 'D28', census: 'D28', kind: 'dialog', owner: '89.6-18', status: 'enforced', state: 'three owned games, one ticked (the no-picture stand-in)', reach: reachGamesToBring, answers: (url) => answerBringReads(url, 'listed'), extras: saveReachable },
   { id: 'D28-load-failed', census: 'D28', kind: 'dialog', owner: '89.6-18', state: 'load-failed', status: 'enforced', reach: reachBringFailed, extras: failedBranchHolds },
   { id: 'D28-empty', census: 'D28', kind: 'dialog', owner: '89.6-18', state: 'empty', status: 'enforced', reach: reachBringEmpty, answers: (url) => answerBringReads(url, 'empty') },
-  { id: 'R07-suggestions', census: 'R07', kind: 'route', owner: '89.6-18', status: 'pending' },
-  { id: 'R08-suggestions', census: 'R08', kind: 'route', owner: '89.6-18', status: 'pending' },
+  { id: 'D23-loading', census: 'D23', kind: 'dialog', owner: '89.6-18', state: 'loading', status: 'enforced', reach: reachBrowseLoading, answers: answerSuggestions },
+  { id: 'R07-suggestions', census: 'R07', kind: 'route', owner: '89.6-18', status: 'enforced', state: 'five chips in Create Event', reach: (page) => reachSuggestionSlot(page, groupPath()), answers: answerSuggestions },
+  { id: 'R07-suggestions-empty', census: 'R07', kind: 'route', owner: '89.6-18', state: 'suggestions empty', status: 'enforced', reach: (page) => reachSuggestionSlot(page, groupPath(), 'empty'), answers: answerNoSuggestions },
+  { id: 'R07-suggestions-failed', census: 'R07', kind: 'route', owner: '89.6-18', state: 'suggestions failed', status: 'enforced', reach: (page) => reachSuggestionSlot(page, groupPath(), 'failed') },
+  { id: 'R08-suggestions', census: 'R08', kind: 'route', owner: '89.6-18', status: 'enforced', state: 'five chips in Create Event on the planning page', reach: (page) => reachSuggestionSlot(page, planningPath()), answers: answerPlanningSuggestions },
 ];
