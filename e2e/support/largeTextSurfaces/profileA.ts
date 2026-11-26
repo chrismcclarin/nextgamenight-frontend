@@ -573,11 +573,98 @@ const reachNoSchedules: SurfaceRow['reach'] = async (page) => {
   return { root };
 };
 
+// R08-schedules: the inline card with both staged schedules (one Active, one Paused) and the second
+// schedule's inline delete confirm open (its kebab Delete only opens the confirm:
+// src/app/components/ScheduleList.js ("const handleDeleteClick = (schedule) => {")). The root is the
+// innermost box holding both schedules. Confirm Delete is NEVER pressed.
+const SCHEDULE_B_PROMPT = `Delete ${SCHEDULE_B.template_name}? This will stop sending prompts.`;
+const scheduleHeading = (page: Page, name: string): Locator => page.getByRole('heading', { level: 3, name, exact: true });
+const scheduleListOf = (page: Page): Locator =>
+  page.locator('div', { has: scheduleHeading(page, SCHEDULE_A.template_name) }).filter({ has: scheduleHeading(page, SCHEDULE_B.template_name) }).last();
+const reachSchedules: SurfaceRow['reach'] = async (page) => {
+  await reachRecurring(page);
+  await scheduleHeading(page, SCHEDULE_B.template_name).waitFor({ state: 'visible', timeout: 15_000 });
+  const list = await openScheduleActions(page, 1);
+  await list.getByRole('button', { name: 'Delete', exact: true }).click();
+  const prompt = page.getByText(SCHEDULE_B_PROMPT, { exact: true });
+  // A Delete that armed first (it is not a two-tap today) is pressed once more: it only opens the confirm.
+  if ((await prompt.count()) === 0 && (await list.isVisible())) await list.getByRole('button', { name: /Delete|Tap again/ }).click();
+  await prompt.waitFor({ state: 'visible', timeout: 10_000 });
+  const root = scheduleListOf(page);
+  await settleAnimations(root);
+  return { root };
+};
+
+/** Elements inside `root` that run past its right edge or scroll inside themselves: layout facts and the first 30 characters of their staged text. */
+async function scheduleOffenders(root: Locator): Promise<Array<{ tag: string; classes: string; text: string; right: number; width: number; overflow: number }>> {
+  return root.evaluate((el) => {
+    const edge = el.getBoundingClientRect().right;
+    return Array.from(el.querySelectorAll('*'))
+      .map((node) => {
+        const box = node.getBoundingClientRect();
+        return { node, box, overflow: (node as HTMLElement).scrollWidth - (node as HTMLElement).clientWidth };
+      })
+      .filter(({ box, overflow }) => box.width > 0 && (box.right > edge + 0.5 || overflow > 1))
+      .slice(0, 20)
+      .map(({ node, box, overflow }) => ({
+        tag: node.tagName.toLowerCase(),
+        classes: node.getAttribute('class') ?? '',
+        text: (node.textContent ?? '').trim().slice(0, 30),
+        right: Math.round(box.right * 10) / 10,
+        width: Math.round(box.width * 10) / 10,
+        overflow,
+      }));
+  });
+}
+
+// R08-schedules extras, every cell: (a) Confirm Delete and Cancel each lie inside the confirm box
+// sideways and are at least 44px tall; (b) the inline card's header row and, when present,
+// + New Schedule hold the cell's checks; (c) when the root or a part reads red, the offenders are
+// attached and printed (recorded, not asserted). One joined line is thrown.
+const schedulesExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const tag = `R08-schedules ${cell.id}`;
+  const problems: string[] = [];
+  const confirm = page.getByRole('button', { name: 'Confirm Delete', exact: true });
+  const box = confirm.locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " bg-status-error-subtle ")][1]');
+  const boxRect = await box.evaluate((el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right }; });
+  for (const label of ['Confirm Delete', 'Cancel']) {
+    const at = await box.getByRole('button', { name: label, exact: true }).evaluate((el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, height: r.height }; });
+    if (at.left < boxRect.left - 0.5 || at.right > boxRect.right + 0.5) problems.push(`${tag}: "${label}" runs out of the confirm box sideways (${r1(at.left)} to ${r1(at.right)}; box ${r1(boxRect.left)} to ${r1(boxRect.right)})`);
+    if (at.height < 43.5) problems.push(`${tag}: "${label}" is ${r1(at.height)}px tall, under 44`);
+  }
+  let red = false;
+  const parts: Array<[Locator, string]> = [[recurringHeading(page).locator('xpath=..'), 'the card header row']];
+  const newSchedule = page.getByRole('button', { name: '+ New Schedule', exact: true });
+  if ((await newSchedule.count()) > 0) parts.push([newSchedule, '+ New Schedule']);
+  for (const [part, name] of parts) {
+    try {
+      await expectPart(part, cell, `${tag} ${name}`);
+    } catch (error) {
+      red = true;
+      problems.push(firstLine(error));
+    }
+  }
+  if (!red) {
+    try {
+      await expectPart(scheduleListOf(page), cell, tag);
+    } catch {
+      red = true;
+    }
+  }
+  if (red) {
+    const offenders = await scheduleOffenders(scheduleListOf(page));
+    await test.info().attach(`offenders-${cell.id}.json`, { body: JSON.stringify(offenders, null, 2), contentType: 'application/json' });
+    offenders.forEach((o, n) => process.stdout.write(`ZZ41 offender ${cell.id} ${n + 1}/${offenders.length}: ${o.tag} right ${o.right} width ${o.width} overflow ${o.overflow} text '${o.text}' class '${o.classes.slice(0, 100)}'\n`));
+  }
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R16-availability', census: 'R16', kind: 'route', owner: '89.6-22', status: 'enforced', reach: reachAvailability, answers: answerPatterns, extras: availabilityExtras },
   { id: 'R16-identity', census: 'R16', kind: 'route', owner: '89.6-22', state: 'identity', status: 'enforced', reach: reachIdentity, answers: answerPatterns, extras: identityExtras },
   { id: 'D25', census: 'D25', kind: 'dialog', owner: '89.6-41', status: 'enforced', reach: reachCreateSchedule, answers: answerSettings(SETTINGS_WITH_SCHEDULES), extras: scheduleDialogExtras('D25', 'Create Schedule', 'Create Schedule') },
   { id: 'D26', census: 'D26', kind: 'dialog', owner: '89.6-41', status: 'enforced', reach: reachEditSchedule, answers: answerSettings(SETTINGS_WITH_SCHEDULES), extras: scheduleDialogExtras('D26', 'Edit Schedule', 'Update Schedule') },
+  { id: 'R08-schedules', census: 'R08', kind: 'route', owner: '89.6-41', state: "admin, two schedules (Active and Paused), the second schedule's delete confirm open", status: 'enforced', reach: reachSchedules, answers: answerSettings(SETTINGS_WITH_SCHEDULES), extras: schedulesExtras },
   { id: 'R08-noschedules', census: 'R08', kind: 'route', owner: '89.6-41', state: 'admin, no schedules: the No schedules yet empty state', status: 'enforced', reach: reachNoSchedules, answers: answerSettings(SETTINGS_EMPTY) },
   { id: 'R16-specific', census: 'R16', kind: 'route', owner: '89.6-22', state: 'specific-dates', status: 'enforced', reach: reachSpecific, answers: answerPatterns, extras: specificExtras },
   { id: 'D32', census: 'D32', kind: 'dialog', owner: '89.6-22', status: 'enforced', reach: reachDisconnect, answers: answerConnected },
