@@ -20,6 +20,7 @@
 import { expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
 
 import { answerPendingInvites, pendingInvite } from '../pendingInvite';
+import { settleAnimations } from '../inFlight';
 import { setTextMode, THIRTY_LETTER_WORD } from '../wordLines';
 import { answerPromptSettings, openCustomizeGroup } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
@@ -116,6 +117,9 @@ const o02Extras: SurfaceRow['extras'] = async (page, cell) => {
 const notificationsRegion = (page: Page): Locator => menuPanel(page).getByRole('region', { name: 'Notifications', exact: true });
 
 const o03Extras: SurfaceRow['extras'] = async (page, cell) => {
+  // The menu panel's height cap is in dvh and it carries transition-all: after a viewport change it
+  // eases to its new cap, and the sweep settles only this row's root (the region inside it).
+  await settleAnimations(menuPanel(page));
   const read = await page.evaluate((word) => {
     const panel = document.querySelector('[data-slot="header-menu-panel"]') as HTMLElement;
     const region = panel.querySelector('section[aria-labelledby]') as HTMLElement | null;
@@ -127,8 +131,11 @@ const o03Extras: SurfaceRow['extras'] = async (page, cell) => {
     const atStart = { region: region.getBoundingClientRect().top, ...room() };
     region.scrollIntoView({ block: 'end' });
     const atEnd = { region: region.getBoundingClientRect().bottom, ...room() };
-    // The group name's text node: the tops of its line boxes, one per line.
+    // The group name's text node: the tops of its line boxes, one per line. A name on two lines is
+    // a fault only when it would fit its box on one: the 30-letter word is wider than any phone
+    // row at these sizes, which the read lists as wide, never as split (wordLines.ts).
     let lines = 0;
+    let fits = false;
     const walker = document.createTreeWalker(region, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       if (!(node.textContent ?? '').includes(word)) continue;
@@ -137,16 +144,30 @@ const o03Extras: SurfaceRow['extras'] = async (page, cell) => {
       range.setStart(node, at);
       range.setEnd(node, at + word.length);
       lines = new Set(Array.from(range.getClientRects()).map((r) => Math.round(r.top))).size;
+      // The nearest box that is not inline: an inline box has no width of its own to measure.
+      let holder = node.parentElement as HTMLElement;
+      while (holder.parentElement && getComputedStyle(holder).display.startsWith('inline')) holder = holder.parentElement;
+      const probe = document.createElement('span');
+      probe.textContent = word;
+      probe.style.whiteSpace = 'nowrap';
+      probe.style.position = 'absolute';
+      probe.style.visibility = 'hidden';
+      holder.appendChild(probe);
+      const cs = getComputedStyle(holder);
+      const room = holder.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      fits = probe.getBoundingClientRect().width <= room + 0.5;
+      probe.remove();
     }
     panel.scrollTop = keepPanel;
     window.scrollTo(window.scrollX, keepY);
-    return { missing: false as const, atStart, atEnd, lines };
+    return { missing: false as const, atStart, atEnd, lines, fits };
   }, THIRTY_LETTER_WORD);
   if (read.missing) throw new Error(`${cell.id}: the Notifications panel is not open in the menu`);
   const problems: string[] = [];
   if (read.atStart.region < read.atStart.top - PX) problems.push(`the panel top cannot be scrolled into view (top ${Math.round(read.atStart.region)}, room from ${Math.round(read.atStart.top)})`);
   if (read.atEnd.region > read.atEnd.bottom + PX) problems.push(`the panel bottom cannot be scrolled into view (bottom ${Math.round(read.atEnd.region)}, room to ${Math.round(read.atEnd.bottom)})`);
-  if (read.lines !== 1) problems.push(`the invite's group name sits on ${read.lines} lines`);
+  if (read.lines === 0) problems.push("the invite's group name is not in the panel");
+  if (read.lines > 1 && read.fits) problems.push(`the invite's group name sits on ${read.lines} lines although it fits its box on one`);
   if (problems.length > 0) throw new Error(`${cell.id}: ${problems.join('; ')}`);
 };
 
