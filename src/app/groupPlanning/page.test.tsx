@@ -1323,6 +1323,60 @@ describe('groupPlanning page: poll selection (quick-261026-pi6, owner R3-R5)', (
     await settledOn(P1);
     expect(showingLine()).toHaveClass('wrap-anywhere');
   });
+
+  // Phase 89.6-20 (planning-chips), register R6-02: neither Switch poll chip looked selected when a
+  // link carried the poll id in upper case (the pressed test and the early return used a strict
+  // equality, not the page's F7 case rule), and a chip was 28px tall from 768 up (the floor was
+  // switched off at md). The marker is at
+  // src/app/groupPlanning/page.js ("DECISION Phase 89.6-20 (planning-chips)").
+  // Every comment in this block is a // line (CF-9).
+  describe('89.6-20 R6-02: Switch poll chips', () => {
+    // Ids with hex letters, so the upper-case form differs from the one the API sends.
+    const PA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const PB = 'bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb';
+    const openUpperB = () => {
+      h.PARAMS = new URLSearchParams(`group_id=${G1}&poll=${PB.toUpperCase()}`);
+      (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [manual(PA, 'Ana'), manual(PB, 'Ben')] });
+      (promptAPI.getPromptById as Mock).mockImplementation(async (id: string) => ({ prompt: manual(id.toLowerCase(), id.toLowerCase() === PB ? 'Ben' : 'Ana') }));
+    };
+
+    it('R6-02a. a link naming poll B in upper case presses the chip naming poll B, not A', async () => {
+      openUpperB();
+      render(<GroupPlanningPage />);
+      await settledOn(PB);
+      const chips = await screen.findByRole('group', { name: 'Switch poll' });
+      expect(within(chips).getByRole('button', { name: "Ben's check-in" })).toHaveAttribute('aria-pressed', 'true');
+      expect(within(chips).getByRole('button', { name: "Ana's check-in" })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('R6-02b. every Switch poll chip keeps the 44px floor at every width: min-h-11 and min-w-11, never md:min-h-0 or md:min-w-0', async () => {
+      (promptAPI.getOpenPrompts as Mock).mockResolvedValue({ prompts: [manual(P1, 'Ana'), manual(P2, 'Ben')] });
+      render(<GroupPlanningPage />);
+      await settledOn(P1);
+      const chips = await screen.findByRole('group', { name: 'Switch poll' });
+      const buttons = within(chips).getAllByRole('button');
+      expect(buttons).toHaveLength(2);
+      for (const chip of buttons) {
+        const classes = chip.className.split(/\s+/);
+        expect(classes).toEqual(expect.arrayContaining(['min-h-11', 'min-w-11']));
+        expect(classes).not.toContain('md:min-h-0');
+        expect(classes).not.toContain('md:min-w-0');
+      }
+    });
+
+    it('R6-02c. pressing the chip of the poll already shown (named in upper case) pushes no history entry; pressing the other pushes one', async () => {
+      const user = userEvent.setup();
+      openUpperB();
+      render(<GroupPlanningPage />);
+      await settledOn(PB);
+      const chips = await screen.findByRole('group', { name: 'Switch poll' });
+      const pushes = window.history.pushState as unknown as Mock;
+      await user.click(within(chips).getByRole('button', { name: "Ben's check-in" }));
+      expect(pushes).toHaveBeenCalledTimes(0);
+      await user.click(within(chips).getByRole('button', { name: "Ana's check-in" }));
+      expect(pushes).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 // quick-261026-pi6-fix (2026-10-26): the review fix batch. Every comment here is a // line (CF-9).
