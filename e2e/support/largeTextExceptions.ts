@@ -31,6 +31,17 @@
 // read reported a split or a held word), so nothing about how cut, split or held clear changes; the
 // cut-only entries (A3-1, A10) clear no spill. Undo: drop spill here and the Home 768 cell reds.
 // Changing this is a decision, not a cleanup.
+//
+// DECISION Phase 89.6 R16 (2026-11-26; the independent narrow check's findings 5-C, 6-A and 6-B):
+// (5-C) a cut-only entry (A3-1, A10) excuses its OWN clamp and nothing else: text under it that a
+// box cuts sideways is still read as cut, chosen OVER skipping every cut kind there (a word wider
+// than the description's card, cut by the clamp's own overflow, was read by no check).
+// (6-B) at the page-zoom widths only an entry marked ownClamp (A3-3: its selector names the clamped
+// titles themselves) can clear a clip, chosen OVER all three surface selectors: the other two name
+// CONTAINERS, and whatever the tutorial overlay's box or the month grid's box itself cut was cleared.
+// (6-A) and only when the clamp is the nearest clipper and no box above it cuts the title further:
+// e2e/support/wordLines.ts ("AMENDED R16 (2026-11-26, narrow-check findings 6-A and 6-B)").
+// Changing this is a decision, not a cleanup.
 import type { Locator } from '@playwright/test';
 
 import { readLargeTextCell, readPageZoomCell, type LargeTextCellRead, type PageZoomRead } from './wordLines';
@@ -44,8 +55,10 @@ export interface LargeTextException {
   source: { file: string; snippet: string; alsoOnce?: readonly string[]; folder?: string };
   /** Matches the excepted element only: an existing attribute or role first, then its class chain. */
   selector: string;
-  /** cut: only the cut check skips the text. surface: split, held and spilling words inside it are cleared too. */
+  /** cut: only the cut check skips the text, and only its own clamp (a sideways cut is still read). surface: split, held and spilling words inside it are cleared too. */
   clears: 'cut' | 'surface';
+  /** The selector names the clamped texts themselves, not a container: at a page-zoom width a text cut by this, its own clamp, alone is cleared. */
+  ownClamp?: true;
 }
 
 export const EXCEPTIONS: readonly LargeTextException[] = [
@@ -76,6 +89,7 @@ export const EXCEPTIONS: readonly LargeTextException[] = [
     },
     selector: '[role="button"] :is(.font-bold.text-base.truncate, .font-bold.text-base.line-clamp-2, p.text-sm.truncate.mt-0\\.5, p.text-base.line-clamp-2.mt-0\\.5)',
     clears: 'surface',
+    ownClamp: true,
   },
   {
     id: 'A3-4',
@@ -100,6 +114,12 @@ export const EXCEPTION_SELECTORS: readonly string[] = EXCEPTIONS.map((entry) => 
 
 /** The selectors of the three surfaces another phase owns. */
 export const SURFACE_EXCEPTION_SELECTORS: readonly string[] = EXCEPTIONS.filter((entry) => entry.clears === 'surface').map((entry) => entry.selector);
+
+/** The selectors of the cut-only entries: each excuses its own clamp, never a sideways cut. */
+export const CUT_ONLY_EXCEPTION_SELECTORS: readonly string[] = EXCEPTIONS.filter((entry) => entry.clears === 'cut').map((entry) => entry.selector);
+
+/** The selectors that name clamped texts (not containers): the only clips a page-zoom read may clear. */
+export const OWN_CLAMP_SELECTORS: readonly string[] = EXCEPTIONS.filter((entry) => entry.ownClamp === true).map((entry) => entry.selector);
 
 export interface ClearedBySurface {
   split: string[];
@@ -127,7 +147,7 @@ function minus(a: readonly string[], b: readonly string[]): string[] {
  * the surfaces accounted for.
  */
 export async function readCellUnderExceptions(root: Locator, options: { dialog?: Locator } = {}): Promise<{ read: LargeTextCellRead; cleared: ClearedBySurface }> {
-  const readOptions = { dialog: options.dialog, exceptions: EXCEPTION_SELECTORS };
+  const readOptions = { dialog: options.dialog, exceptions: EXCEPTION_SELECTORS, cutOnlyExceptions: CUT_ONLY_EXCEPTION_SELECTORS };
   const read = await readLargeTextCell(root, readOptions);
   const none = { read, cleared: { split: [], held: [], spill: [] } };
   const splitOrHeld = read.split.length > 0 || read.held.length > 0;
@@ -159,12 +179,12 @@ export async function readCellUnderExceptions(root: Locator, options: { dialog?:
 
 /**
  * Read one page-zoom cell under the exceptions list: the cut check skips all five texts, and a
- * text clipped by its own surface's clamp (the clipped text and its clipper both match one of the
- * three surface selectors) is cleared, not lost (orchestrator ruling D27, plan 89.6-40: SPEC A3 (3)
- * puts the list-row titles' clamp under Phase 88.9.2; at page zoom that same clamp read as a clip).
- * cleared holds the losses a surface accounted for.
+ * text clipped by its own clamp and nothing further (the clipper is the element an ownClamp
+ * selector matches for that text) is cleared, not lost (orchestrator ruling D27, plan 89.6-40:
+ * SPEC A3 (3) puts the list-row titles' clamp under Phase 88.9.2; at page zoom that same clamp
+ * read as a clip; narrowed by R16). cleared holds the losses a surface accounted for.
  */
 export async function readPageZoomCellUnderExceptions(root: Locator, options: { dialog?: Locator } = {}): Promise<{ read: PageZoomRead; cleared: string[] }> {
-  const read = await readPageZoomCell(root, { dialog: options.dialog, exceptions: EXCEPTION_SELECTORS, surfaceClamps: SURFACE_EXCEPTION_SELECTORS });
+  const read = await readPageZoomCell(root, { dialog: options.dialog, exceptions: EXCEPTION_SELECTORS, cutOnlyExceptions: CUT_ONLY_EXCEPTION_SELECTORS, surfaceClamps: OWN_CLAMP_SELECTORS });
   return { read, cleared: read.ownClamp ?? [] };
 }

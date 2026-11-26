@@ -307,9 +307,15 @@ export interface LargeTextReadOptions {
   /** Selectors of the exceptions list (SPEC A3 / A10): the cut check skips text in or under them. */
   exceptions?: readonly string[];
   /**
-   * Page-zoom read only: the selectors of the surfaces another phase owns (SPEC A3 (2) to (4)). A
-   * text clipped by a box, where the text and that box both match one of them, is that surface's
-   * own clamp: it is listed in cleared, not lost (orchestrator ruling D27, plan 89.6-40).
+   * The selectors, among exceptions, of the cut-only ones (the header site name, the game
+   * description): each excuses its own clamp, and a sideways cut under it is still read (R16).
+   */
+  cutOnlyExceptions?: readonly string[];
+  /**
+   * Page-zoom read only: the selectors that name clamped TEXTS another phase owns (SPEC A3 (3),
+   * the calendar list-row titles), never a container. A text cut by its own clamp, an element
+   * that matches one of them, and by nothing further, is listed in cleared, not lost
+   * (orchestrator ruling D27, plan 89.6-40; narrowed by R16).
    */
   surfaceClamps?: readonly string[];
 }
@@ -346,6 +352,8 @@ interface LargeTextPageArg {
   zoom: boolean;
   /** The surfaces whose own clamp is no loss (LargeTextReadOptions surfaceClamps). */
   surfaceClamps: string[];
+  /** The exceptions that excuse their own clamp only (LargeTextReadOptions cutOnlyExceptions). */
+  cutOnly: string[];
 }
 
 interface LargeTextPageResult extends LargeTextCellRead {
@@ -367,6 +375,9 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
   const dialogSideways = arg.dialogEl ? arg.dialogEl.scrollWidth - arg.dialogEl.clientWidth : null;
 
   const excepted = (el: Element) => arg.exceptions.some((selector) => el.closest(selector) !== null);
+  /** Under a cut-only exception and under no other exception (a surface another phase owns excuses every kind). */
+  const cutOnlyExcepted = (el: Element) =>
+    arg.cutOnly.some((selector) => el.closest(selector) !== null) && !arg.exceptions.some((selector) => !arg.cutOnly.includes(selector) && el.closest(selector) !== null);
   const first30 = (el: Element) => (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 30);
 
   // Text that draws nothing: visibility hidden on its element, or a box of 1px by 1px or less on
@@ -464,7 +475,13 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     // content past a scroller is reachable by scrolling, so a hidden ancestor above the scroller
     // (the house Modal's content box around its scrolling body) never makes scrolled-away text a cut.
     type Axis = 'x' | 'y';
-    const clippedBy = (el: Element, rects: DOMRect[], axis: Axis): Element | null => {
+    interface ClipRect {
+      left: number;
+      top: number;
+      right: number;
+      bottom: number;
+    }
+    const clippedBy = (el: Element, rects: ClipRect[], axis: Axis): Element | null => {
       for (let a: Element | null = el; a && a !== doc; a = a.parentElement) {
         const cs = getComputedStyle(a);
         const overflow = axis === 'x' ? cs.overflowX : cs.overflowY;
@@ -489,14 +506,26 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     // read as 15px, shrunk), and OVER a sixth exception (a read that measures the wrong size would
     // mislead on every SVG text). Every other text is read exactly as before. Changing this is a
     // decision, not a cleanup.
+    // AMENDED R16 (2026-11-26, narrow-check finding 7-A): the scale is the SMALLER of the horizontal
+    // and the vertical screen scale, chosen OVER the vertical one alone, which passed a text
+    // stretched tall and squeezed to a tenth of its width (a viewBox with preserveAspectRatio none).
     const drawnFontSize = (el: Element): number => {
       const size = px(getComputedStyle(el).fontSize);
       if (!(el instanceof SVGGraphicsElement)) return size;
       const m = el.getScreenCTM();
-      return m ? size * Math.hypot(m.c, m.d) : size;
+      return m ? size * Math.min(Math.hypot(m.a, m.b), Math.hypot(m.c, m.d)) : size;
     };
     for (const el of textElements) {
-      if (excepted(el)) continue;
+      if (excepted(el)) {
+        // DECISION Phase 89.6 R16 (narrow-check finding 5-C): a CUT-ONLY exception (the header site
+        // name, the game description) excuses its own clamp and nothing else, so text under it
+        // that a box cuts SIDEWAYS (the hidden kind, x axis) is still a cut, chosen OVER skipping
+        // every cut kind there: a word wider than the description's card was cut by the clamp's own
+        // overflow and read by no check. Text under a surface exception is skipped as before.
+        // Changing this is a decision, not a cleanup.
+        if (cutOnlyExcepted(el) && clippedBy(el, words.filter((w) => w.el === el).flatMap((w) => w.rects), 'x')) addCut('hidden', el);
+        continue;
+      }
       const box = boxOf(el);
       const boxStyle = getComputedStyle(box);
       const wider = box.scrollWidth > box.clientWidth + 1;
@@ -662,7 +691,43 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
      * that is positioned (for an absolute box) or that transforms, filters or contains its layout or paint
      * (for either kind), else the viewport.
      */
-    const containingWidthOf = (el: Element, position: string): number => {
+    // DECISION Phase 89.6 R16 (narrow-check findings 2-A and 2-C), amending D14's containing block:
+    // (2-C) whether a query container (container-type) forms the containing block of an absolute box
+    // is MEASURED in this browser, once per value, with a probe inside the measuring span, chosen
+    // OVER the rule the read carried (every container-type forms one), which Chromium 148 does not
+    // follow: a pop-up past a query container read as filling it, and its word as wide.
+    // (2-A) when the containing block is an INLINE box (a relative span around an icon), the room a
+    // positioned box is offered is the content width of the box around that inline anchor, the line
+    // the anchor sits on, chosen OVER the anchor's own width: an inline box is as narrow as its
+    // content, so a pop-up filling it read as held by nothing (the walk goes from box to box and
+    // never tests an inline element). Changing either is a decision, not a cleanup.
+    const containerTypeForms = new Map<string, boolean>();
+    const containerTypeFormsContainingBlock = (containerType: string): boolean => {
+      const known = containerTypeForms.get(containerType);
+      if (known !== undefined) return known;
+      const styleBefore = ruler.style.cssText;
+      let forms = false;
+      try {
+        // The measuring span is positioned, so it is the containing block of the probe unless the box between them forms one.
+        ruler.textContent = '';
+        ruler.style.width = '200px';
+        const between = document.createElement('div');
+        between.style.cssText = 'width:100px;';
+        between.style.containerType = containerType;
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:absolute;left:0;right:0;height:1px;';
+        between.appendChild(probe);
+        ruler.appendChild(between);
+        forms = probe.getBoundingClientRect().width < 150;
+      } finally {
+        ruler.textContent = '';
+        ruler.style.cssText = styleBefore;
+      }
+      containerTypeForms.set(containerType, forms);
+      return forms;
+    };
+    /** The containing block of a positioned box: the element that forms it (null: the viewport), and whether that element is an inline box. */
+    const containingBlockOf = (el: Element, position: string): { el: Element | null; inline: boolean } => {
       for (let a = el.parentElement; a; a = a.parentElement) {
         const cs = getComputedStyle(a);
         if (cs.display === 'contents') continue;
@@ -670,13 +735,16 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
           (position === 'absolute' && cs.position !== 'static') ||
           [cs.transform, cs.translate, cs.rotate, cs.scale, cs.perspective, cs.filter, cs.backdropFilter].some((value) => value !== '' && value !== 'none') ||
           /\b(layout|paint|strict|content)\b/.test(cs.contain) ||
-          cs.containerType !== 'normal' ||
+          (cs.containerType !== 'normal' && containerTypeFormsContainingBlock(cs.containerType)) ||
           /\b(transform|translate|rotate|scale|perspective|filter)\b/.test(cs.willChange);
-        if (!forms) continue;
-        if (cs.display !== 'inline') return a.clientWidth;
-        return a.getBoundingClientRect().width - px(cs.borderLeftWidth) - px(cs.borderRightWidth);
+        if (forms) return { el: a, inline: cs.display === 'inline' };
       }
-      return document.documentElement.clientWidth;
+      return { el: null, inline: false };
+    };
+    const containingWidthOf = (el: Element, position: string): { width: number; inline: boolean } => {
+      const block = containingBlockOf(el, position);
+      if (!block.el) return { width: document.documentElement.clientWidth, inline: false };
+      return { width: block.inline ? contentWidth(boxOf(block.el)) : block.el.clientWidth, inline: block.inline };
     };
     /** A side margin in px, or 0 when it is automatic (the computed value, not the used one). */
     const sideMargin = (el: Element, property: 'margin-left' | 'margin-right', used: string): number => {
@@ -878,6 +946,40 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       return true;
     };
 
+    // DECISION Phase 89.6 R16 (narrow-check finding 2-B): a word that is whole once its rows stack,
+    // and fails step 4's inside check ONLY because a positioned box on its path lies in the padding
+    // of its containing block (where an absolute box is placed: against the padding box), is HELD
+    // by that positioned box, chosen OVER steps 9 and 10 read with the stack on, where the stretched
+    // anchor holds nothing and the word read wide (a drop-down under a narrow padded button), and
+    // OVER split (the pop-up is the box to change, and held names it). The word must be inside every
+    // other box up to the bound: content boxes as in step 4, and the padding box of the containing
+    // block of each positioned box, from which the walk goes on. Null: no positioned box explains
+    // it, or its containing block lies outside the bound. Changing this is a decision, not a cleanup.
+    const placedByItsPosition = (word: DOMRect, own: Element, boundBox: Element): Element | null => {
+      let placed: Element | null = null;
+      for (let a: Element | null = own; a && boundBox.contains(a); ) {
+        const cs = getComputedStyle(a);
+        const box = a.getBoundingClientRect();
+        const left = box.left + px(cs.borderLeftWidth) + px(cs.paddingLeft);
+        const right = box.right - px(cs.borderRightWidth) - px(cs.paddingRight);
+        if (word.left < left - 0.5 || word.right > right + 0.5) return null;
+        if (a === boundBox) break;
+        if (cs.position !== 'absolute' && cs.position !== 'fixed') {
+          a = parentBoxOf(a);
+          continue;
+        }
+        const block = containingBlockOf(a, cs.position).el;
+        if (!block || !boundBox.contains(block)) return null;
+        const blockStyle = getComputedStyle(block);
+        const blockBox = block.getBoundingClientRect();
+        if (word.left < blockBox.left + px(blockStyle.borderLeftWidth) - 0.5 || word.right > blockBox.right - px(blockStyle.borderRightWidth) + 0.5) return null;
+        placed ??= a;
+        if (block === boundBox) break;
+        a = parentBoxOf(block);
+      }
+      return placed;
+    };
+
     interface Unwrapped {
       /** The declarations that switch forced breaks off took on the word's own element. */
       took: boolean;
@@ -992,11 +1094,13 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
           const positioned = cs.position === 'absolute' || cs.position === 'fixed';
           const parent = parentBoxOf(a);
           if (!positioned && !parent) break;
-          const room = positioned ? containingWidthOf(a, cs.position) : contentWidth(parent as Element);
+          const containing = positioned ? containingWidthOf(a, cs.position) : null;
+          const room = containing ? containing.width : contentWidth(parent as Element);
           const offered = room - sideMargin(a, 'margin-left', cs.marginLeft) - sideMargin(a, 'margin-right', cs.marginRight);
           const used = a.getBoundingClientRect().width;
           if (used < offered - 0.5) {
-            return { verdict: 'held', text: `${quoted} ${w.lines} lines, held narrow by ${nameOf(a)} (${whyOf(a)}): ${round(used)}px of the ${round(offered)}px ${positioned ? 'its containing block' : 'its parent'} offers` };
+            const offeredBy = !containing ? 'its parent' : containing.inline ? 'the line of its inline anchor' : 'its containing block';
+            return { verdict: 'held', text: `${quoted} ${w.lines} lines, held narrow by ${nameOf(a)} (${whyOf(a)}): ${round(used)}px of the ${round(offered)}px ${offeredBy} offers` };
           }
         }
         return { verdict: 'wide', text: `${quoted} ${round(natural)}px: no box between it and ${nameOf(boundBox)} is narrower than its parent offers; the edges between them take the room` };
@@ -1008,9 +1112,16 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
         const range = rangeOf(w);
         const lines = lineCount(drawnRects(range));
         if (lines === 1) {
-          if (rows.length > 0 && insideEveryBox(range.getBoundingClientRect(), own, boundBox)) return { verdict: 'split', text: `${quoted} ${w.lines} lines, whole on one line when ${stacking}` };
+          const at = range.getBoundingClientRect();
+          if (rows.length > 0 && insideEveryBox(at, own, boundBox)) return { verdict: 'split', text: `${quoted} ${w.lines} lines, whole on one line when ${stacking}` };
           // Whole only by spilling out of a box, which is not room.
-          return widerThanItsRoom() ?? heldOrWide();
+          const tooWide = widerThanItsRoom();
+          if (tooWide) return tooWide;
+          const placed = rows.length > 0 ? placedByItsPosition(at, own, boundBox) : null;
+          if (placed) {
+            return { verdict: 'held', text: `${quoted} ${w.lines} lines, held narrow by ${nameOf(placed)} (${whyOf(placed)}): it takes its width from its containing block, and is whole on one line only when ${stacking}` };
+          }
+          return heldOrWide();
         }
         const tooWide = widerThanItsRoom();
         if (tooWide) return tooWide;
@@ -1070,21 +1181,52 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
     // Changing this is a decision, not a cleanup.
     const CONTROL = 'button, a[href], select, input, textarea, label, [role="button"]';
     const transparent = (colour: string) => colour === 'transparent' || /,\s*0\)$/.test(colour) || /\/\s*0\)$/.test(colour);
-    const spillBoxOf = (el: Element): Element | null => {
-      for (let a: Element | null = el; a && a !== doc; a = a.parentElement) {
+    // AMENDED R16 (2026-11-26, narrow-check findings 5-A and 5-B): the stop is REPLACED by what it
+    // was reaching for, the part of the word a person can SEE. The search climbs to the filled box
+    // as it did before R13, and on the way the word's rects are cut to the padding box of every
+    // element that really clips or scrolls them (an overflow on an inline box or on a table row
+    // clips nothing and is skipped; the filled box's own overflow counts too). A word with no
+    // visible part past the filled box's edge is no spill (the availability grid's scrolled-away
+    // day headers, R13's case, as before); one that visibly paints past it is. Chosen OVER the stop,
+    // which was silent for a label painting out of its button past a truncate class on an inline
+    // span, and for a clip or scroll box that itself sticks out of the filled box around it.
+    const CLIPS_NOTHING = /^(inline|contents|table-row|table-row-group|table-header-group|table-footer-group|table-column|table-column-group)$/;
+    interface SeenPart {
+      left: number;
+      top: number;
+      right: number;
+      bottom: number;
+    }
+    /** The filled box of a word, and the parts of the word that are drawn inside every clip or scroll box up to and including it. */
+    const spillOf = (w: Word): { box: Element; seen: SeenPart[] } | null => {
+      let seen: SeenPart[] = w.rects.map((r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom }));
+      for (let a: Element | null = w.el; a && a !== doc; a = a.parentElement) {
         const cs = getComputedStyle(a);
-        if (cs.overflowX !== 'visible') return null;
-        if (!transparent(cs.backgroundColor) || px(cs.borderLeftWidth) > 0 || px(cs.borderRightWidth) > 0 || a.matches(CONTROL)) return a;
+        if (!CLIPS_NOTHING.test(cs.display) && (cs.overflowX !== 'visible' || cs.overflowY !== 'visible')) {
+          const box = a.getBoundingClientRect();
+          const clipX = cs.overflowX !== 'visible';
+          const clipY = cs.overflowY !== 'visible';
+          seen = seen
+            .map((part) => ({
+              left: clipX ? Math.max(part.left, box.left + px(cs.borderLeftWidth)) : part.left,
+              right: clipX ? Math.min(part.right, box.right - px(cs.borderRightWidth)) : part.right,
+              top: clipY ? Math.max(part.top, box.top + px(cs.borderTopWidth)) : part.top,
+              bottom: clipY ? Math.min(part.bottom, box.bottom - px(cs.borderBottomWidth)) : part.bottom,
+            }))
+            .filter((part) => part.right - part.left > 0 && part.bottom - part.top > 0);
+          if (seen.length === 0) return null;
+        }
+        if (!transparent(cs.backgroundColor) || px(cs.borderLeftWidth) > 0 || px(cs.borderRightWidth) > 0 || a.matches(CONTROL)) return { box: a, seen };
       }
       return null;
     };
     const spill: string[] = [];
     for (const w of words) {
-      const box = spillBoxOf(w.el);
-      if (!box) continue;
-      const edge = box.getBoundingClientRect();
-      const past = Math.max(...w.rects.map((r) => Math.max(edge.left - r.left, r.right - edge.right)));
-      if (past > 1) spill.push(`"${w.text}" spills ${round(past)}px out of its ${box.tagName.toLowerCase()}`);
+      const found = spillOf(w);
+      if (!found) continue;
+      const edge = found.box.getBoundingClientRect();
+      const past = Math.max(...found.seen.map((part) => Math.max(edge.left - part.left, part.right - edge.right)));
+      if (past > 1) spill.push(`"${w.text}" spills ${round(past)}px out of its ${found.box.tagName.toLowerCase()}`);
     }
 
     // ---- select-fit ------------------------------------------------------------------------------
@@ -1129,31 +1271,51 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       // check already skips it), chosen OVER clearing every clip under a surface (a title cut by a
       // parent box, or by anything but its own clamp, is still lost) and OVER a sixth exception.
       // Listed in ownClamp, never dropped. Changing this is a decision, not a cleanup.
-      const whyUnreachable = (rects: DOMRect[], climbFrom: Element | null): { why: string; clipper: Element | null } | null => {
-        if (Math.min(...rects.map((r) => r.left)) + window.scrollX < -0.5) return { why: 'starts left of the page', clipper: null };
-        if (Math.min(...rects.map((r) => r.top)) + window.scrollY < -0.5) return { why: 'starts above the page', clipper: null };
+      // AMENDED R16 (2026-11-26, narrow-check findings 6-A and 6-B): cleared only when it is the
+      // element's OWN clamp and nothing cuts it further. (6-B) surfaceClamps now names clamped TEXTS
+      // only (the list-row titles), never a container: whatever the tutorial overlay's box or the
+      // month grid's box itself cuts is lost, chosen OVER every surface selector, under which a
+      // container that clipped cleared all it cut. (6-A) the clamp must be the NEAREST clipper, and
+      // what the clamp leaves on screen (the rects cut to its padding box) must be cut by no box
+      // above it, chosen OVER the nearest clipper alone: a title in a 10px-high parent, or a
+      // truncate title in a 40px-wide one, was cleared whole. Then the loss is the parent's.
+      const whyUnreachable = (rects: ClipRect[], climbFrom: Element | null, el: Element): { why: string; ownClamp: boolean } | null => {
+        if (Math.min(...rects.map((r) => r.left)) + window.scrollX < -0.5) return { why: 'starts left of the page', ownClamp: false };
+        if (Math.min(...rects.map((r) => r.top)) + window.scrollY < -0.5) return { why: 'starts above the page', ownClamp: false };
         const clipper = climbFrom ? (clippedBy(climbFrom, rects, 'x') ?? clippedBy(climbFrom, rects, 'y')) : null;
-        return clipper ? { why: `is clipped by its ${clipper.tagName.toLowerCase()}`, clipper } : null;
+        if (!clipper) return null;
+        const clippedByIts = (by: Element) => `is clipped by its ${by.tagName.toLowerCase()}`;
+        const own = arg.surfaceClamps.some((selector) => clipper.matches(selector) && el.closest(selector) === clipper);
+        if (!own) return { why: clippedByIts(clipper), ownClamp: false };
+        const cs = getComputedStyle(clipper);
+        const box = clipper.getBoundingClientRect();
+        const left = box.left + px(cs.borderLeftWidth);
+        const right = box.right - px(cs.borderRightWidth);
+        const top = box.top + px(cs.borderTopWidth);
+        const bottom = box.bottom - px(cs.borderBottomWidth);
+        const shown = rects
+          .map((r) => ({ left: Math.max(r.left, left), right: Math.min(r.right, right), top: Math.max(r.top, top), bottom: Math.min(r.bottom, bottom) }))
+          .filter((r) => r.right - r.left > 0 && r.bottom - r.top > 0);
+        const further = clipper.parentElement && shown.length > 0 ? (clippedBy(clipper.parentElement, shown, 'x') ?? clippedBy(clipper.parentElement, shown, 'y')) : null;
+        return further ? { why: clippedByIts(further), ownClamp: false } : { why: clippedByIts(clipper), ownClamp: true };
       };
-      const isOwnClamp = (el: Element, clipper: Element | null): boolean =>
-        clipper !== null && arg.surfaceClamps.some((selector) => clipper.matches(selector) && el.closest(selector) !== null);
       const REACHED = 'button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])';
       const controls = Array.from(rootEl.querySelectorAll(REACHED)).filter((c) => {
         const r = c.getBoundingClientRect();
         return !drawsNothing(c) && r.width > 0 && r.height > 0;
       });
       for (const control of controls) {
-        const hit = whyUnreachable([control.getBoundingClientRect()], control.parentElement);
+        const hit = whyUnreachable([control.getBoundingClientRect()], control.parentElement, control);
         if (!hit) continue;
         unreachable.add(control);
-        (isOwnClamp(control, hit.clipper) ? ownClamp : lost).push(`unreachable: ${named(control)} ${hit.why}`);
+        (hit.ownClamp ? ownClamp : lost).push(`unreachable: ${named(control)} ${hit.why}`);
       }
       for (const el of textElements) {
         if (Array.from(unreachable).some((u) => u.contains(el))) continue;
-        const hit = whyUnreachable(words.filter((w) => w.el === el).flatMap((w) => w.rects), el);
+        const hit = whyUnreachable(words.filter((w) => w.el === el).flatMap((w) => w.rects), el, el);
         if (!hit) continue;
         unreachable.add(el);
-        (isOwnClamp(el, hit.clipper) ? ownClamp : lost).push(`unreachable: ${named(el)} ${hit.why}`);
+        (hit.ownClamp ? ownClamp : lost).push(`unreachable: ${named(el)} ${hit.why}`);
       }
 
       // (b) cut with no way to reach it: the ellipsis, clamp and nowrap kinds above (the exceptions
@@ -1256,7 +1418,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
  */
 export async function readLargeTextCell(root: Locator, options: LargeTextReadOptions = {}): Promise<LargeTextCellRead> {
   const dialogEl = options.dialog ? await options.dialog.elementHandle() : null;
-  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: false, surfaceClamps: [] });
+  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: false, surfaceClamps: [], cutOnly: [...(options.cutOnlyExceptions ?? [])] });
   return {
     rootFontSize: read.rootFontSize,
     window: read.window,
@@ -1334,7 +1496,7 @@ export interface PageZoomRead {
 /** Read one page-zoom cell under `root`: what is lost, and what is only recorded. */
 export async function readPageZoomCell(root: Locator, options: LargeTextReadOptions = {}): Promise<PageZoomRead> {
   const dialogEl = options.dialog ? await options.dialog.elementHandle() : null;
-  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: true, surfaceClamps: [...(options.surfaceClamps ?? [])] });
+  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: true, surfaceClamps: [...(options.surfaceClamps ?? [])], cutOnly: [...(options.cutOnlyExceptions ?? [])] });
   const recorded = [...(read.pageSideways > 0 ? [`the page scrolls sideways by ${read.pageSideways}px`] : []), ...read.split.map((s) => `split: ${s}`), ...read.held.map((s) => `held: ${s}`), ...read.spill.map((s) => `spill: ${s}`)];
   return { lost: read.lost, recorded, ...(read.ownClamp.length > 0 ? { ownClamp: read.ownClamp } : {}) };
 }
