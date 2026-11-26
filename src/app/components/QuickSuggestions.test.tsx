@@ -1015,9 +1015,11 @@ describe('R4 D1 (88.9-52) — a quick-suggestion chip shows the whole game name'
     const tokens = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
     // The whole name is in the page, uncut: no truncate, no max width, no clamp of any kind.
     expect(name.textContent).toBe(LONG);
-    expect(tokens(name).filter((t) => t === 'truncate' || t.startsWith('max-w-') || t.startsWith('line-clamp') || t === 'overflow-hidden' || t === 'text-ellipsis')).toEqual([]);
-    // AMENDED 89.6-18 (chips): the two dialog-named variants apply below the 12rem switch only.
-    expect(tokens(name)).toEqual(['text-sm', 'text-content-primary', 'min-w-0', 'wrap-break-word', '@max-[12rem]/dialog:min-w-auto', '@max-[12rem]/dialog:max-w-full']);
+    // AMENDED 89.6-18 (chips): max-w-full is allowed, the chip's own width (the name wraps inside it), never a fixed cap.
+    expect(tokens(name).filter((t) => t === 'truncate' || (t.startsWith('max-w-') && t !== 'max-w-full') || t.startsWith('line-clamp') || t === 'overflow-hidden' || t === 'text-ellipsis')).toEqual([]);
+    // AMENDED 89.6-18 (chips): the name's floor is its longest word (min-w-0 gone), capped at the
+    // chip by max-w-full; still no cut of any kind (no truncate, no clamp, no overflow clip).
+    expect(tokens(name)).toEqual(['text-sm', 'text-content-primary', 'flex-1', 'max-w-full', 'wrap-break-word']);
     // The chip: its 44px floor, never shrunk by the row, never wider than the row.
     const chip = name.closest('button') as HTMLElement;
     expect(tokens(chip)).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'min-h-11', 'shrink-0', 'max-w-full']));
@@ -1034,7 +1036,7 @@ describe('R4 D1 (88.9-52) — a quick-suggestion chip shows the whole game name'
     for (const game of GAMES) {
       const other = screen.getByText(game.name);
       expect(tokens(other)).not.toContain('truncate');
-      expect(tokens(other).some((t) => t.startsWith('max-w-'))).toBe(false);
+      expect(tokens(other).some((t) => t.startsWith('max-w-') && t !== 'max-w-full')).toBe(false);
     }
   });
 });
@@ -1058,11 +1060,14 @@ describe('R5-03 (89.6-18) — the chips wrap whole below the dialog switch', () 
     const picture = chip.firstElementChild as HTMLElement;
     expect(tokens(slot)).toContain('@max-[12rem]/dialog:flex-wrap');
     expect(tokens(strip)).toEqual(expect.arrayContaining(['@max-[12rem]/dialog:flex-wrap', '@max-[12rem]/dialog:basis-full', '@max-[12rem]/dialog:overflow-visible']));
-    expect(tokens(chip)).toContain('@max-[12rem]/dialog:flex-wrap');
+    // The chip wraps its parts at every size (CI run 45778715095: 768 / 200%, above the switch).
+    expect(tokens(chip)).toContain('flex-wrap');
     expect(picture).toHaveAttribute('aria-hidden', 'true');
     expect(tokens(picture)).toContain('@max-[12rem]/dialog:hidden');
     expect(picture.querySelector('img')).toHaveAttribute('loading', 'lazy');
-    expect(tokens(name)).toEqual(expect.arrayContaining(['@max-[12rem]/dialog:min-w-auto', '@max-[12rem]/dialog:max-w-full']));
+    // The name's floor is its longest word (no min-w-0), capped at the chip, grown from a zero basis.
+    expect(tokens(name)).toEqual(expect.arrayContaining(['flex-1', 'max-w-full']));
+    expect(tokens(name)).not.toContain('min-w-0');
     // Normal text unchanged: the strip still scrolls inside itself, and Browse more keeps its classes.
     expect(tokens(strip)).toEqual(expect.arrayContaining(['overflow-x-auto', 'flex-nowrap', 'flex-1', 'min-w-0']));
     const browseMore = screen.getByRole('button', { name: 'Browse more' });

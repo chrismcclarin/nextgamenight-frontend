@@ -155,11 +155,16 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
        switch) the chips wrap as whole items, each showing its whole name wrapped by whole words, and
        the browse link takes a line of its own; CHOSEN OVER the sideways strip showing one chip at a time
        (register R5-03: 34px chips in a 14px box at 320 / 200%). The chip picture is dropped there
-       (the S2 rule, HR-5: the name is its text twin). The name's longest word is its floor (HR-2),
-       capped at the chip, so the player-count tag moves under the name instead of the name
-       splitting, and a word wider than the chip alone breaks inside it instead of spilling out. At
-       ordinary sizes the strip is kept as the D1 ruling built it, scrolling inside itself (an
-       unpicked look change otherwise): every variant here is dialog-named. The slot now grows when
+       (the S2 rule, HR-5: the name is its text twin). At EVERY size the name's longest word is its
+       floor (HR-2), capped at the chip, and the chip wraps its parts, so the picture and the
+       player-count tag move off the name's line instead of the name splitting, and a word wider
+       than the chip alone breaks inside it instead of spilling out. That half is not dialog-named:
+       CI run 45778715095 read the 30-letter name split at 768 wide with 200% text, where the dialog
+       is above the switch and the chip sits capped in the scrolling strip; the same sum splits it
+       at 375 with ordinary text. It moves only a chip whose one word is wider than the room beside
+       its picture (an ordinary name still shrinks by words beside it, as before). The strip itself
+       is kept as the D1 ruling built it at ordinary sizes, scrolling inside itself: its wrap, its
+       full row and the picture drop are dialog-named. The slot now grows when
        chips arrive at large text (DECISION Phase 88.6-39 (D-18) is amended for it). Changing this is
        a decision, not a cleanup. */
     <div ref={slotRef} data-testid="quick-suggestions-slot" className="flex items-stretch gap-2 min-h-11 pb-1 @max-[12rem]/dialog:flex-wrap">
@@ -177,7 +182,7 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
                    primary CTAs". `min-h-11` with `inline-flex items-center`; the content is
                    unchanged and just gains leading. This token is ALSO the slot's own floor
                    above, so raising it re-derives the slot and breaks no height constant. */
-                className="inline-flex items-center gap-1.5 min-h-11 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-hover transition-colors cursor-pointer shrink-0 max-w-full @max-[12rem]/dialog:flex-wrap"
+                className="inline-flex flex-wrap items-center gap-1.5 min-h-11 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-hover transition-colors cursor-pointer shrink-0 max-w-full"
                 title={game.name}
               >
                 {/* DECISION Phase 88.6-39 (T-88.6-111): the BGG thumbnail moves to `SafeImage` —
@@ -235,10 +240,18 @@ function QuickSuggestionsSlot({ desired, retrying, onSelectGame, onBrowseMore, o
                     chip is shown. That is the one way this slot can now change height: a name wider
                     than the whole row, about 30 letters on a phone. The title attribute stays (it
                     was the only way to read a cut name; it is harmless now).
-                    AMENDED Phase 89.6-18 (chips): below the 12rem dialog switch the chips wrap as
-                    whole items and the name keeps its longest word, capped at the chip (DECISION
-                    Phase 89.6-18 (chips), at the slot); at ordinary sizes this marker holds as written. */}
-                <span className="text-sm text-content-primary min-w-0 wrap-break-word @max-[12rem]/dialog:min-w-auto @max-[12rem]/dialog:max-w-full">
+                    AMENDED Phase 89.6-18 (chips): the name no longer shrinks below its longest
+                    word. min-w-0 is gone, so its floor is that word, capped at the chip by
+                    max-w-full; it grows into the chip's free room from a zero basis (flex-1), so
+                    the chip still lays it out beside the picture exactly as before while that
+                    word fits there; and the chip wraps its parts, so a word too long to sit beside
+                    the picture takes a line of the chip's own instead of being broken up beside it
+                    (the owner's worry above, We/eke/nd W/arr/iors). Only a word wider than the
+                    whole chip still breaks, inside it. Measured on a replica with the app's
+                    stylesheet: at 320 and 375 with ordinary text every chip but the 30-letter
+                    name's keeps its box. Below the 12rem dialog switch the chips also wrap as whole
+                    items (the 89.6-18 chips marker, at the slot). */}
+                <span className="text-sm text-content-primary flex-1 max-w-full wrap-break-word">
                   {game.name}
                 </span>
                 {(game.min_players || game.max_players) && (
