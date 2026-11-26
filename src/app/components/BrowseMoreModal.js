@@ -6,6 +6,7 @@ import { suggestionsAPI } from '../../lib/api';
 import GameSuggestionCard from './GameSuggestionCard';
 import { Modal } from './Modal';
 import { Button } from '../../components/ui/Button';
+import { iconTextSize } from '../../components/ui/Icon';
 import { SegmentedToggle } from '../../components/ui/SegmentedToggle';
 import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { StatusRegion } from '../../components/ui/StatusRegion';
@@ -291,6 +292,8 @@ export default function BrowseMoreModal({
   // size="lg" maps to the legacy max-w-4xl width. Modal.Body owns the scroll
   // (p-0 so the toolbar can pin flush); the filter/sort toolbar is sticky top-0
   // over the scrollable grid. Focus-trap / Esc / aria-modal come from <Modal>.
+  // AMENDED Phase 89.6-18 (toolbar): sticky only above the 12rem dialog switch; below it the
+  // shell scrolls as one (O-8 C, plan 89.6-11) and the toolbar scrolls away with it.
   return (
     <Modal open={open} onClose={onClose} size="lg">
       <Modal.Header>Browse games</Modal.Header>
@@ -300,11 +303,26 @@ export default function BrowseMoreModal({
             token (owner pick O-M3 = A+, the sort bar takes the thin edge; register X-03), chosen OVER
             rem side padding that doubles at 200% text in a phone dialog. Its wrap and its static
             position are plan 89.6-18's. Changing this is a decision, not a cleanup. */}
+        {/* DECISION Phase 89.6-18 (toolbar): the toolbar holds GR (owner 2026-11-22: a row stays a row
+            while everything in it fits whole; when it does not, items stack; scrolling down is fine,
+            scrolling sideways is not) and the owner pick O-M3 = A+ (planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/89.6-PICKS-READ.md, heading O-M3):
+            CHOSEN: its groups (the player count, Complexity, the sort group) wrap as whole items on the
+            shared cluster block; the minus, the box and the plus are one keep-together unit; the sort
+            drop-down keeps its natural width and its group drops to its own row only when it does not
+            fit; and below the 12rem dialog switch the toolbar is static, not pinned, because a pinned
+            bar taller than the sheet hid every game card (587px tall at 320 / 200%, research D F-D4;
+            WCAG 1.4.10 reflow). One exception, also GR: at the page-zoom widths (A8, 215 and 187
+            wide) the keep-together unit is wider than the whole toolbar (160px against 159 and 131),
+            so below the switch it may wrap, which it does only when it cannot fit; at 320 / 200% it
+            fits (232 of 264px) and stays on one line.
+            REJECTED: a sideways scroll strip (the toolbar scrolled 273px sideways at 320 / 200%),
+            shrinking the count box to make room (GR: nothing is squeezed), and a sticky bar at large
+            text. Changing this is a decision, not a cleanup. */}
         <div
           data-testid="browse-more-controls"
-          className="sticky top-0 z-10 bg-card px-edge-page pt-3 pb-3 border-b border-line"
+          className="sticky top-0 z-10 bg-card px-edge-page pt-3 pb-3 border-b border-line @max-[12rem]/dialog:static"
         >
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="bb-cluster items-center gap-3">
             {/* Player-count stepper.
 
                 DECISION Phase 88-17 (D-36, UI-SPEC §3.2 exception 2): these TWO
@@ -418,8 +436,21 @@ export default function BrowseMoreModal({
                 already overran there (about 352px). REJECTED: shrinking the number box to
                 make room (at 320 / 200% it would be left 24px wide).
                 Going back under 44, or re-adding an opt-out class, is a decision, not a
-                cleanup. */}
-            <div className="flex flex-wrap items-center gap-1" title="Player count">
+                cleanup.
+                AMENDED Phase 89.6-18 (O-M4): owner pick O-M4 = Fixed+ (2026-11-22, "The box stays
+                44px, and the icon inside grows with the text up to 32px"). The sentence "Every
+                length is rem, so the square holds at enlarged text" above is SUPERSEDED: rem
+                squares were 88px at 200%, which made the minus, box and plus 320px against the
+                264px toolbar, so the three could not stay together. Both steppers now take the
+                house held icon box (a padding-0 44px minimum, unlayered after .btn, from plan
+                89.6-06) and each glyph sits in a span sized by the one formula, iconTextSize, at
+                the 14px it rendered at before (the .btn font size), so normal text is
+                pixel-identical and at 200% the glyph is 28px in a 44 by 44 box. The three share a
+                keep-together unit: 44 + 8 + 128 + 8 + 44 = 232px of 264 at 320 / 200%. Still true
+                from above: raw .btn, the offset ring (B7a), the aria-disabled limit at 1.
+                Going back to a rem square is a decision, not a cleanup. */}
+            <div className="bb-cluster items-center gap-1" title="Player count">
+              <span className="bb-keep @max-[12rem]/dialog:flex-wrap">
               <button
                 type="button"
                 onClick={() => {
@@ -427,10 +458,10 @@ export default function BrowseMoreModal({
                   setPlayerCount((p) => Math.max(1, (p || 1) - 1));
                 }}
                 aria-disabled={decrementDisabled || undefined}
-                className="btn btn-secondary w-11 h-11 flex items-center justify-center focus:outline-hidden focus-visible:focus-ring"
+                className="btn btn-secondary btn-icon-square flex items-center justify-center focus:outline-hidden focus-visible:focus-ring"
                 aria-label="Decrease player count"
               >
-                −
+                <span style={{ fontSize: iconTextSize(14) }}>−</span>
               </button>
               <input
                 id="bm-player-count"
@@ -462,8 +493,16 @@ export default function BrowseMoreModal({
                    steppers beside this box are 44x44 now, so the "square button beside a tall
                    box" objection no longer describes this row; the box itself is unchanged
                    (about 34px tall, centred between them) because its height is a look nobody
-                   has ruled on. Reported to the owner by R4-C as an open call. */
-                className="w-16 text-center p-1 border border-line rounded-btn text-content-primary bg-surface-input text-base"
+                   has ruled on. Reported to the owner by R4-C as an open call.
+                   AMENDED Phase 89.6-18 (S1): the owner ruled it, "Fix" (first look, 2026-11-22):
+                   the box is 44px tall (it was 34px between two 44px steppers), and its edge, and
+                   the sort drop-down's edge beside it, is the house input edge (warm-500 4.11:1 in
+                   light, purple-400 4.93:1 on the dark card) because the card hairline it wore
+                   reads 2.31 / 1.78 against the 3.0 control-edge floor (SPEC P4: floors are never
+                   accepted). CHOSEN OVER removing its dark edge to match the steppers: the field's
+                   boundary would then read 1.23 against the card. Changing this is a decision, not
+                   a cleanup. */
+                className="w-16 min-h-11 text-center p-1 border border-input rounded-btn text-content-primary bg-surface-input text-base"
                 aria-label="Player count"
               />
               <button
@@ -475,16 +514,17 @@ export default function BrowseMoreModal({
                    the defect.
                    AMENDED Phase 88.9-52 (R4 C2): 44x44 like its twin, and no opt-out class
                    (the decrement's marker has what was chosen and what was rejected). */
-                className="btn btn-secondary w-11 h-11 flex items-center justify-center focus:outline-hidden focus-visible:focus-ring"
+                className="btn btn-secondary btn-icon-square flex items-center justify-center focus:outline-hidden focus-visible:focus-ring"
                 aria-label="Increase player count"
               >
-                +
+                <span style={{ fontSize: iconTextSize(14) }}>+</span>
               </button>
+              </span>
               <span className="text-xs text-content-muted ml-1">players</span>
             </div>
 
             {/* Complexity tier multi-select */}
-            <div className="flex gap-1" role="group" aria-label="Complexity">
+            <div className="bb-cluster gap-1" role="group" aria-label="Complexity">
               {[
                 { key: 'light', label: 'Light', range: '1–2' },
                 { key: 'medium', label: 'Medium', range: '2–3.5' },
@@ -517,7 +557,7 @@ export default function BrowseMoreModal({
             </div>
 
             {/* Sort dropdown + direction toggle (right-aligned via ml-auto) */}
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="bb-cluster items-center gap-2 ml-auto">
               <label
                 htmlFor="bm-sort"
                 /* Plan 88.6-32 (V-6 / §4.5): `font-medium` (500) DROPPED — 500 and 600 are
@@ -537,7 +577,7 @@ export default function BrowseMoreModal({
                 onChange={handleSortKeyChange}
                 /* `text-base` in place, not the primitive — same reason as the player-count
                    box above: this select's row-mates are `px-2 py-1` toggles. See that marker. */
-                className="p-2 border border-line rounded-btn text-content-primary bg-surface-input text-base"
+                className="p-2 border border-input rounded-btn text-content-primary bg-surface-input text-base"
               >
                 <option value="rating">Best fit</option>
                 <option value="complexity">Complexity</option>

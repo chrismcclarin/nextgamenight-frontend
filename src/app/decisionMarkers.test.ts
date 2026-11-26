@@ -152,8 +152,11 @@ describe('D-36 — the eight rejected-floor markers are amended, never deleted',
     for (const cls of stepperClasses) {
       const tokens = cls.split(/\s+/);
       expect(tokens).not.toContain('btn-compact');
-      expect(tokens).toContain('w-11');
-      expect(tokens).toContain('h-11');
+      // AMENDED Phase 89.6-18 (O-M4 Fixed+, owner pick 2026-11-22): the 44x44 square is the house
+      // held icon box, which keeps 44 by 44 px at every text size, in place of the rem width and
+      // height pair that doubled to 88px at 200% text. Still no sub-44 opt-out.
+      expect(tokens).toContain('btn-icon-square');
+      expect(tokens).not.toContain('w-11');
     }
   });
 

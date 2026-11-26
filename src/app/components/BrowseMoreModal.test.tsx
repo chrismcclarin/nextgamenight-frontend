@@ -112,6 +112,9 @@ describe('BrowseMoreModal (migrated onto <Modal size="lg">)', () => {
   // is superseded. Both steppers are 44x44 squares (w-11 h-11) and no longer wear the
   // btn-compact opt-out, which is retired; they are still raw .btn (not a Button) and the ring
   // half above is unchanged. 32x32 was REJECTED (two small targets 4px apart).
+  // AMENDED Phase 89.6-18 (O-M4 Fixed+): the 44x44 square is now the house held icon box (a
+  // padding-0 44px minimum that does not double at 200% text), not a rem width and height pair;
+  // the minus, the box and the plus share a keep-together unit inside the wrapping group.
   it('R4 C2: both player-count steppers are raw .btn 44x44 squares with no btn-compact opt-out, and keep the house OFFSET focus ring on the card halo (88.9 B7a)', async () => {
     render(<BrowseMoreModal {...baseProps} />);
     await screen.findByRole('dialog');
@@ -123,17 +126,38 @@ describe('BrowseMoreModal (migrated onto <Modal size="lg">)', () => {
       expectFocusRing(stepper, String(name));
       expectRingGround(stepper, 'card', String(name));
       expect(stepper.className).not.toMatch(/ring-inset/);
-      // The house 44x44 floor, as a square at every width (a utility pair no unlayered .btn
-      // declaration contests: .btn sets no width and no height).
-      expect(stepper).toHaveClass('w-11');
-      expect(stepper).toHaveClass('h-11');
+      // The house 44x44 floor, as a held square at every width and every text size.
+      expect(stepper).toHaveClass('btn-icon-square');
       expect(stepper).not.toHaveClass('w-8');
       expect(stepper).not.toHaveClass('h-8');
     }
-    // At 320 / 200% the three controls cannot share one line (88 + 128 + 88 plus gaps is over
-    // the 208px the toolbar has), so the group wraps instead of running off the dialog.
-    const group = screen.getByRole('button', { name: /decrease player count/i }).parentElement as HTMLElement;
-    expect(group).toHaveClass('flex-wrap');
+    // The minus, the box and the plus are one keep-together unit (44 + 8 + 128 + 8 + 44 = 232 of
+    // the 264px toolbar at 320 / 200%), and the group around it wraps as whole items.
+    const unit = screen.getByRole('button', { name: /decrease player count/i }).parentElement as HTMLElement;
+    expect(unit).toHaveClass('bb-keep');
+    expect(unit.parentElement).toHaveClass('bb-cluster');
+  });
+
+  // 89.6-18 (owner S1 "Fix", first look 2026-11-22; O-M4 Fixed+, owner pick 2026-11-22): the count
+  // box meets the 44px floor on the house input edge (the card hairline reads 2.31 / 1.78 against
+  // a 3.0 control-edge floor), the sort select beside it takes the same edge, and the steppers hold
+  // a 44 by 44 box whose glyph follows the text up to 32px (the held icon box, no rem square).
+  it('S1 and O-M4 (89.6-18): the count box carries the input edge and the 44px floor, the steppers the held icon box', async () => {
+    render(<BrowseMoreModal {...baseProps} />);
+    await screen.findByRole('dialog');
+    const box = screen.getByRole('spinbutton', { name: 'Player count' });
+    expect(box).toHaveClass('min-h-11');
+    expect(box).toHaveClass('border-input');
+    expect(box).not.toHaveClass('border-line');
+    const sort = document.getElementById('bm-sort') as HTMLElement;
+    expect(sort).toHaveClass('border-input');
+    expect(sort).not.toHaveClass('border-line');
+    for (const name of [/decrease player count/i, /increase player count/i]) {
+      const stepper = screen.getByRole('button', { name });
+      expect(stepper).toHaveClass('btn-icon-square');
+      expect(stepper).not.toHaveClass('w-11');
+      expect(stepper).not.toHaveClass('h-11');
+    }
   });
 
   // Plan 88.9-44 (owner pick O12a, 88.9-PICKS-B8B.json, 2026-11-07): the sort direction is the
@@ -600,7 +624,8 @@ async function refreshWith(
 
 describe('BrowseMoreModal decrement at 1 and the capture latch (88.6.1-32, AC-13, W006)', () => {
   // AMENDED 88.9-52 R4 C2 (owner 2026-11-18): the square it keeps is 44x44 (w-11 h-11) with no
-  // opt-out class; the title is unchanged.
+  // opt-out class; the title is unchanged. AMENDED 89.6-18 (O-M4 Fixed+): the 44x44 square is the
+  // house held icon box.
   it('H: at 1 the decrement is aria-disabled, not natively disabled, and keeps its compact square', async () => {
     const user = userEvent.setup();
     await renderSettledWith({ defaultPlayerCount: 2 });
@@ -612,8 +637,7 @@ describe('BrowseMoreModal decrement at 1 and the capture latch (88.6.1-32, AC-13
     expect(dec.className).not.toMatch(/(^|\s)disabled:/);
     expect(dec).not.toHaveClass('btn-compact');
     expectFocusRing(dec, 'the disabled decrement');
-    expect(dec).toHaveClass('w-11');
-    expect(dec).toHaveClass('h-11');
+    expect(dec).toHaveClass('btn-icon-square');
   });
 
   it('I: a press at 1 writes nothing and sends no request', async () => {

@@ -241,9 +241,12 @@ const BTN_EXEMPT: ExemptionRoster = {
   // is retired, so the SIZE half of the reason below is superseded (32x32 REJECTED: two small
   // targets 4px apart). The count stays 2 and the entry stays permanent, on the half that still
   // holds: becoming a `<Button>` would add the elevation pair, a look nobody has ruled on.
+  // AMENDED Phase 89.6-18 (O-M4 Fixed+, owner pick 2026-11-22): both read
+  // `btn btn-secondary btn-icon-square ...` now: held 44 x 44 px boxes whose glyph follows the
+  // text up to 32px, so they no longer double to 88px at 200% text. Count and reason unchanged.
   'app/components/BrowseMoreModal.js': {
     sites: 2,
-    why: 'PERMANENT, not a debt: the two player-count steppers stay raw `.btn` squares. Since 88.9-52 R4 C2 (owner 2026-11-18) they are 44x44 (`w-11 h-11`), no longer the 32x32 pair D-10 exempted, and wear no opt-out class. A `compact` rung on Button was REJECTED because it would convert a closed two-site exemption into an open sub-44 API affordance, and a plain `<Button>` would silently add `shadow-theme-sm hover:shadow-theme-md` to two small squares (D-10). The other five sites migrated under plan 88.6-32 (wave 7, 2026-09-16)',
+    why: 'PERMANENT, not a debt: the two player-count steppers stay raw `.btn` squares. Since 88.9-52 R4 C2 (owner 2026-11-18) they are 44x44, and since 89.6-18 (O-M4 Fixed+) held 44 x 44 px boxes (`btn-icon-square`) at every text size, no longer the 32x32 pair D-10 exempted, and wear no opt-out class. A `compact` rung on Button was REJECTED because it would convert a closed two-site exemption into an open sub-44 API affordance, and a plain `<Button>` would silently add `shadow-theme-sm hover:shadow-theme-md` to two small squares (D-10). The other five sites migrated under plan 88.6-32 (wave 7, 2026-09-16)',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-10' },
   },
   // `app/gameDetail/page.js` CLOSED by plan 88.6-18 task 2 (wave 7, 2026-09-16): all SEVEN

@@ -427,7 +427,9 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
     // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
     // the large-text method and owns this read. When the screen is fixed this test reports an
     // unexpected pass: remove the test.fail line then. Removing it earlier is a decision, not a cleanup.
-    test.fail(true, 'Known failure at 320 wide with 200% text, owned by Phase 89.6 (planning:.planning/deferred/phase-89.6.md, heading Found by the final picture pass (R5) and by CI at FE 06c2db4)');
+    // AMENDED Phase 89.6-18: the screen is fixed (the toolbar wraps as whole items, the steppers hold
+    // 44 by 44 under O-M4 Fixed+, and the toolbar is static below the 12rem dialog switch), so the
+    // expected-failure line is removed and this read is enforced.
     await stepperRowProof(page, true);
   });
 
