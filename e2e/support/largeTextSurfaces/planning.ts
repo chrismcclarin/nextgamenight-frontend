@@ -64,7 +64,9 @@ const checkInsHeader = (page: Page) => page.getByRole('button', { name: /^Check-
 
 // R08: the planning page with two open polls and the Check-ins panel COLLAPSED. The card list is
 // plan 89.6-42's row (R08-expanded below reads the page with it open); folding it keeps this row's
-// five checks off the cards. The root is the body, as the plan names it.
+// five checks off the cards. The root is the page's main, as on every other route row: the header
+// strip and the footer are rows of their own (the chrome module). CI run 45762484376 read the body
+// and flagged the header strip's die logo letter (shrunk: "N", the letter of a 34px icon).
 const reachTwoPolls: SurfaceRow['reach'] = async (page) => {
   await openPlanning(page, TWO_OPEN_POLLS);
   await page.getByRole('heading', { level: 3, name: 'Poll Responses' }).waitFor({ state: 'visible', timeout: 15_000 });
@@ -73,7 +75,7 @@ const reachTwoPolls: SurfaceRow['reach'] = async (page) => {
   await header.waitFor({ state: 'visible' });
   if ((await header.getAttribute('aria-expanded')) === 'true') await header.click();
   await page.locator('[role="button"][aria-expanded="false"]').filter({ hasText: 'Check-ins' }).waitFor({ state: 'visible' });
-  return { root: page.locator('body') };
+  return { root: page.locator('main') };
 };
 
 // R08-expanded: the same page with the Check-ins panel left EXPANDED (the page default), so the
@@ -98,7 +100,7 @@ const reachExpanded: SurfaceRow['reach'] = async (page) => {
 // answered here, in the browser, with the empty body of
 // e2e/recurring-checkins-phone.spec.ts ("const EMPTY_SETTINGS_BODY = { id: null, schedules: [], games: [], members: [] };"),
 // matched on the path as that spec's SETTINGS_PATH is. The seed's own list is never reached. No
-// card renders in this state, so the root is the whole body.
+// card renders in this state, so the root is the whole of the page's main.
 const NO_POLLS: Staging = { polls: [], activeId: null, respondents: [] };
 const EMPTY_SETTINGS_BODY = { id: null, schedules: [], games: [], members: [] };
 const emptySettingsAnswers: SurfaceRow['answers'] = (url) => (url.pathname.endsWith(`/groups/${groupId()}/prompt-settings`) ? EMPTY_SETTINGS_BODY : undefined);
@@ -106,7 +108,7 @@ const reachEmpty: SurfaceRow['reach'] = async (page) => {
   await openPlanning(page, NO_POLLS);
   await page.getByText('No active availability poll found. Use the schedule manager above to send one.').waitFor({ state: 'visible', timeout: 15_000 });
   await page.getByRole('heading', { name: 'No schedules yet' }).waitFor({ state: 'visible', timeout: 15_000 });
-  return { root: page.locator('body') };
+  return { root: page.locator('main') };
 };
 
 // O06: the heatmap tooltip (census O06) on a read cell of the Create Event dialog's visual
