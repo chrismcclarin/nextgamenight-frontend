@@ -437,3 +437,18 @@ describe('88.6.1-26 carry-in — an identical second field verdict is inserted a
     expect(promptSettingsAPI.createSchedule).not.toHaveBeenCalled();
   });
 });
+
+// Phase 89.6-41 (owner pick F1-F3 = F4, 2026-11-22): the schedule form's Cancel and submit sit in
+// the Body, so their row takes the in-body F4 form of FeedbackButton.js: it wraps when the pair does
+// not fit and stacks full width below the 12rem dialog container, Cancel first in DOM.
+describe('Phase 89.6-41 — schedule dialogs at large text', () => {
+  it('89.6-41 F4: the action row carries flex-wrap and the dialog container variants flex-col and items-stretch, and Cancel precedes the submit button in DOM', () => {
+    render(<ScheduleForm groupId="g1" onCancel={() => {}} />);
+    const submit = screen.getByRole('button', { name: 'Create Schedule' });
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const row = submit.parentElement as HTMLElement;
+    expect(row).toHaveClass('flex', 'flex-wrap', 'justify-end', '@max-[12rem]/dialog:flex-col', '@max-[12rem]/dialog:items-stretch');
+    expect(cancel.parentElement).toBe(row);
+    expect(cancel.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});

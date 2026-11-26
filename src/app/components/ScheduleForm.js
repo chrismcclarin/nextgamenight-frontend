@@ -533,7 +533,16 @@ export default function ScheduleForm({
               why it is this one. */}
 
           {/* Action Buttons */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-line">
+          {/* DECISION Phase 89.6-41 (F4-schedule): owner pick F1-F3 = F4, 2026-11-22 ('At large text on
+              a phone the buttons stack full width, Cancel on top, the action below: the order you see
+              is the order a keyboard or screen reader moves through'): this form's Cancel and submit
+              sit in the Body, so the row takes the in-body F4 form of
+              src/app/components/FeedbackButton.js ("DECISION Phase 89.6-25 (F4-in-body)"),
+              chosen OVER moving the buttons into Modal.Footer
+              (a restructure across the latch and busy markers below, P2) and OVER a right-aligned
+              natural-width pair (Cancel ran off the dialog's left edge at 320 / 200%). Normal text
+              unchanged. Changing this is a decision, not a cleanup. */}
+          <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-line @max-[12rem]/dialog:flex-col @max-[12rem]/dialog:items-stretch">
             {onCancel && (
               <Button variant="secondary" size="default" onClick={onCancel}>
                 Cancel
