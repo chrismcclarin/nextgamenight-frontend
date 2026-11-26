@@ -306,6 +306,12 @@ export interface LargeTextReadOptions {
   dialog?: Locator;
   /** Selectors of the exceptions list (SPEC A3 / A10): the cut check skips text in or under them. */
   exceptions?: readonly string[];
+  /**
+   * Page-zoom read only: the selectors of the surfaces another phase owns (SPEC A3 (2) to (4)). A
+   * text clipped by a box, where the text and that box both match one of them, is that surface's
+   * own clamp: it is listed in cleared, not lost (orchestrator ruling D27, plan 89.6-40).
+   */
+  surfaceClamps?: readonly string[];
 }
 
 export interface LargeTextCellRead {
@@ -338,11 +344,15 @@ interface LargeTextPageArg {
   exceptions: string[];
   /** Also work out what is lost at a page-zoom width (the A8 read below). */
   zoom: boolean;
+  /** The surfaces whose own clamp is no loss (LargeTextReadOptions surfaceClamps). */
+  surfaceClamps: string[];
 }
 
 interface LargeTextPageResult extends LargeTextCellRead {
   /** The A8 read's losses; empty when the read was not asked for. */
   lost: string[];
+  /** Losses that are a surface's own clamp (surfaceClamps), listed instead of lost. */
+  ownClamp: string[];
 }
 
 // The ONE in-page read behind every large-text check. It runs in the browser, so it uses nothing
@@ -1082,6 +1092,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
 
     // ---- lost (the A8 read) ----------------------------------------------------------------------
     const lost: string[] = [];
+    const ownClamp: string[] = [];
     if (arg.zoom) {
       const named = (el: Element) => `${el.tagName.toLowerCase()} "${first30(el) || (el.getAttribute('aria-label') ?? '').slice(0, 30)}"`;
       // The first overflow that is not visible, climbing from the element itself in one axis.
@@ -1099,29 +1110,37 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       // scroll goes there), or that lies past the padding box of a hidden or clip ancestor, with the
       // same per-axis climb as the hidden kind above (a scroller met first makes it reachable).
       const unreachable = new Set<Element>();
-      const whyUnreachable = (rects: DOMRect[], climbFrom: Element | null): string | null => {
-        if (Math.min(...rects.map((r) => r.left)) + window.scrollX < -0.5) return 'starts left of the page';
-        if (Math.min(...rects.map((r) => r.top)) + window.scrollY < -0.5) return 'starts above the page';
+      // DECISION Phase 89.6-40 (D27, orchestrator-ruled): a clip is a surface's own clamp, and so no
+      // loss, only when the clipped element AND the box that clips it both match ONE surface
+      // selector (SPEC A3 (3): the calendar list-row titles' clamp is Phase 88.9.2's, and the cut
+      // check already skips it), chosen OVER clearing every clip under a surface (a title cut by a
+      // parent box, or by anything but its own clamp, is still lost) and OVER a sixth exception.
+      // Listed in ownClamp, never dropped. Changing this is a decision, not a cleanup.
+      const whyUnreachable = (rects: DOMRect[], climbFrom: Element | null): { why: string; clipper: Element | null } | null => {
+        if (Math.min(...rects.map((r) => r.left)) + window.scrollX < -0.5) return { why: 'starts left of the page', clipper: null };
+        if (Math.min(...rects.map((r) => r.top)) + window.scrollY < -0.5) return { why: 'starts above the page', clipper: null };
         const clipper = climbFrom ? (clippedBy(climbFrom, rects, 'x') ?? clippedBy(climbFrom, rects, 'y')) : null;
-        return clipper ? `is clipped by its ${clipper.tagName.toLowerCase()}` : null;
+        return clipper ? { why: `is clipped by its ${clipper.tagName.toLowerCase()}`, clipper } : null;
       };
+      const isOwnClamp = (el: Element, clipper: Element | null): boolean =>
+        clipper !== null && arg.surfaceClamps.some((selector) => clipper.matches(selector) && el.closest(selector) !== null);
       const REACHED = 'button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])';
       const controls = Array.from(rootEl.querySelectorAll(REACHED)).filter((c) => {
         const r = c.getBoundingClientRect();
         return !drawsNothing(c) && r.width > 0 && r.height > 0;
       });
       for (const control of controls) {
-        const why = whyUnreachable([control.getBoundingClientRect()], control.parentElement);
-        if (!why) continue;
+        const hit = whyUnreachable([control.getBoundingClientRect()], control.parentElement);
+        if (!hit) continue;
         unreachable.add(control);
-        lost.push(`unreachable: ${named(control)} ${why}`);
+        (isOwnClamp(control, hit.clipper) ? ownClamp : lost).push(`unreachable: ${named(control)} ${hit.why}`);
       }
       for (const el of textElements) {
         if (Array.from(unreachable).some((u) => u.contains(el))) continue;
-        const why = whyUnreachable(words.filter((w) => w.el === el).flatMap((w) => w.rects), el);
-        if (!why) continue;
+        const hit = whyUnreachable(words.filter((w) => w.el === el).flatMap((w) => w.rects), el);
+        if (!hit) continue;
         unreachable.add(el);
-        lost.push(`unreachable: ${named(el)} ${why}`);
+        (isOwnClamp(el, hit.clipper) ? ownClamp : lost).push(`unreachable: ${named(el)} ${hit.why}`);
       }
 
       // (b) cut with no way to reach it: the ellipsis, clamp and nowrap kinds above (the exceptions
@@ -1212,7 +1231,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       }
     }
 
-    return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split, held, wide, spill, selectCut, lost };
+    return { rootFontSize, window: doc.clientWidth, pageSideways, dialogSideways, cut, split, held, wide, spill, selectCut, lost, ownClamp };
   } finally {
     ruler.remove();
   }
@@ -1224,7 +1243,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
  */
 export async function readLargeTextCell(root: Locator, options: LargeTextReadOptions = {}): Promise<LargeTextCellRead> {
   const dialogEl = options.dialog ? await options.dialog.elementHandle() : null;
-  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: false });
+  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: false, surfaceClamps: [] });
   return {
     rootFontSize: read.rootFontSize,
     window: read.window,
@@ -1295,14 +1314,16 @@ export interface PageZoomRead {
   lost: string[];
   /** Seen and written down: the page's sideways scroll, splits, held words and spills. Never failed, but for a split entry that says the read itself failed (the amendment above). */
   recorded: string[];
+  /** Clips that are a surface's own clamp (surfaceClamps, ruling D27); present only when there are some. */
+  ownClamp?: string[];
 }
 
 /** Read one page-zoom cell under `root`: what is lost, and what is only recorded. */
 export async function readPageZoomCell(root: Locator, options: LargeTextReadOptions = {}): Promise<PageZoomRead> {
   const dialogEl = options.dialog ? await options.dialog.elementHandle() : null;
-  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: true });
+  const read = await root.evaluate(largeTextPageRead, { dialogEl, exceptions: [...(options.exceptions ?? [])], zoom: true, surfaceClamps: [...(options.surfaceClamps ?? [])] });
   const recorded = [...(read.pageSideways > 0 ? [`the page scrolls sideways by ${read.pageSideways}px`] : []), ...read.split.map((s) => `split: ${s}`), ...read.held.map((s) => `held: ${s}`), ...read.spill.map((s) => `spill: ${s}`)];
-  return { lost: read.lost, recorded };
+  return { lost: read.lost, recorded, ...(read.ownClamp.length > 0 ? { ownClamp: read.ownClamp } : {}) };
 }
 
 /**

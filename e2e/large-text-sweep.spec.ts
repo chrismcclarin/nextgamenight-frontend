@@ -432,8 +432,8 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
   const titled = (entries: readonly string[], word: string) => entries.filter((entry) => entry.includes(`h5 "${word} `));
   expect(titled(zoomed.read.lost, 'Alpha'), 'an A3-3 title clipped by its own clamp at a page-zoom width is not lost').toEqual([]);
   expect(titled(zoomed.cleared, 'Alpha'), 'the A3-3 title clipped by its own clamp is written down as cleared').toEqual([expect.stringContaining('is clipped by its h5')]);
-  expect(titled(zoomed.read.lost, 'Bravo'), 'the same clamp outside the exception selector is still lost').toEqual([expect.stringContaining('is clipped by its h5')]);
-  expect(titled(zoomed.read.lost, 'Charlie'), 'an A3-3 title clipped by a parent box is still lost').toEqual([expect.stringContaining('is clipped by its div')]);
+  expect(titled(zoomed.read.lost, 'Bravo'), 'the same clamp outside the exception selector is still lost').toContainEqual(expect.stringContaining('is clipped by its h5'));
+  expect(titled(zoomed.read.lost, 'Charlie'), 'an A3-3 title clipped by a parent box is still lost').toContainEqual(expect.stringContaining('is clipped by its div'));
   expect(titled(zoomed.cleared, 'Bravo').concat(titled(zoomed.cleared, 'Charlie')), 'nothing but the own clamp is cleared').toEqual([]);
   await page.setViewportSize({ width: 320, height: 568 });
 

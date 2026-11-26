@@ -158,10 +158,13 @@ export async function readCellUnderExceptions(root: Locator, options: { dialog?:
 }
 
 /**
- * Read one page-zoom cell under the exceptions list: the cut check skips all five texts. cleared
- * holds the losses a surface accounted for.
+ * Read one page-zoom cell under the exceptions list: the cut check skips all five texts, and a
+ * text clipped by its own surface's clamp (the clipped text and its clipper both match one of the
+ * three surface selectors) is cleared, not lost (orchestrator ruling D27, plan 89.6-40: SPEC A3 (3)
+ * puts the list-row titles' clamp under Phase 88.9.2; at page zoom that same clamp read as a clip).
+ * cleared holds the losses a surface accounted for.
  */
 export async function readPageZoomCellUnderExceptions(root: Locator, options: { dialog?: Locator } = {}): Promise<{ read: PageZoomRead; cleared: string[] }> {
-  const read = await readPageZoomCell(root, { dialog: options.dialog, exceptions: EXCEPTION_SELECTORS });
-  return { read, cleared: [] };
+  const read = await readPageZoomCell(root, { dialog: options.dialog, exceptions: EXCEPTION_SELECTORS, surfaceClamps: SURFACE_EXCEPTION_SELECTORS });
+  return { read, cleared: read.ownClamp ?? [] };
 }
