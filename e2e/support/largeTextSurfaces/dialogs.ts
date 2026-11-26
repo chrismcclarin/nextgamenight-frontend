@@ -11,8 +11,9 @@
 import { test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 
 import { settleAnimations } from '../inFlight';
+import { routeGroupRead } from '../groupRead';
 import { routeMemberRoster } from '../memberRoster';
-import { readLargeTextCell, setTextMode } from '../wordLines';
+import { readLargeTextCell, setTextMode, THIRTY_LETTER_WORD } from '../wordLines';
 import type { SurfaceRow, SweepCell } from './index';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
@@ -265,6 +266,20 @@ const reachDeleteConfirm: SurfaceRow['reach'] = async (page) => {
   await dialog.waitFor({ state: 'visible', timeout: 15_000 });
   await toDialogTop(dialog);
   return { root: dialog, dialog };
+};
+
+// D08-long (owner plan 89.6-17, UI-SPEC E5 long-text): the same typed confirm with the group read's
+// name made of the 30-letter word and two short words (e2e/support/groupRead.ts ("export async function routeGroupRead")),
+// so the title and the type-the-name line carry a word wider than most rows. Nothing is typed and
+// Delete is NEVER pressed; the prompt-settings read is answered as D07 and D08 answer it.
+const LONG_GROUP_NAME = `${THIRTY_LETTER_WORD} Weekend Warriors`;
+const longNamed = new WeakSet<Page>();
+const reachDeleteConfirmLong: SurfaceRow['reach'] = async (page) => {
+  if (!longNamed.has(page)) {
+    await routeGroupRead(page, groupId(), (group) => ({ ...group, name: LONG_GROUP_NAME }));
+    longNamed.add(page);
+  }
+  return reachDeleteConfirm!(page);
 };
 
 // D08 extras (a tall dialog scrolls, plan 89.6-11): each footer button, scrolled into view, lies
@@ -527,6 +542,7 @@ export const rows: SurfaceRow[] = [
   { id: 'D07', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachCustomizeGroup, answers: answerPromptSettings, extras: customizeGroupExtras },
   { id: 'D07-leave', census: 'D07', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'leave-confirm', reach: reachLeaveConfirm, answers: answerPromptSettings },
   { id: 'D08', census: 'D08', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachDeleteConfirm, answers: answerPromptSettings, extras: deleteConfirmExtras },
+  { id: 'D08-long', census: 'D08', kind: 'dialog', owner: '89.6-17', status: 'enforced', state: 'long name', reach: reachDeleteConfirmLong, answers: answerPromptSettings, extras: deleteConfirmExtras },
   { id: 'D09', census: 'D09', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachSendFeedback },
   { id: 'D09-error', census: 'D09', kind: 'dialog', owner: '89.6-25', status: 'enforced', state: 'send-failed', reach: reachSendFailed },
   { id: 'D10', census: 'D10', kind: 'dialog', owner: '89.6-25', status: 'enforced', reach: reachReportBug },

@@ -14,7 +14,7 @@ import { expect, type Page } from '@playwright/test';
 import { compositeGround, contrastRatio, probeElement } from '../contrast';
 import { GROUP_ICON_EMOJI, GROUP_ICON_PICTURE, routeGroupRead, type GroupRow } from '../groupRead';
 import { settleAnimations } from '../inFlight';
-import { THIRTY_LETTER_WORD } from '../wordLines';
+import { THIRTY_LETTER_WORD, TWO_WORD_NAME } from '../wordLines';
 import type { SurfaceRow, SweepCell } from './index';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
@@ -61,6 +61,93 @@ const reachGames: SurfaceRow['reach'] = (page) => openGroup(page, withIcon(GROUP
 // R07-emoji: the same with the emoji icon.
 const reachEmoji: SurfaceRow['reach'] = (page) => openGroup(page, withIcon(GROUP_ICON_EMOJI));
 const answerNoGames = (url: URL): unknown => (isGamesRead(url) ? [] : undefined);
+
+// THE PLAY HISTORY ROWS (UI-SPEC E4 and the E3 sort row). R07-history answers the games read with
+// three made-up games (the fields the card reads, as e2e/group-home-games-refresh.spec.ts ("R4-A3 (88.9-52)")
+// answers it): a two-word name, one with no image, one with two reviews. R07-history-error answers
+// it 500 and R07-history-loading holds it: each registers its own route in reach, after the guard,
+// once per page. The held read is ANSWERED when the page closes, never handed on or unrouted (an
+// unroute hands every held request on to the network: the 88.9-03 incident; plan 89.6-16's D01-busy).
+const PLAYED = (id: string, name: string, extra: Record<string, unknown>) => ({
+  id,
+  name,
+  image_url: null,
+  play_count: 3,
+  last_played: '2026-01-15T18:00:00.000Z',
+  avg_rating: null,
+  review_count: 0,
+  theme: null,
+  min_players: 2,
+  max_players: 4,
+  ...extra,
+});
+const THREE_GAMES = [
+  PLAYED('00000000-0000-4000-8000-0000000017a1', TWO_WORD_NAME, { image_url: '/logo.svg', theme: 'Strategy' }),
+  PLAYED('00000000-0000-4000-8000-0000000017a2', 'Reflow', { play_count: 1 }),
+  PLAYED('00000000-0000-4000-8000-0000000017a3', 'Carcassonne', { avg_rating: 4.5, review_count: 2, theme: 'Tile placement' }),
+];
+const answerThreeGames = (url: URL): unknown => (isGamesRead(url) ? THREE_GAMES : undefined);
+
+/** The Play history section: the box that holds its level-2 heading. */
+async function playHistory(page: Page): Promise<{ root: ReturnType<Page['locator']> }> {
+  const heading = page.getByRole('heading', { level: 2, name: 'Play history', exact: true });
+  await heading.waitFor({ state: 'visible', timeout: 15_000 });
+  const root = heading.locator('xpath=..');
+  await settleAnimations(root);
+  return { root };
+}
+
+// R07-history: three games; the root is the section (its sort row, select and cards).
+const reachHistory: SurfaceRow['reach'] = async (page) => {
+  await openGroup(page, withIcon(GROUP_ICON_PICTURE));
+  await page.getByText('(2 reviews)').first().waitFor({ state: 'visible', timeout: 15_000 });
+  return playHistory(page);
+};
+
+// R07-history-error: the games read answered 500; the section shows its banner with Try again.
+const erroring = new WeakSet<Page>();
+const reachHistoryError: SurfaceRow['reach'] = async (page) => {
+  if (!erroring.has(page)) {
+    await page.route(isGamesRead, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ status: 500, json: { code: 'internal', message: 'Simulated games failure' } });
+    });
+    erroring.add(page);
+  }
+  await openGroup(page, withIcon(GROUP_ICON_PICTURE));
+  await page.getByRole('button', { name: 'Try again', exact: true }).first().waitFor({ state: 'visible', timeout: 15_000 });
+  return playHistory(page);
+};
+
+// R07-history-loading: the games read held, so the page shows its loading line (the first games
+// load holds the whole page); the root is the page's main.
+const holding = new WeakSet<Page>();
+const reachHistoryLoading: SurfaceRow['reach'] = async (page) => {
+  if (!holding.has(page)) {
+    const release = new Promise<void>((resolve) => page.once('close', () => resolve()));
+    await page.route(isGamesRead, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      await release;
+      await route.fulfill({ status: 500 }).catch(() => undefined);
+    });
+    holding.add(page);
+  }
+  if (!routed.has(page)) {
+    await routeGroupRead(page, groupId(), withIcon(GROUP_ICON_PICTURE));
+    routed.add(page);
+  }
+  await page.goto(`/groupHomePage?id=${groupId()}`);
+  const root = page.locator('main');
+  await root.getByText('Loading games...', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(root);
+  return { root };
+};
 
 // The title row's icon (src/app/groupHomePage/page.js ("DECISION Phase 89.6-17 (title-icon)")): not
 // drawn while the row is narrower than picture, gaps, a 7.5rem title and the 44px gear. Drawn in the
@@ -158,5 +245,7 @@ export const rows: SurfaceRow[] = [
   { id: 'R07-long', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'long name', reach: reachLong, answers: answerNoGames, extras: headerExtras },
   { id: 'R07-library', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
   { id: 'R07-checkins', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
-  { id: 'R07-history', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
+  { id: 'R07-history', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', reach: reachHistory, answers: answerThreeGames },
+  { id: 'R07-history-error', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'games read failed', reach: reachHistoryError },
+  { id: 'R07-history-loading', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'games read loading', reach: reachHistoryLoading },
 ];
