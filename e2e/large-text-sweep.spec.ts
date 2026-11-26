@@ -143,17 +143,15 @@ async function settleLayout(page: Page, root: Locator, clock: 'frames' | 'held' 
   });
 }
 
-/** The text mode a reached page carries, from its reach until the next reach (a reach navigates). */
-interface PageTextMode {
-  mode?: SweepCell['mode'];
-}
+/** The root font size a style-tag cell's text mode gives the page. */
+const STYLE_TAG_ROOT: Record<'100' | '200', string> = { '100': '16px', '200': '32px' };
 
 /**
- * Size a reached page for one cell: the window first, then the text mode, which is set only when it
- * differs from the mode the page already carries.
+ * Size a reached page for one cell: the window first, then the text mode, which is set unless the
+ * page already shows it (its root font size is the cell's).
  */
-// DECISION Phase 89.6 R15 (O03 flake): a cell whose text mode is the one the page already carries
-// leaves it on, chosen OVER calling setTextMode again for every cell, as the sweep did. setTextMode
+// DECISION Phase 89.6 R15 (O03 flake): a style-tag cell whose text size the page already shows leaves
+// it on, chosen OVER calling setTextMode again for every cell, as the sweep did. setTextMode
 // swaps a style-tag mode in two round trips (it removes the tag, then adds the new one), so a repeated
 // 200% passed through normal text for a moment. At the 768 x 1024 200% cell the window is already 768
 // wide when that happens; at normal text the phone menu button is not drawn there, the strip's rem
@@ -164,14 +162,20 @@ interface PageTextMode {
 // 45786993394 and 45798602999; reproduced locally, signed out, in the R15 record:
 // planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/R15-O03-FLAKE-RECORD.md ("Measurement")).
 // Also chosen OVER re-opening the row in each cell (it would hide a text size no cell asks for, which
-// closes O01's and O02's menu too). Every cell still checks the root font size it was read at
-// (expectCell), so a page that lost its mode cannot pass on a skipped call. Changing this is a
-// decision, not a cleanup.
-async function sizeForCell(target: Page, cell: SweepCell, carried: PageTextMode, tag: string): Promise<void> {
+// closes O01's and O02's menu too). The page itself is asked, chosen OVER a record of the last mode
+// the sweep set: a row's extras may change the mode inside a cell and leave the next cell to set it
+// again (D07 reads normal text inside its 320 cell:
+// e2e/support/largeTextSurfaces/dialogs.ts ("normal-text pass")
+// and a record would have left its 375 and 768 cells at normal text: CI run 45805337924). A font32
+// cell always calls setTextMode, whose own repeat is a no-op. Every cell still checks the root font
+// size it was read at (expectCell). Changing this is a decision, not a cleanup.
+async function sizeForCell(target: Page, cell: SweepCell, tag: string): Promise<void> {
   await target.setViewportSize({ width: cell.width, height: cell.height });
-  if (carried.mode === cell.mode) return;
+  if (cell.mode !== 'font32') {
+    const root = await target.evaluate(() => getComputedStyle(document.documentElement).fontSize);
+    if (root === STYLE_TAG_ROOT[cell.mode]) return;
+  }
   await setTextMode(target, cell.mode, tag);
-  carried.mode = cell.mode;
 }
 
 /** The check one cell must hold: the lighter A8 check at a page-zoom width, else the five checks. */
@@ -201,9 +205,9 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
   const records: CellRecord[] = [];
   let broke: unknown;
 
-  const readCell = async (target: Page, reached: { root: Locator; dialog?: Locator }, cell: SweepCell, carried: PageTextMode): Promise<void> => {
+  const readCell = async (target: Page, reached: { root: Locator; dialog?: Locator }, cell: SweepCell): Promise<void> => {
     const tag = `${row.id} ${cell.id}`;
-    await sizeForCell(target, cell, carried, tag);
+    await sizeForCell(target, cell, tag);
     await settleLayout(target, reached.root, row.clock ?? 'frames');
     // A dialog's own box eases to its new height after a viewport change (its height cap is in
     // dvh and the box carries a max-height transition), and the root of a dialog row may sit
@@ -244,10 +248,7 @@ async function runRow(page: Page, row: SurfaceRow, testInfo: TestInfo): Promise<
     await target.setViewportSize(row.reachAt ?? { width: cells[0].width, height: cells[0].height });
     const reached = await reach(target);
     await assertTheme(target, theme);
-    // The reach navigated, so the page carries no style-tag mode yet; a reach that set font32 itself
-    // is repeated as setTextMode's own no-op by the first cell.
-    const carried: PageTextMode = {};
-    for (const cell of cells) await readCell(target, reached, cell, carried);
+    for (const cell of cells) await readCell(target, reached, cell);
   };
 
   try {
@@ -488,13 +489,18 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
     if (!found) throw new Error(`the PR lane has no cell ${id}`);
     return found;
   };
-  const carried: PageTextMode = {};
-  await sizeForCell(page, laneCell('375x667-dark-200'), carried, 'R15 control 375');
-  await sizeForCell(page, laneCell('768x1024-dark-200'), carried, 'R15 control 768');
+  await sizeForCell(page, laneCell('375x667-dark-200'), 'R15 control 375');
+  await sizeForCell(page, laneCell('768x1024-dark-200'), 'R15 control 768');
   expect(await styleTagsRemoved(), 'the 200% tag was taken off between two 200% cells, so the page passed through normal text').toBe(0);
   expect(await rootFontSize(), 'the second 200% cell is not read at 200%').toBe('32px');
-  await sizeForCell(page, laneCell('215x466-dark-100-zoom'), carried, 'R15 control 100');
+  await sizeForCell(page, laneCell('215x466-dark-100-zoom'), 'R15 control 100');
   expect(await rootFontSize(), 'a change of mode from 200% to normal text did not land').toBe('16px');
+  // A row's extras may change the mode inside a cell (D07's normal-text pass in its 320 cell); the next
+  // 200% cell must still set 200% (CI run 45805337924 read D07's 375 and 768 cells at normal text).
+  await sizeForCell(page, laneCell('320x568-dark-200'), 'R15 control 320');
+  await setTextMode(page, '100', 'R15 control: an extras pass at normal text');
+  await sizeForCell(page, laneCell('375x667-dark-200'), 'R15 control 375 after the extras pass');
+  expect(await rootFontSize(), 'the 200% cell after an extras pass at normal text is not read at 200%').toBe('32px');
   await page.setViewportSize({ width: 320, height: 568 });
 
   // Every backend GET that writes is named, with what the guard does about it.
