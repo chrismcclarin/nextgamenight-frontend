@@ -187,7 +187,10 @@ test.describe('GameSuggestionCard on the event page at 375px (88.6.1-03)', () =>
   // only after the words have the card's full width), the picture keeps its 4rem square, and the
   // card holds everything. The page's own sideways scroll at this size is recorded in the log: the
   // rest of the event page at 320 / 200% is not this test's subject.
-  test('R4 D2 (88.9-52): at 320 wide with 200% text the card keeps each word of a two-word title and of its Owned by line whole, with the picture whole', async ({ page }) => {
+  // AMENDED Phase 89.6-18 (S2, owner "Drop", first look 2026-11-22; the Play history rule): at 320 /
+  // 200% the picture is no longer drawn (its wrapper has no layout box); the 4rem square is read at
+  // 375 with ordinary text, where it still sits beside the words.
+  test('R4 D2 (88.9-52), S2 Drop (89.6-18): at 320 wide with 200% text the card keeps each word whole and its picture is dropped', async ({ page }) => {
     await page.route(
       (url) => url.pathname.startsWith('/api/suggestions/event/'),
       async (route) => {
@@ -215,6 +218,7 @@ test.describe('GameSuggestionCard on the event page at 375px (88.6.1-03)', () =>
         return {
           card: box(el),
           tile: box(wrapper.firstElementChild as Element),
+          pictureDisplay: getComputedStyle(wrapper).display,
           title: box(titleEl),
           rem: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
         };
@@ -228,6 +232,9 @@ test.describe('GameSuggestionCard on the event page at 375px (88.6.1-03)', () =>
       `R4 D2: at ordinary text the title no longer sits beside the picture (${beforeLine})`,
     ).toBe(true);
     expectWholeWords(await readWordLines(title, card), ['Weekend', 'Warriors'], 'R4 D2 card title at ordinary text', { pageSideways: false });
+    // At ordinary text the picture is drawn at its 4rem square (S2 drops it at large text only).
+    expect(Math.abs(before.tile.width - 4 * before.rem), `S2: at ordinary text the picture is not 4rem wide (${beforeLine})`).toBeLessThanOrEqual(1);
+    expect(Math.abs(before.tile.height - 4 * before.rem), `S2: at ordinary text the picture is not 4rem tall (${beforeLine})`).toBeLessThanOrEqual(1);
 
     await setNarrowLargeText(page, 'R4 D2 suggestion card');
     // The card is named as the row: a word may break only once the words have the card's whole width.
@@ -240,9 +247,8 @@ test.describe('GameSuggestionCard on the event page at 375px (88.6.1-03)', () =>
     expectWholeWords(titleRead, ['Weekend', 'Warriors'], 'R4 D2 card title at 320 / 200%', { pageSideways: false });
     expectWholeWords(ownersRead, ['Owned', 'by', 'Alice,', 'Bob'], 'R4 D2 Owned by line at 320 / 200%', { pageSideways: false });
     await expectHeldInside(card, 'R4 D2 suggestion card');
-    // The picture moved, it did not shrink: still a 4rem square.
-    expect(Math.abs(after.tile.width - 4 * after.rem), `R4 D2: the picture is not 4rem wide (${afterLine})`).toBeLessThanOrEqual(1);
-    expect(Math.abs(after.tile.height - 4 * after.rem), `R4 D2: the picture is not 4rem tall (${afterLine})`).toBeLessThanOrEqual(1);
+    // S2 Drop: the picture wrapper is not displayed (no layout box); the name is its text twin.
+    expect(after.pictureDisplay, `S2: at 320 / 200% the picture is still drawn (${afterLine})`).toBe('none');
     expect(after.card.height, `R4 D2: the card is shorter than 44px (${afterLine})`).toBeGreaterThanOrEqual(44);
   });
 
