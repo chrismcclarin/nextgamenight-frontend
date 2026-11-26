@@ -13,6 +13,7 @@ import { routeFakeGameSuccess } from './support/fakeGame';
 // 88.6.1 code review WR-03: the shared write hold for the R4 toggle arms (see the note above them).
 import { expectNoApiWrites, holdWrites } from './support/inFlight';
 import { expectTouchTarget } from './support/touchTarget';
+import { pendingInvite } from './support/pendingInvite';
 
 /**
  * Phase 87.8 Plan 08 — SPEC R4 (44x44 effective hit areas) + SPEC R6 (pressed-state
@@ -857,8 +858,23 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
   // (src/app/Header.js ("AMENDED Phase 88.9-52 (R21, owner 2026-11-17, pick Fit or logo;")); jsdom lays nothing out, so
   // src/app/Header.test.tsx ("R21 arithmetic: 18px at ordinary text") can only work the sum. This reads the boxes.
   // 200% is the root font size doubled by a style tag, the injection the capture used
-  // (e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")); it is not browser zoom. Read-only: no write, no route.
-  test('R21 (88.9-52): with text at 200% the header site name stays on one line beside the menu button at 375px, and gives way to the logo at 320px', async ({ page }) => {
+  // (e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")); it is not browser zoom. No write.
+  // RE-PINNED by Phase 89.6-26 (O-M4-icons, owner pick O-M4 = Fixed+, 2026-11-22: "The box stays 44px,
+  // and the icon inside grows with the text up to 32px"): the menu button no longer grows with text, so
+  // the room it frees goes to the name: about 25.6px at 375 with doubled text, and at 320 the name now
+  // shows (about 18.75px) where it gave way before. One read is answered in the browser, the pending
+  // invites list (one invite), so the unread dot is drawn and its size is read against the icon.
+  test('R21 (88.9-52): with text at 200% the header site name stays on one line beside the menu button at 375px, and at 320px', async ({ page }) => {
+    await page.route(
+      (url) => url.pathname.endsWith('/invites/pending'),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({ status: 200, json: [pendingInvite('e2e-r21-dot', 'R21 dot group')] });
+      },
+    );
     await page.goto('/');
     await assertDarkTheme(page);
     expect(page.viewportSize()?.width, 'R21: the phone project is not 375px wide, so the numbers below are not the measured case').toBe(375);
@@ -867,6 +883,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     const hamburger = page.getByRole('button', { name: 'Toggle menu' });
     await guardResolved(brand, 'the header brand link');
     await guardResolved(hamburger, 'the Header hamburger (md:hidden — phone only)');
+    await expect(hamburger.locator('span[aria-hidden="true"]'), 'R21: the unread dot is not drawn with one pending invite answered').toHaveCount(1);
 
     // Every box in ONE page read.
     const readHeader = () =>
@@ -878,30 +895,61 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         ) as HTMLElement;
         const logo = link.querySelector('svg') as SVGElement;
         const menu = nav.querySelector('button[aria-label="Toggle menu"]') as HTMLElement;
+        const icon = menu.querySelector('svg') as SVGElement;
+        const dot = menu.querySelector('span[aria-hidden="true"]') as HTMLElement | null;
         const strip = nav.parentElement as HTMLElement;
         const cs = getComputedStyle(name);
         const n = name.getBoundingClientRect();
         const l = logo.getBoundingClientRect();
         const m = menu.getBoundingClientRect();
+        const i = icon.getBoundingClientRect();
+        const d = dot?.getBoundingClientRect();
         return {
           rootFontPx: parseFloat(getComputedStyle(document.documentElement).fontSize),
           fontPx: parseFloat(cs.fontSize),
           linePx: parseFloat(cs.lineHeight),
           name: { left: n.left, right: n.right, width: n.width, height: n.height, bottom: n.bottom },
           logo: { right: l.right, width: l.width },
-          menu: { left: m.left, width: m.width },
+          menu: { left: m.left, top: m.top, right: m.right, bottom: m.bottom, width: m.width, height: m.height },
+          icon: { x: i.left - m.left, y: i.top - m.top, width: i.width, height: i.height },
+          dot: d && dot
+            ? { width: d.width, height: d.height, left: d.left, right: d.right, top: d.top, bottom: d.bottom, insetTop: parseFloat(getComputedStyle(dot).top), insetRight: parseFloat(getComputedStyle(dot).right) }
+            : null,
           stripBottom: strip.getBoundingClientRect().bottom,
         };
       });
+    // The normal-text identity read (89.6-26): the button, the icon and the dot exactly as built.
+    const identity = (read: Awaited<ReturnType<typeof readHeader>>, at: string) => {
+      expect(read.menu.width, `${at}: the menu button is ${read.menu.width}px wide, not 44`).toBeCloseTo(44, 0);
+      expect(read.menu.height, `${at}: the menu button is ${read.menu.height}px tall, not 44`).toBeCloseTo(44, 0);
+      expect([read.icon.x, read.icon.y, read.icon.width, read.icon.height], `${at}: the icon is not 24 x 24 at 10, 10 in the button`).toEqual([10, 10, 24, 24]);
+      expect(read.dot, `${at}: the dot is not drawn`).not.toBeNull();
+      const dot = read.dot as NonNullable<typeof read.dot>;
+      expect([dot.width, dot.height, dot.insetTop, dot.insetRight], `${at}: the dot is not 10 x 10, 6px from the top and right`).toEqual([10, 10, 6, 6]);
+    };
 
-    // Ordinary text: nothing changed. 18px, one line.
+    // Ordinary text at 320 first: nothing changed. 18px, one line; the button, icon and dot as built.
+    await page.setViewportSize({ width: 320, height: 568 });
+    await expect.poll(async () => (await readHeader()).name.width, { message: 'R21: at ordinary text and 320px the site name is not drawn' }).toBeGreaterThan(100);
+    const plain320 = await readHeader();
+    expect(plain320.fontPx, `R21: at ordinary text and 320px the site name is ${plain320.fontPx}px, not its 18px`).toBeCloseTo(18, 1);
+    identity(plain320, 'R21 320 x 568, 100%');
+    // eslint-disable-next-line no-console -- the identity read is recorded from the CI log (plan 89.6-26)
+    console.log(`R21 identity 320x568 100%: button ${plain320.menu.width} x ${plain320.menu.height}, icon ${JSON.stringify(plain320.icon)}, dot ${JSON.stringify(plain320.dot)}`);
+    await page.setViewportSize({ width: 375, height: 667 });
+
+    // Ordinary text at 375: nothing changed. 18px, one line.
+    await expect.poll(async () => (await readHeader()).menu.left, { message: 'R21: the header did not settle at 375px' }).toBeGreaterThan(300);
     const plain = await readHeader();
     expect(plain.rootFontPx, 'R21: the root font size is not 16px before the 200% step').toBe(16);
     expect(plain.fontPx, `R21: at ordinary text the site name is ${plain.fontPx}px, not its 18px`).toBeCloseTo(18, 1);
     expect(plain.name.width, 'R21: at ordinary text the site name has no width — it is hidden, or the locator is wrong').toBeGreaterThan(100);
     expect(plain.name.height, `R21: at ordinary text the site name is ${plain.name.height}px tall on a ${plain.linePx}px line — more than one line`).toBeLessThanOrEqual(plain.linePx + 1);
+    identity(plain, 'R21 375 x 667, 100%');
+    // eslint-disable-next-line no-console -- the identity read is recorded from the CI log (plan 89.6-26)
+    console.log(`R21 identity 375x667 100%: button ${plain.menu.width} x ${plain.menu.height}, icon ${JSON.stringify(plain.icon)}, dot ${JSON.stringify(plain.dot)}`);
 
-    // Text at 200%, 375 wide: the largest one-line size (the capture measured 20px), clear of the button.
+    // Text at 200%, 375 wide: the button holds 44px, its icon is 32px, and the name takes the room.
     await page.addStyleTag({ content: 'html{font-size:200% !important}' });
     await expect
       .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
@@ -909,12 +957,13 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       })
       .toBe('32px');
     await expect
-      .poll(async () => (await readHeader()).menu.width, { message: 'R21: the menu button did not grow to 88px at 200% text' })
-      .toBeCloseTo(88, 0);
+      .poll(async () => (await readHeader()).icon.width, { message: 'R21: the menu icon did not grow to its 32px cap at 200% text' })
+      .toBeCloseTo(32, 0);
     const big = await readHeader();
-    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px — under its ordinary 18px`).toBeGreaterThanOrEqual(18);
-    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px; the largest size that fits is about 20px`).toBeGreaterThanOrEqual(19.5);
-    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px; about 20px is all that fits`).toBeLessThan(21);
+    expect(big.menu.width, `R21: at 200% text the menu button is ${big.menu.width}px wide — it must hold 44px (O-M4 Fixed+)`).toBeCloseTo(44, 0);
+    expect(big.menu.height, `R21: at 200% text the menu button is ${big.menu.height}px tall — it must hold 44px (O-M4 Fixed+)`).toBeCloseTo(44, 0);
+    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px; the largest size that fits is about 25.6px`).toBeGreaterThanOrEqual(25);
+    expect(big.fontPx, `R21: at 200% text and 375px the site name is ${big.fontPx}px; about 25.6px is all that fits`).toBeLessThanOrEqual(26.5);
     expect(big.name.height, `R21: at 200% text the site name is ${big.name.height}px tall on a ${big.linePx}px line — it wrapped`).toBeLessThanOrEqual(big.linePx + 1);
     expect(
       big.menu.left - big.name.right,
@@ -922,19 +971,30 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     ).toBeGreaterThanOrEqual(7.5);
     expect(big.logo.width, `R21: at 200% text the logo is ${big.logo.width}px wide — squeezed under its 34px`).toBeCloseTo(34, 0);
     expect(big.name.bottom, 'R21: at 200% text the site name runs below the header strip').toBeLessThanOrEqual(big.stripBottom + 0.5);
+    // The dot scales with its icon (icon x 10/24) and stays inside the 44px box.
+    expect(big.dot, 'R21: at 200% text the unread dot is not drawn').not.toBeNull();
+    const bigDot = big.dot as NonNullable<typeof big.dot>;
+    expect(Math.abs(bigDot.width - (big.icon.width * 10) / 24), `R21: at 200% text the dot is ${bigDot.width}px wide with a ${big.icon.width}px icon, not icon x 10/24`).toBeLessThanOrEqual(0.5);
+    expect(
+      bigDot.left >= big.menu.left - 0.5 && bigDot.right <= big.menu.right + 0.5 && bigDot.top >= big.menu.top - 0.5 && bigDot.bottom <= big.menu.bottom + 0.5,
+      `R21: at 200% text the dot leaves the menu button box (dot ${JSON.stringify(bigDot)}, button ${JSON.stringify(big.menu)})`,
+    ).toBe(true);
+    // Review M121: the dot's 2px halo over the button's 4px inset focus band, overlap = max(0, 4 + 2 - inset).
+    // eslint-disable-next-line no-console -- the inset is recorded from the CI log (plan 89.6-26)
+    console.log(`R21 dot 375x667 200%: icon ${big.icon.width}px, dot ${bigDot.width}px, inset top ${bigDot.insetTop}px right ${bigDot.insetRight}px, halo over the focus band ${Math.max(0, 6 - bigDot.insetTop)}px top, ${Math.max(0, 6 - bigDot.insetRight)}px right`);
 
-    // Text at 200%, 320 wide: 18px cannot fit, so the logo stands alone and the link keeps its name.
+    // Text at 200%, 320 wide: the held button frees the room, so the name shows at 18px or more.
     await page.setViewportSize({ width: 320, height: 667 });
     await expect
-      .poll(async () => (await readHeader()).name.width, { message: 'R21: at 200% text and 320px the site name is still drawn — it should give way to the logo' })
-      .toBeLessThanOrEqual(1.5);
+      .poll(async () => (await readHeader()).menu.left, { message: 'R21: the header did not settle at 320px' })
+      .toBeLessThan(300);
     const narrow = await readHeader();
+    expect(narrow.name.width, `R21: at 200% text and 320px the site name is not drawn (${narrow.name.width}px wide) — the held menu button leaves room for it`).toBeGreaterThan(100);
+    expect(narrow.fontPx, `R21: at 200% text and 320px the site name is ${narrow.fontPx}px — under its ordinary 18px`).toBeGreaterThanOrEqual(18);
+    expect(narrow.name.height, `R21: at 200% text and 320px the site name is ${narrow.name.height}px tall on a ${narrow.linePx}px line — it wrapped`).toBeLessThanOrEqual(narrow.linePx + 1);
+    expect(narrow.menu.left - narrow.name.right, `R21: at 200% text and 320px the site name ends ${narrow.menu.left - narrow.name.right}px before the menu button — under the 8px clearance`).toBeGreaterThanOrEqual(7.5);
     expect(narrow.logo.width, `R21: at 200% text and 320px the logo is ${narrow.logo.width}px wide — squeezed under its 34px`).toBeCloseTo(34, 0);
-    expect(
-      narrow.menu.left - narrow.logo.right,
-      'R21: at 200% text and 320px the logo touches the menu button',
-    ).toBeGreaterThanOrEqual(8);
-    await expect(brand, 'R21: with the name hidden from sight the home link lost its name').toHaveCount(1);
+    await expect(brand, 'R21: the home link lost its name').toHaveCount(1);
 
     // R21 (88.9-52 R4 S2), RENDERED: from md up. The round-3 capture found, at 768px with text at
     // 200%, the desktop header's 40px name run straight into Home and the list run off the right
