@@ -29,7 +29,9 @@ const PX = 0.5;
 
 const answerInvite = answerPendingInvites([pendingInvite('e2e-chrome-invite', THIRTY_LETTER_WORD)]);
 
-const menuButton = (page: Page): Locator => page.getByRole('button', { name: 'Toggle menu', exact: true });
+// includeHidden: at 768 with normal text the stylesheet does not draw the button, and the reach must
+// still find it there to see that (CI run 45786993394: the role query waited for it for ever).
+const menuButton = (page: Page): Locator => page.getByRole('button', { name: 'Toggle menu', exact: true, includeHidden: true });
 const menuPanel = (page: Page): Locator => page.locator('[data-slot="header-menu-panel"]');
 const menuDim = (page: Page): Locator => page.locator('[data-slot="header-menu-dim"]');
 
@@ -160,7 +162,9 @@ const reachDim: SurfaceRow['reach'] = async (page) => {
 
 const reachNotifications: SurfaceRow['reach'] = async (page) => {
   await openMenu(page);
-  await menuPanel(page).getByRole('button', { name: 'Invites notifications', exact: true }).click();
+  const row = menuPanel(page).getByRole('button', { name: 'Invites notifications', exact: true });
+  await row.click();
+  await expect(row, 'the Invites row did not open its panel').toHaveAttribute('aria-expanded', 'true');
   const region = notificationsRegion(page);
   await region.waitFor({ state: 'visible', timeout: 15_000 });
   await region.getByText(THIRTY_LETTER_WORD).first().waitFor({ state: 'visible', timeout: 15_000 });
