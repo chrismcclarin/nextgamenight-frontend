@@ -210,7 +210,8 @@ async function openGamesToBring(page: Page, mode: BringMode): Promise<{ root: Lo
   const dialog = bringDialog(page);
   await dialog.waitFor({ state: 'visible', timeout: 15_000 });
   if (mode === 'listed') await dialog.getByRole('checkbox', { name: 'Weekend Warriors', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
-  if (mode === 'empty') await dialog.getByText("You haven't added any games to your collection yet.", { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  // The visible line, not the polite region's copy of the same sentence (CI run 45774653092: two matches).
+  if (mode === 'empty') await dialog.locator('p.text-content-muted', { hasText: "You haven't added any games to your collection yet." }).waitFor({ state: 'visible', timeout: 15_000 });
   if (mode === 'load-failed') await dialog.locator('p.text-content-status-error').first().waitFor({ state: 'visible', timeout: 15_000 });
   await settleAnimations(dialog);
   await toDialogTop(dialog);
@@ -281,10 +282,40 @@ async function reachSuggestionSlot(page: Page, path: string, state: SlotState = 
   if (state === 'chips') await slot.getByRole('button', { name: 'Browse more' }).waitFor({ state: 'visible', timeout: 15_000 });
   if (state === 'empty') await page.getByTestId('quick-suggestions-empty').waitFor({ state: 'visible', timeout: 15_000 });
   if (state === 'failed') await page.getByTestId('quick-suggestions-failed').waitFor({ state: 'visible', timeout: 15_000 });
-  await slot.scrollIntoViewIfNeeded();
+  // Read with the Create Event dialog at its top, as every dialog row is read: a slot scrolled into
+  // view at the reach width sat above the page at 187 x 333 (CI run 45774653092, R08-suggestions).
+  await toDialogTop(page.getByRole('dialog').filter({ has: slot }));
   await settleAnimations(slot);
   return { root: slot };
 }
+
+// R5-03 extras: every chip shows its whole name, each word on one line unless that word alone is
+// wider than its chip. One compact line per chip is thrown, with the boxes, so a red names the cause.
+const chipsWhole = async (page: Page): Promise<void> => {
+  const problems = await page.evaluate(() => {
+    const slot = document.querySelector('[data-testid="quick-suggestions-slot"]');
+    if (!slot) return ['no quick-suggestions slot'];
+    const width = (el: Element | null) => (el ? Math.round(el.getBoundingClientRect().width) : -1);
+    const out: string[] = [];
+    for (const chip of Array.from(slot.querySelectorAll('button[title]'))) {
+      const name = chip.querySelector('span.text-sm');
+      const text = name?.firstChild;
+      if (!name || !text || text.nodeType !== Node.TEXT_NODE) continue;
+      const value = text.textContent ?? '';
+      for (const match of value.matchAll(/\S+/g)) {
+        const range = document.createRange();
+        range.setStart(text, match.index ?? 0);
+        range.setEnd(text, (match.index ?? 0) + match[0].length);
+        const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0);
+        const lines = new Set(rects.map((r) => Math.round(r.top))).size;
+        const wordWidth = rects.reduce((sum, r) => sum + r.width, 0);
+        if (lines > 1 && wordWidth <= width(chip)) out.push(`"${match[0]}" ${lines} lines (word ${Math.round(wordWidth)}, slot ${width(slot)}, strip ${width(chip.parentElement)}, chip ${width(chip)}, name ${width(name)})`);
+      }
+    }
+    return out;
+  });
+  if (problems.length > 0) throw new Error(`R5-03: ${problems.join('; ')}`);
+};
 const groupPath = (): string => `/groupHomePage?id=${groupId()}`;
 const planningPath = (): string => `/groupPlanning?group_id=${groupId()}&prefillDate=${tomorrow()}&prefillTime=19:00`;
 const answerNoSuggestions = (url: URL): unknown => (isSuggestionsRead(url) ? { suggestions: [] } : undefined);
@@ -333,8 +364,8 @@ export const rows: SurfaceRow[] = [
   { id: 'D28-load-failed', census: 'D28', kind: 'dialog', owner: '89.6-18', state: 'load-failed', status: 'enforced', reach: reachBringFailed, extras: failedBranchHolds },
   { id: 'D28-empty', census: 'D28', kind: 'dialog', owner: '89.6-18', state: 'empty', status: 'enforced', reach: reachBringEmpty, answers: (url) => answerBringReads(url, 'empty') },
   { id: 'D23-loading', census: 'D23', kind: 'dialog', owner: '89.6-18', state: 'loading', status: 'enforced', reach: reachBrowseLoading, answers: answerSuggestions },
-  { id: 'R07-suggestions', census: 'R07', kind: 'route', owner: '89.6-18', status: 'enforced', state: 'five chips in Create Event', reach: (page) => reachSuggestionSlot(page, groupPath()), answers: answerSuggestions },
+  { id: 'R07-suggestions', census: 'R07', kind: 'route', owner: '89.6-18', status: 'enforced', state: 'five chips in Create Event', reach: (page) => reachSuggestionSlot(page, groupPath()), answers: answerSuggestions, extras: chipsWhole },
   { id: 'R07-suggestions-empty', census: 'R07', kind: 'route', owner: '89.6-18', state: 'suggestions empty', status: 'enforced', reach: (page) => reachSuggestionSlot(page, groupPath(), 'empty'), answers: answerNoSuggestions },
   { id: 'R07-suggestions-failed', census: 'R07', kind: 'route', owner: '89.6-18', state: 'suggestions failed', status: 'enforced', reach: (page) => reachSuggestionSlot(page, groupPath(), 'failed') },
-  { id: 'R08-suggestions', census: 'R08', kind: 'route', owner: '89.6-18', status: 'enforced', state: 'five chips in Create Event on the planning page', reach: (page) => reachSuggestionSlot(page, planningPath()), answers: answerPlanningSuggestions },
+  { id: 'R08-suggestions', census: 'R08', kind: 'route', owner: '89.6-18', status: 'enforced', state: 'five chips in Create Event on the planning page', reach: (page) => reachSuggestionSlot(page, planningPath()), answers: answerPlanningSuggestions, extras: chipsWhole },
 ];

@@ -312,7 +312,8 @@ export default function BrowseMoreModal({
             fit; and below the 12rem dialog switch the toolbar is static, not pinned, because a pinned
             bar taller than the sheet hid every game card (587px tall at 320 / 200%, research D F-D4;
             WCAG 1.4.10 reflow). One exception, also GR: at the page-zoom widths (A8, 215 and 187
-            wide) the keep-together unit is wider than the whole toolbar (160px against 159 and 131),
+            wide) the keep-together unit is wider than the whole toolbar (160px against 157 and 129,
+            the toolbar boxes CI run 45774653092 measured),
             so below the switch it may wrap, which it does only when it cannot fit; at 320 / 200% it
             fits (232 of 264px) and stays on one line.
             REJECTED: a sideways scroll strip (the toolbar scrolled 273px sideways at 320 / 200%),
@@ -712,7 +713,14 @@ export default function BrowseMoreModal({
               onResetFilters={resetFilters}
             />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            /* DECISION Phase 89.6-18 (results-grid): below a 40rem dialog the cards take one column, a
+               dialog-named container variant that outranks the two width breakpoints, chosen OVER the
+               two-up grid at 768 wide with 200% text, where a card column of about 324px split the
+               30-letter name although one column would hold it whole (GR: columns stack before a word
+               breaks; CI run 45774653092, D23 at 768 / 200%). At normal text the dialog is at least
+               46.5rem from 768 wide up, so the two and three columns are unchanged. Changing this is a
+               decision, not a cleanup. */
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 @max-[40rem]/dialog:grid-cols-1">
               {displaySuggestions.map((game) => (
                 <GameSuggestionCard
                   key={game.id}
