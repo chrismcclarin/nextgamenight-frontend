@@ -163,3 +163,42 @@ describe('E6a (88.9) — value first', () => {
     );
   });
 });
+
+// Phase 89.6-41 (GR, owner 2026-11-22: 'A row stays a row while everything in it fits whole. When it
+// does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking.'): the
+// schedule row's parts are the house blocks, each keeping its alignment utility, so at large text
+// the pill moves under the name, the actions move under the details and the confirm buttons wrap.
+describe('Phase 89.6-41 — the schedule list at large text', () => {
+  const classesOf = (el: Element | null) => (el?.getAttribute('class') ?? '').split(/\s+/);
+
+  it('89.6-41 GR: the title row is a bb-cluster that keeps items-center and gap-3', () => {
+    render(<ScheduleList schedules={[SCHEDULE]} />);
+    const titleRow = screen.getByRole('heading', { level: 3, name: SCHEDULE.template_name }).parentElement;
+    for (const token of ['bb-cluster', 'items-center', 'gap-3', 'mb-2']) expect(classesOf(titleRow), token).toContain(token);
+    expect(classesOf(titleRow)).not.toContain('flex');
+  });
+
+  it('89.6-41 GR: the outer row is a bb-row that keeps items-start, info is bb-row-text and both action cells are bb-row-end', () => {
+    render(<ScheduleList schedules={[SCHEDULE]} onEdit={vi.fn()} />);
+    const info = screen.getByRole('heading', { level: 3, name: SCHEDULE.template_name }).parentElement?.parentElement ?? null;
+    const outer = info?.parentElement ?? null;
+    expect(classesOf(outer)).toEqual(['bb-row', 'items-start', 'gap-x-4']);
+    expect(classesOf(info)).toEqual(['bb-row-text']);
+    const desktop = screen.getByRole('button', { name: 'Edit' }).parentElement;
+    const phone = screen.getByRole('button', { name: 'Schedule actions' }).closest('.md\\:hidden');
+    expect(classesOf(desktop)).toEqual(['hidden', 'md:flex', 'items-start', 'gap-2', 'bb-row-end']);
+    expect(classesOf(phone)).toEqual(['md:hidden', 'bb-row-end']);
+    for (const cell of [desktop, phone]) expect(classesOf(cell)).not.toContain('ml-4');
+    expect(classesOf(outer)).not.toContain('justify-between');
+    expect(classesOf(info)).not.toContain('flex-1');
+  });
+
+  it('89.6-41 GR: the confirm buttons sit in a bb-cluster that keeps gap-2, Confirm Delete first', () => {
+    render(<ScheduleList schedules={[SCHEDULE]} onDelete={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const confirm = screen.getByRole('button', { name: 'Confirm Delete' });
+    const row = confirm.parentElement;
+    expect(classesOf(row)).toEqual(['bb-cluster', 'gap-2']);
+    expect(row?.firstElementChild).toBe(confirm);
+  });
+});

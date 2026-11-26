@@ -168,10 +168,25 @@ export default function ScheduleList({
             key={schedule.id}
             className="border border-line rounded-card surface-flat-phone-divided md:p-edge-page hover:shadow-theme-md transition-shadow bg-surface-card"
           >
-            <div className="flex items-start justify-between">
+            {/* DECISION Phase 89.6-41 (schedule-row): the row is a bb-row (items-start kept, gap-x-4
+                keeps the old 16px ml-4 space, so the details keep their width at normal text) with the
+                details as bb-row-text and each action cell as bb-row-end, so the actions move under
+                the details when both cannot fit whole, chosen OVER a truncated name, a squeezed
+                details column and a row that runs off the card (P1). justify-between, flex-1 and ml-4
+                are dropped, not kept beside the blocks: utilities beat the components layer, so a
+                kept flex-1 replaces bb-row-text's basis and the row never wraps, and a kept ml-4
+                replaces bb-row-end's auto margin (review M058). GR (owner, 2026-11-22). Normal text
+                unchanged at 320 and 375. Changing this is a decision, not a cleanup. */}
+            <div className="bb-row items-start gap-x-4">
               {/* Left: Schedule info */}
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
+              <div className="bb-row-text">
+                {/* DECISION Phase 89.6-41 (schedule-title): a bb-cluster (items-center and gap-3 kept)
+                    so the status pill moves under the name when both cannot fit whole, chosen OVER a
+                    truncated name and a shrunken pill (P1), and OVER the name wrapping beside the pill.
+                    GR (owner, 2026-11-22). This one IS seen at normal text: at 320 and 375 a name that
+                    cannot sit on one line beside its pill now puts the pill on the next line (measured
+                    2026-11-26, listed for look 2 under D-02). Changing this is a decision, not a cleanup. */}
+                <div className="bb-cluster items-center gap-3 mb-2">
                   <Heading level={3} size="heading" className="text-content-primary">
                     {scheduleName}
                   </Heading>
@@ -224,7 +239,7 @@ export default function ScheduleList({
               </div>
 
               {/* Right: Actions — desktop inline buttons (≥768px) */}
-              <div className="hidden md:flex items-start gap-2 ml-4">
+              <div className="hidden md:flex items-start gap-2 bb-row-end">
                 {/* Edit button */}
                 <Button
                   variant="primary"
@@ -273,8 +288,10 @@ export default function ScheduleList({
                   ⋮ kebab so the row never overflows on narrow viewports.
                   Delete here opens the same in-row confirm dialog the
                   desktop button uses (handleDeleteClick) — no two-tap on
-                  Schedule Delete per CONTEXT (only member Remove gets two-tap). */}
-              <div className="md:hidden ml-4">
+                  Schedule Delete per CONTEXT (only member Remove gets two-tap).
+                  AMENDED Phase 89.6-41 (schedule-row): at large text the actions move under the
+                  details when both cannot fit whole (GR), so the row still never overflows. */}
+              <div className="md:hidden bb-row-end">
                 <KebabMenu
                   ariaLabel="Schedule actions"
                   items={[
@@ -306,7 +323,12 @@ export default function ScheduleList({
                 <p id={confirmPromptId} className="text-content-status-error mb-3">
                   Delete {scheduleName}? This will stop sending prompts.
                 </p>
-                <div className="flex gap-2">
+                {/* DECISION Phase 89.6-41 (schedule-confirm): a bb-cluster (gap-2 kept, Confirm Delete
+                    first: an inline page box, not a dialog footer, so F4 does not apply) so Cancel
+                    moves under Confirm Delete when both cannot fit whole, chosen OVER shrunken buttons
+                    and a row that runs out of the confirm box (P1). GR (owner, 2026-11-22). Normal text
+                    unchanged at 320 and 375. Changing this is a decision, not a cleanup. */}
+                <div className="bb-cluster gap-2">
                   <Button
                     variant="danger"
                     size="default"
