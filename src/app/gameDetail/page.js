@@ -2385,9 +2385,10 @@ export default function GameDetailPage() {
     // whether the RSVP/Ballot/BringSummary surfaces mount, see the marker there).
     const renderSessionCard = (event, index, { interactive }) => (
                             <div key={event.id} className={`pl-4 py-2 ${index > 0 ? 'border-t-2 border-line-strong pt-4' : ''}`} style={{ borderLeft: '4px solid var(--color-btn-primary-bg)' }}>
-                                <div className="flex items-start justify-between gap-4 mb-2">
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-3 mb-2">
+                                {/* DECISION Phase 89.6-29 (game-rows): the session row and its date line are .bb-row, so the three-dot menu or the Edit / Delete pair moves under the date and winner when they do not fit whole, chosen OVER holding the date line on one unbreakable line (the page scrolled sideways, 370px at 320 / 200%) and OVER shrinking the text. GR (owner, 2026-11-22: 'A row stays a row while everything in it fits whole. When it does not, items stack.'). Sessions come first on this page (pick OW-1 note). Changing this is a decision, not a cleanup. */}
+                                <div className="bb-row items-start justify-between gap-4 mb-2">
+                                    <div className="bb-row-text">
+                                        <div className="bb-row items-center gap-3 mb-2">
                                             <p className="font-bold text-content-primary">
                                                 {formatDate(event.start_date, timezone)}
                                             </p>
@@ -2432,7 +2433,8 @@ export default function GameDetailPage() {
                                             OVER rendering every break as typed (a flood of blank lines pushes the card off a phone
                                             screen) and OVER a server cap (it would change stored text); the stored text is
                                             untouched, and all five sites call the same helper. Dropping either class or the helper
-                                            call is a decision, not a cleanup. */}
+                                            call is a decision, not a cleanup.
+                                            AMENDED Phase 89.6-29 (game-rows): the left column is now .bb-row-text, which still sets no min-width, so REJECTED (b)'s reason holds unchanged. */}
                                         {event.comments && (
                                             <p className="text-content-secondary mt-1 text-sm italic whitespace-pre-line wrap-anywhere">{collapseBlankLines(event.comments)}</p>
                                         )}
@@ -2452,7 +2454,7 @@ export default function GameDetailPage() {
                                             {/* Phone: collapse both actions into the shipped kebab,
                                                 matching ScheduleList/ManageMembers, so the date, winner
                                                 and comment reclaim the full row width (F-6d). */}
-                                            <div className="md:hidden">
+                                            <div className="md:hidden bb-row-end">
                                                 <KebabMenu
                                                     ariaLabel="Session actions"
                                                     items={[
@@ -2476,7 +2478,7 @@ export default function GameDetailPage() {
                                             {/* Desktop: still visible, demoted to ghost so they stop
                                                 outranking the plain-text content they act on (F-6c).
                                                 AMENDED Phase 88.9-65 (X49, owner 2026-11-13): Delete takes the danger ink, as its phone twin (the kebab item) already paints it; the ghost weight F-6c gave both is kept (no fill), through Button's ghost-danger variant, chosen OVER a per-site colour class. */}
-                                            <div className="hidden md:flex gap-2 shrink-0">
+                                            <div className="hidden md:flex gap-2 bb-row-end">
                                                 {/* 88.6-18 (AC-3): `px-3 py-1 text-sm` DELETED from
                                                     both — every one of the three is dead against the
                                                     unlayered `.btn` rule, which declares its own
@@ -2513,11 +2515,12 @@ export default function GameDetailPage() {
                                             {event.EventParticipations.map((participation, idx) => (
                                                 <div key={idx} className="flex items-center gap-2 flex-wrap">
                                                     {/* DECISION Phase 88.9-65 (X47): the chip wraps by piece on the card ground, chosen OVER the one-line row (a squeezed piece wrapped inside itself and kept its width: the gap the owner saw) and OVER the muted ground; no new colour.
-                                                        Pills are the 88.9-63 family (Guest amber, New Player neutral, faction violet), measured on the card with src/lib/wcag.ts, word on fill / fill against the card: amber 5.6360 / 1.2580 light, 5.6471 / 1.9692 dark; violet 5.9744 / 1.4596, 7.7691 / 1.5107; neutral 7.3453 / 1.4261, 6.9642 / 1.5231. The name is 600 like the two names 63 moved, wraps and is never cut; Score and placement never break. */}
+                                                        Pills are the 88.9-63 family (Guest amber, New Player neutral, faction violet), measured on the card with src/lib/wcag.ts, word on fill / fill against the card: amber 5.6360 / 1.2580 light, 5.6471 / 1.9692 dark; violet 5.9744 / 1.4596, 7.7691 / 1.5107; neutral 7.3453 / 1.4261, 6.9642 / 1.5231. The name is 600 like the two names 63 moved, wraps and is never cut; Score and placement never break.
+                                                        AMENDED Phase 89.6-29 (game-rows): the name piece is a small house row written with child variants, because the name is ClickableMemberName's own element and takes no class from here: its first item (the name) has a 0px basis and may grow, every item is held to the chip, and the items wrap. So the (Guest) tag or the friend control stays beside the name while the name's longest word fits beside it and moves under the name when it does not, and one word wider than the chip breaks inside the chip. Chosen OVER the one-line name piece (its items could not shrink below the longest word: at 320 / 200% the tag painted 21px outside the chip, a 17-letter word pushed the page 120px sideways, and the 24px friend control was squeezed to 17px beside a long name at normal text) and OVER wrapping alone with no basis (the control dropped under a long name even where it fits beside it). The typed-in name is a span so the rule reaches it. */}
                                                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 max-w-full px-3 py-1 rounded-sm border border-line bg-surface-card text-content-primary">
-                                                        <span className="inline-flex items-center gap-1 min-w-0 font-semibold break-words">
+                                                        <span className="inline-flex flex-wrap items-center gap-1 min-w-0 font-semibold break-words [&>*]:max-w-full [&>:first-child]:flex-[1_1_0px]">
                                                             {participation.is_custom ? (
-                                                                <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-secondary ml-1">(Guest)</span></>
+                                                                <><span>{participation.User?.username || participation.username || 'Unknown'}</span><span className="text-xs text-content-secondary ml-1">(Guest)</span></>
                                                             ) : (
                                                                 // Phase 87.3-06: SANCTIONED flat read. Past-events participation
                                                                 // rows come through formatEventWithCustomParticipants (events.js),
@@ -4424,7 +4427,9 @@ export default function GameDetailPage() {
                     REFUSED to take it and escalated instead (see the amended 88-24 marker
                     below); the owner then ruled. Reverting to `text-2xl` now reopens HIS
                     convergence AND puts a fifth size back in a 4-size working set. Pinned in
-                    src/app/typeScaleTouchedSurfaces.test.ts. */}
+                    src/app/typeScaleTouchedSurfaces.test.ts.
+
+                    AMENDED Phase 89.6-29 (game-rows): the row is .bb-row; at normal text the heading and Add Review sit as before, and Add Review moves under the heading when both do not fit whole (GR, owner 2026-11-22). The 20px ruling is untouched. */}
                 {/* DECISION Phase 88-24 (Req 2) — CLOSED 2026-08-05 by the owner ruling above.
                     Kept as the evidence trail for how that ruling was reached. ORIGINAL: the
                     type-scale sweep SAW this heading and LEFT IT. `text-2xl` (24) is outside
@@ -4435,23 +4440,27 @@ export default function GameDetailPage() {
                     conflict carried an OWNER rather than being silently "fixed" away by a later
                     gate. That escalation is what produced the ruling above: the deferral worked
                     exactly as designed, and is now RESOLVED. */}
-                <div className="flex justify-between items-center mb-4">
-                    <Heading level={2} size="heading" className="text-content-primary">Reviews{reviewsLoadState.showError ? '' : ` (${reviews.length})`}</Heading>
+                {/* Phase 89.6-29 (game-rows): the house row; the decision is the game-rows marker at the session card. */}
+                <div className="bb-row items-center gap-x-0 mb-4">
+                    <Heading level={2} size="heading" className="bb-row-text text-content-primary">Reviews{reviewsLoadState.showError ? '' : ` (${reviews.length})`}</Heading>
                     {user && !userReview && userRole && userRole !== 'pending' && (
-                        <Button
-                            variant="primary"
-                            onClick={() => setShowReviewForm(true)}
-                        >
-                            Add Review
-                        </Button>
+                        <div className="bb-row-end">
+                            <Button
+                                variant="primary"
+                                onClick={() => setShowReviewForm(true)}
+                            >
+                                Add Review
+                            </Button>
+                        </div>
                     )}
                 </div>
 
                 {/* User's Review (if exists) */}
                 {userReview && (
                     <div className="border-l-4 border-btn-primary pl-4 py-2 mb-4 relative">
-                        <div className="flex justify-between items-start mb-2">
-                            <div>
+                        {/* Phase 89.6-29 (game-rows): the house row; the decision is the game-rows marker at the session card. */}
+                        <div className="bb-row items-start justify-between gap-x-0 mb-2">
+                            <div className="bb-row-text">
                                 <p className="font-bold text-content-primary">
                                     {userReview.User?.id ? (
                                         <ClickableMemberName userId={userReview.User.id} username={userReview.User.username || 'You'} />
@@ -4463,7 +4472,7 @@ export default function GameDetailPage() {
                                     {formatDate(userReview.createdAt, timezone)}
                                 </p>
                             </div>
-                            <div className="text-right">
+                            <div className="bb-row-end block text-right">
                                 {/* DECISION Phase 88.9-56 (owner ruling R-C5, 2026-11-10; the DEC-2 / R-P2 ink of plan 88.9-44), for this star
                                     paragraph and the other reviews' one below: the rating ink is yellow-800 in light and yellow-500 in dark —
                                     written here in prose, never as the class pair, so the miniPicks count of the class literal stays exact
@@ -4510,10 +4519,11 @@ export default function GameDetailPage() {
                                 const isUserReview = !!selfUuid && review.User?.id === selfUuid;
                                 return (
                                     <div key={review.id} className="border-l-4 border-line pl-4 py-2">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <p className="font-bold text-content-primary">
+                                        {/* Phase 89.6-29 (game-rows): the house row; the decision is the game-rows marker at the session card. */}
+                                        <div className="bb-row items-start justify-between gap-x-0 mb-2">
+                                            <div className="bb-row-text">
+                                                <div className="bb-row items-center gap-2">
+                                                    <p className="font-bold text-content-primary max-w-full wrap-break-word">
                                                         {review.User?.id ? (
                                                             <ClickableMemberName userId={review.User.id} username={review.User.username || 'Unknown'} />
                                                         ) : (
@@ -4530,7 +4540,7 @@ export default function GameDetailPage() {
                                                     {formatDate(review.createdAt, timezone)}
                                                 </p>
                                             </div>
-                                            <div className="text-right">
+                                            <div className="bb-row-end block text-right">
                                                 <p className="text-yellow-800 dark:text-yellow-500 text-xl">
                                                     <span role="img" aria-label={`Rated ${drawnRating(review.rating)} out of 5`}>{renderStars(review.rating)}</span>
                                                 </p>

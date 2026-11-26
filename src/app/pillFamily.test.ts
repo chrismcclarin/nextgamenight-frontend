@@ -283,8 +283,10 @@ describe('Phase 88.9-63 (X16 / X17a): one pill family, sentence case, names 600'
     // (No reply on the Participants chip is a neutral no-break pill too, so this one is read whole.)
     const NEW_PLAYER = 'text-xs whitespace-nowrap bg-surface-pill-neutral text-content-pill-neutral px-1.5 py-0.5 rounded-sm font-bold';
     expect(chunks.filter((text) => text === NEW_PLAYER), 'New Player is one neutral pill that never breaks').toHaveLength(1);
+    // Phase 89.6-29: the name piece also wraps its own items, holds each to the chip and gives the name a 0px basis
+    // (src/app/gameDetail/page.js ("AMENDED Phase 89.6-29 (game-rows): the name piece is a small house row")).
     expect(
-      chunks.filter((text) => text === 'inline-flex items-center gap-1 min-w-0 font-semibold break-words'),
+      chunks.filter((text) => text === 'inline-flex flex-wrap items-center gap-1 min-w-0 font-semibold break-words [&>*]:max-w-full [&>:first-child]:flex-[1_1_0px]'),
       'the past-session chip name is 600 and wraps instead of being cut',
     ).toHaveLength(1);
   });

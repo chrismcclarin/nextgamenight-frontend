@@ -200,8 +200,9 @@ async function twoFrames(page: Page): Promise<void> {
 
 /**
  * The page boxes of the game view's rows, each as name=left,top,width,height (page coordinates,
- * two decimals): the breadcrumb's pieces, Show More, each session's date, duration and actions,
- * the Reviews heading and Add Review, and each review's name line, date, stars, Recommended and Edit.
+ * two decimals): the breadcrumb's pieces, Show More, each session's date, duration, actions and
+ * participant chips, the Reviews heading and Add Review, and each review's name line, date, stars,
+ * Recommended and Edit.
  */
 export async function gameRowBoxes(page: Page): Promise<string[]> {
   return page.getByRole('main').evaluate((main) => {
@@ -229,6 +230,11 @@ export async function gameRowBoxes(page: Page): Promise<string[]> {
       Array.from(row.querySelectorAll('button[aria-label="Session actions"], button[title="Edit this session"], button[title="Delete this session"]'))
         .filter(visible)
         .forEach((el, n) => add(`s${at}.action${n}`, el));
+      // Each participant chip of the session, and the pieces of its name (the name, its tag or its friend control).
+      Array.from(row.parentElement?.querySelectorAll('div.flex-wrap > span.border') ?? []).forEach((chip, n) => {
+        add(`s${at}.chip${n}`, chip);
+        Array.from(chip.firstElementChild?.children ?? []).forEach((piece, m) => add(`s${at}.chip${n}.name${m}`, piece));
+      });
     });
     const reviewsHeading = Array.from(main.querySelectorAll('h2')).find((h) => (h.textContent ?? '').startsWith('Reviews'));
     add('reviews.heading', reviewsHeading);
