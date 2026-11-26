@@ -329,6 +329,24 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     expect(row.firstElementChild).toHaveClass('shrink-0', 'w-8', 'h-8');
   });
 
+  // 89.6-18 (owner pick O-9a = B, 2026-11-22: "Keep the grey box and add a thin edge, so it shows
+  // on both rows"; owner S2 "Drop", first look 2026-11-22, HR-5): the no-picture stand-in keeps its
+  // muted ground and gains a line-strong edge, so it still shows on a ticked row; the well drops at
+  // large text by a 14rem container variant on the row list; a real picture loads lazily.
+  it('O-9a and S2 (89.6-18): the stand-in keeps its muted box with a line-strong edge; the well carries the large-text drop; the list is a media container', async () => {
+    render(<Host initiallyOpen />);
+    await settleOnRows();
+    const azul = screen.getByRole('checkbox', { name: 'Azul' });
+    expect(azul).toHaveAttribute('aria-checked', 'true');
+    const well = azul.firstElementChild as HTMLElement;
+    expect(well).toHaveClass('shrink-0', '@max-[14rem]:hidden');
+    const standIn = well.firstElementChild as HTMLElement;
+    expect(standIn).toHaveClass('bg-surface-muted', 'border', 'border-line-strong');
+    expect(azul.parentElement).toHaveClass('bb-media');
+    const catanWell = screen.getByRole('checkbox', { name: 'Catan' }).firstElementChild as HTMLElement;
+    expect(catanWell.querySelector('img')).toHaveAttribute('loading', 'lazy');
+  });
+
   it('3. the search control carries id + name + a label source (house rule Input.tsx:11-19)', async () => {
     render(<Host initiallyOpen />);
     await settleOnRows();
@@ -494,7 +512,8 @@ describe('BringGamePicker — the defects axe cannot see (T-88.6-124 / T-88.6-14
     expect(tokens, 'the line still sits 12px below the list box (20 under the last row)').toContain('pt-1');
     expect(tokens, 'the line still touches the footer rule').toContain('pb-3');
     expect(tokens).not.toContain('pt-3');
-    expect(tokens).toContain('px-4');
+    // AMENDED 89.6-18 (gutters, HR-9): the side gutter is the page edge token, 16px at every text size.
+    expect(tokens).toContain('px-edge-page');
     // The list box above it keeps its 8px bottom padding: 8 + 4 is the 12 under the last row.
     const listBox = lines[0].previousElementSibling?.querySelector('.overflow-y-auto');
     expect(listBox, 'the list box is not the line\'s previous neighbour').not.toBeNull();

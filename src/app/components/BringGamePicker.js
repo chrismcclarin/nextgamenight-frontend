@@ -363,7 +363,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
           message={identityFailed ? IDENTITY_FAILURE_LINE : assertiveAnnouncement}
         />
         {/* Search */}
-        <div className="shrink-0 p-4 pb-2">
+        <div className="shrink-0 p-edge-page pb-2">
           {/* DECISION Phase 88.6-44 (T-88.6-124, house rule src/components/ui/Input.tsx ("HOUSE RULE (88-33 Task 8, fork 5")): `id` + `name` +
               an ARIA-supplied name, chosen OVER a visible <label> row above the field. The
               house rule allows `aria-label` alone only where a visible label genuinely cannot
@@ -386,7 +386,12 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
         </div>
 
         {/* Game List */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
+        {/* DECISION Phase 89.6-18 (gutters): the search, list and failed-save gutters are the page edge
+            token (HR-9, owner pick O-M1 = D, thin edges): 16px at normal text, pixel-identical, and
+            still 16px at 200%, chosen OVER the rem gutters that doubled to 32px at 200% in a phone
+            dialog; the list keeps a small scroll padding so a focused row is not scrolled flush to
+            its edge. Changing this is a decision, not a cleanup. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-edge-page pb-2 scroll-p-2">
           {failureLine ? (
             /* Phase 88.6-44 (T-88.6-142): the load-FAILURE branch, checked BEFORE the empty
                branch (UI-SPEC §6.2: an empty state must never render on a fetch failure). Until
@@ -418,7 +423,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
               <p className="text-content-muted text-sm">No games match your search</p>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-1 bb-media">
               {filteredGames.map(item => {
                 const game = item.Game || item;
                 const gameId = game.id;
@@ -473,7 +478,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                         well colour — the same ground as the `?` glyph branch below — so the
                         broken-URL fallback loses nothing visible; src/app/components/QuickSuggestions.js ("also routes") (`getColorFromText`)
                         records the same routing.) */}
-                    <div aria-hidden="true" className="w-8 h-8 rounded-sm shrink-0 overflow-hidden bg-surface-muted">
+                    <div aria-hidden="true" className="w-8 h-8 rounded-sm shrink-0 overflow-hidden bg-surface-muted @max-[14rem]:hidden">
                       {thumbnail ? (
                         <SafeImage
                           src={thumbnail}
@@ -481,9 +486,10 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                           width={32}
                           height={32}
                           className="w-8 h-8 object-cover rounded-sm"
+                          loading="lazy"
                         />
                       ) : (
-                        <div className="w-8 h-8 bg-surface-muted rounded-sm flex items-center justify-center">
+                        <div className="w-8 h-8 bg-surface-muted rounded-sm flex items-center justify-center border border-line-strong">
                           {/* DECISION Phase 88.6-33 (D-16, owner ruling ARM A 2026-09-16):
                               `text-content-secondary` (6.9620) over `text-content-muted`
                               (4.3725) — this glyph sits on a CERTAIN `bg-surface-muted` ground
@@ -495,7 +501,16 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                               affordance to fix the contrast.
                               The `?` is ICON sizing (D-02) — `text-xs` stays and is never
                               converged onto the type scale. Going back to `text-content-muted`
-                              is a decision, not a cleanup. */}
+                              is a decision, not a cleanup.
+                              AMENDED Phase 89.6-18 (O-9a): owner pick O-9a = B (2026-11-22, "Keep
+                              the grey box and add a thin edge, so it shows on both rows"). The
+                              muted ground still IS the missing-picture mark (its CONSEQUENCE above
+                              is kept), and the box gains a 1px line-strong edge, 2.73 light / 2.79
+                              dark on the ticked row's muted ground (research Q F8), so the stand-in
+                              still shows on a ticked row, whose ground is the same muted colour.
+                              The "?" carries the meaning, so WCAG 1.4.11 does not bind the edge.
+                              CHOSEN OVER pick C (the card ground on ticked rows, which bends D-16).
+                              Changing this is a decision, not a cleanup. */}
                           <span className="text-content-secondary text-xs">?</span>
                         </div>
                       )}
@@ -537,7 +552,14 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                         below their sizes. NOT DECIDED HERE, the owner's call: at that size the
                         decorative thumbnail sits on a line of its own; not drawing it at large
                         text (his Play history ruling, R4 C3) would save that line. At ordinary
-                        text with an ordinary name nothing moves (gap-y-1 only shows once wrapped). */}
+                        text with an ordinary name nothing moves (gap-y-1 only shows once wrapped).
+                        AMENDED Phase 89.6-18 (S2): the question NOT DECIDED HERE above is decided,
+                        "Drop" (the owner's first look, 2026-11-22; HR-5, the name is the picture's
+                        text twin): the thumbnail well drops when the row list is narrower than
+                        14rem (picture 2rem + 1rem + 10rem + the row's 1rem padding), a container
+                        query on the list; the list's inside at 320 / 100% is 264px (16.5rem), so
+                        nothing changes at normal text. A real picture loads lazily, so a dropped
+                        one is not downloaded. Changing this is a decision, not a cleanup. */}
                     <div className="flex-1 max-w-full">
                       <p id={`bring-game-name-${gameId}`} className="text-sm font-normal text-content-primary wrap-break-word">{gameName}</p>
                       {othersCount > 0 && (
@@ -585,7 +607,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
           the last row; the 12px below keeps the sentence off the footer's top rule. Measured at
           375 in e2e/games-to-bring-picker-phone.spec.ts ("X62 (88.9-69): after a failed save the line sits midway"). */}
       {saveFailureLine ? (
-        <p className="text-sm text-content-status-error px-4 pt-1 pb-3">{saveFailureLine}</p>
+        <p className="text-sm text-content-status-error px-edge-page pt-1 pb-3">{saveFailureLine}</p>
       ) : null}
 
       {/* Footer */}
@@ -593,7 +615,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
         <button
           type="button"
           onClick={handleClose}
-          className="text-sm text-content-muted hover:text-content-secondary transition-colors"
+          className="text-sm text-content-muted hover:text-content-secondary transition-colors px-1 -mx-1"
         >
           Skip for now
         </button>
