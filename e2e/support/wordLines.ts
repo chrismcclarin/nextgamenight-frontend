@@ -482,6 +482,19 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
       return null;
     };
 
+    // DECISION Phase 89.6-40 (D29, orchestrator-ruled change to plan 02's read): an SVG text is
+    // measured at its DRAWN size, its font size times its vertical screen scale (getScreenCTM),
+    // chosen OVER the computed font size, which is in user units an icon's viewBox scales (the
+    // landing logo's letter, 15 units in an 80px icon of a 40-unit viewBox, is drawn at 30px and
+    // read as 15px, shrunk), and OVER a sixth exception (a read that measures the wrong size would
+    // mislead on every SVG text). Every other text is read exactly as before. Changing this is a
+    // decision, not a cleanup.
+    const drawnFontSize = (el: Element): number => {
+      const size = px(getComputedStyle(el).fontSize);
+      if (!(el instanceof SVGGraphicsElement)) return size;
+      const m = el.getScreenCTM();
+      return m ? size * Math.hypot(m.c, m.d) : size;
+    };
     for (const el of textElements) {
       if (excepted(el)) continue;
       const box = boxOf(el);
@@ -496,7 +509,7 @@ function largeTextPageRead(rootEl: Element, arg: LargeTextPageArg): LargeTextPag
           break;
         }
       }
-      if (px(getComputedStyle(el).fontSize) < 0.75 * rootFontSize - 0.01) addCut('shrunk', el);
+      if (drawnFontSize(el) < 0.75 * rootFontSize - 0.01) addCut('shrunk', el);
       const rects = words.filter((w) => w.el === el).flatMap((w) => w.rects);
       if (clippedBy(el, rects, 'x') || clippedBy(el, rects, 'y')) addCut('hidden', el);
     }
