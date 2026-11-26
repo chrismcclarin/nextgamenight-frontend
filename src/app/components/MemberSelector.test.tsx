@@ -183,3 +183,29 @@ describe('MemberSelector — the member error is announced and tied to its group
     expect(screen.getByRole('alert')).toBe(second);
   });
 });
+
+// Phase 89.6-24, GR (owner 2026-11-22: 'A row stays a row while everything in it fits whole. When it
+// does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking.'). Each member
+// label is the shared bb-row block with its centre alignment kept, and the name is the block's text
+// slot, so a long name wraps by words and a name with no break breaks inside the list instead of
+// pushing it sideways (HR-1). The block's 0.75rem column gap is zeroed (gap-x-0), so the checkbox's
+// own 8px margin stays the only space before the name, level with the Select All text as today.
+// jsdom lays nothing out: class pins; the sweep row D25-members measures the names
+// (e2e/support/largeTextSurfaces/event.ts ("starts ${r1(read.name - read.checkbox)}px after its checkbox")).
+describe('89.6-24 GR — a long member name wraps inside the picker', () => {
+  it('89.6-24 GR: each member label is a bb-row that keeps items-center; the name is bb-row-text', () => {
+    render(<Harness initial={[]} />);
+    for (const name of ['Ann', 'Bob']) {
+      const checkbox = screen.getByRole('checkbox', { name });
+      const label = checkbox.closest('label') as HTMLElement;
+      const tokens = label.className.split(/\s+/);
+      expect(tokens, `${name}: the label`).toEqual(expect.arrayContaining(['bb-row', 'items-center', 'gap-x-0', 'py-1']));
+      expect(tokens, `${name}: the label`).not.toContain('flex');
+      expect(checkbox.className.split(/\s+/), `${name}: the checkbox keeps its 8px margin`).toContain('mr-2');
+      const text = screen.getByText(name, { exact: true });
+      expect(text.parentElement).toBe(label);
+      expect(text.className.split(/\s+/), `${name}: the name`).toEqual(expect.arrayContaining(['bb-row-text', 'text-content-secondary']));
+      expect(Array.from(label.children).indexOf(checkbox), `${name}: the checkbox comes first`).toBe(0);
+    }
+  });
+});

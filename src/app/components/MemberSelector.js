@@ -76,7 +76,15 @@ export default function MemberSelector({
             name="selected_member_ids"
             control={control}
             render={({ field }) => (
-              <label className="flex items-center py-1">
+              /* DECISION Phase 89.6-24 (member-row): bb-row with items-center kept, so a long name
+                 wraps by words and an unbroken one breaks inside the list (HR-1), chosen OVER
+                 truncating the name and OVER a min-w-0 squeeze (HR-2). gap-x-0 keeps the checkbox
+                 mr-2 as the only space (8px, level with Select All), chosen OVER the block's 0.75rem
+                 column gap, which would add to it. GR (owner 2026-11-22: 'A row stays a row while
+                 everything in it fits whole. When it does not, items stack. Nothing is squeezed,
+                 shrunk, cut or broken to avoid stacking.'). Normal text unchanged. Changing this is
+                 a decision, not a cleanup. */
+              <label className="bb-row items-center gap-x-0 py-1">
                 <input
                   id={`member-select-${member.id}`}
                   name={`member-select-${member.id}`}
@@ -95,7 +103,7 @@ export default function MemberSelector({
                   }}
                   className="mr-2 h-4 w-4 rounded-sm border-line"
                 />
-                <span className="text-content-secondary">
+                <span className="bb-row-text text-content-secondary">
                   {/* 87.4 review PR2-L5: never render a raw identifier as a label —
                       a username-less member falls back to 'Member', not their UUID. */}
                   {member.display_name || member.username || member.email || 'Member'}
