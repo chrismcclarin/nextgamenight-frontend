@@ -76,7 +76,7 @@ const NOTIFICATION_TYPES = [
 ];
 
 const REMINDER_WINDOWS = [
-    { value: 0.5, label: '30 minutes before' },
+    { value: 0.5, label: '30 min before' },
     { value: 1, label: '1 hour before' },
     { value: 2, label: '2 hours before' },
     { value: 24, label: '1 day before' },
@@ -2711,7 +2711,7 @@ function Profile(){
                                         <p className="text-xs text-content-muted">{username.length}/50</p>
                                     </div>
                                 ) : (
-                                    <div className="flex items-center gap-2">
+                                    <div className="bb-cluster items-center gap-2">
                                         {/* DECISION Phase 88.6-17 (A-1): the page title's `truncate` is
                                             DROPPED, chosen OVER keeping a single-line clip. `Heading`'s
                                             cva base carries `wrap-anywhere`, so a call-site `truncate`
@@ -2731,7 +2731,8 @@ function Profile(){
                                             the rest; wrapping shows all of it and costs one line.
                                             Re-adding `truncate` here is a decision, not a cleanup —
                                             `Heading.tsx`'s own docblock names this site as an owner of
-                                            that call. */}
+                                            that call.
+                                            AMENDED Phase 89.6-22 (profile-title): Heading's base is now wrap-break-word max-w-full (plan 89.6-06), which no longer lowers min-content, so the reasoning above about this flex parent is replaced: the title row is a bb-cluster, the pencil moves under the name before a word breaks, and a word breaks only when it alone is wider than the line (HR-1). The truncate stays dropped. (Measured: in CI run 45749612119 the pencil was the outermost element past the window in every R16-availability cell, the page 240px wide sideways at 320 / 200%.) */}
                                         <Heading ref={profileHeadingRef} level={1} size="display" className="text-content-primary">
                                             {userData?.username || user.name}
                                         </Heading>
@@ -3286,6 +3287,7 @@ function Profile(){
                                         : 'Connect your Google Calendar to automatically add future game events'}
                                 </p>
                             </div>
+                            {/* DECISION Phase 89.6-22 (labels-wrap): a multi-word button label wraps by whole words when its own line is too narrow, chosen OVER a call-site nowrap (it pushed the page sideways at 320 / 200%) and OVER a shorter label (unratified copy). At normal text every label fits its line, unchanged. GR (owner, 2026-11-22). Changing this is a decision, not a cleanup. */}
                             {selfFailedWithNothingCached ? (
                                 // WR-03: identity failed terminally (no row) — the status
                                 // check never ran; show the degrade notice, not a
@@ -3306,7 +3308,6 @@ function Profile(){
                                 <Button
                                     variant="primary"
                                     onClick={handleConnectGoogleCalendar}
-                                    className="whitespace-nowrap"
                                 >
                                     {/* DECISION Phase 88-22 (Req 2), re-affirmed 88-19: Google
                                         LOGO ART — the four brand fills stay raw in every
@@ -3432,9 +3433,10 @@ function Profile(){
                         the old key here kept the old hover on these two buttons alone. The pressed arm is
                         untouched (THEME_TOGGLE_PRESSED holds its muted fill through hover). In light a
                         hovered unpressed toggle is 1.0902 from the pressed fill; the
-                        accent border, the accent ink and the check glyph still tell the two apart. */}
+                        accent border, the accent ink and the check glyph still tell the two apart.
+                        AMENDED Phase 89.6-22 (theme-row): the two toggles are a bb-cluster: side by side while both fit, the second under the first when they do not (two 8rem buttons need about 536px against a 270px row at 320 / 200%), chosen OVER shrinking min-w-32 (P1) and OVER a scrolling row (GR, owner 2026-11-22). The shared width (E4a) and the glyph reserve (X57) are unchanged; N48's centring is plan 89.6-27's. */}
                     {themeMounted ? (
-                        <div className="flex gap-3">
+                        <div className="bb-cluster gap-3">
                             <Button
                                 variant="ghost"
                                 onClick={() => setTheme('light')}
@@ -3698,8 +3700,9 @@ function Profile(){
                                 </div>
 
                                 {/* Reminder timing dropdown */}
+                                {/* DECISION Phase 89.6-22 (O-M3-profile): the reminder row wraps instead of pushing the page sideways (the select overflowed a 320 / 200% card row), chosen OVER a radio list (the owner kept native selects) and OVER a shrunken select (16px stops iOS zoom, 44px is the phone floor: DECISION Phase 88-03). The first choice reads 30 min before, the owner's words ('30 min before is accepted rewording.'), so every choice fits its own line at 320 / 200%. GR (owner, 2026-11-22). Changing this is a decision, not a cleanup. */}
                                 {type.key === 'reminder' && (
-                                    <div className="mt-2 ml-0 sm:ml-4 flex items-center gap-2">
+                                    <div className="mt-2 ml-0 sm:ml-4 bb-cluster items-center gap-2">
                                         {/* DECISION Phase 88.9-68 (X55, owner at N37: Probably reduce button and text size?): the label rises to Label 14 in primary ink, chosen OVER shrinking the select (16px so iOS does not zoom, DECISION Phase 88-03; 44px on phones; no compact select exists) and OVER Body 16 (UI-SPEC's type roles put field labels at Label 14, R2-14). Owner look owed. */}
                                         <span className="text-sm text-content-primary">Remind me:</span>
                                         {/* The adjacent "Remind me:" span is NOT associated with
@@ -3713,7 +3716,8 @@ function Profile(){
                                             row and push its status indicator onto a second line
                                             at phone width. Everything else — the 16px floor, the
                                             44px phone touch height, the ring — comes from the
-                                            primitive and must not be re-inlined here. */}
+                                            primitive and must not be re-inlined here.
+                                            AMENDED Phase 89.6-22 (O-M3-profile): owner pick O-M3 = A+, 2026-11-22 ('Keep the drop-downs. When one does not fit beside its label it drops to its own row'): the row is a bb-cluster, so w-auto stands as the select's natural width up to the row (the cluster caps every child at 100%), and the select moves to its own line only when it does not fit beside Remind me:. At 375 with normal text the row is unchanged and Saving... stays on its line. */}
                                         <SelectControl
                                             id="reminder-window"
                                             name="reminder-window"
@@ -3937,8 +3941,9 @@ function Profile(){
                                             REQUIRES Safari 16+ / Chrome 117+. Below that, `grid-rows-subgrid` is
                                             ignored and the rows render exactly as they do today — the un-fixed
                                             layout, not a broken one. Replacing this with fixed heights or absolute
-                                            positioning is a decision, not a cleanup. */}
-                                        <div className="grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]">
+                                            positioning is a decision, not a cleanup.
+                                            AMENDED Phase 89.6-22 (form-columns): the two columns are auto-fit tracks of at least 6rem, so they stay side by side while both fit (every phone width at normal text: about 113px each at 320) and the second cell moves under the first when they do not (at 320 / 200% When you become unavailable spilled 6px out of its 113px column, CI run 45749612119), chosen OVER breaking the hint words (a split word) and OVER a smaller hint (P1). GR (owner, 2026-11-22). The subgrid stands: stacked, the second cell takes three more auto tracks. The same three grids (times, dates, override times) carry it. */}
+                                        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))] gap-3 grid-rows-[auto_auto_auto]">
                                             <div className="grid grid-rows-subgrid row-span-3">
                                                 <label htmlFor="recurring-start-time" className="block text-sm text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <Input
@@ -3991,7 +3996,7 @@ function Profile(){
                                             REJECTED — an inline error for the typed path, for the same P1
                                             reason recorded at the gameDetail pair; routed to Phase 88.9
                                             with a row in `.planning/deferred/phase-88.6.md`. */}
-                                        <div className="grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]">
+                                        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))] gap-3 grid-rows-[auto_auto_auto]">
                                             <div className="grid grid-rows-subgrid row-span-3">
                                                 <label htmlFor="recurring-start-date" className="block text-sm text-content-secondary mb-1">Start Date</label>
                                                 <Input
@@ -4212,7 +4217,7 @@ function Profile(){
                                         </div>
                                         {/* Same subgrid row alignment as the Schedules tab — see the
                                             DECISION Phase 88.6-30 marker at the recurring form's time row. */}
-                                        <div className="grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]">
+                                        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))] gap-3 grid-rows-[auto_auto_auto]">
                                             <div className="grid grid-rows-subgrid row-span-3">
                                                 <label htmlFor="specific-start-time" className="block text-sm text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <Input

@@ -591,7 +591,9 @@ describe('userProfile availability settings', () => {
 
       // The container supplies the tracks the cells adopt. Without these,
       // `grid-rows-subgrid` below has nothing to inherit and does nothing.
-      expect(row.className).toContain('grid-cols-2');
+      // AMENDED Phase 89.6-22 (form-columns): the column list is auto-fit tracks of at least 6rem
+      // (two columns at every phone width with normal text, stacked at large text); it was grid-cols-2.
+      expect(row.className).toContain('grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))]');
       expect(
         row.className,
         'the row lost its explicit track list — subgrid on the cells is inert without it'
@@ -7567,5 +7569,74 @@ describe('profile page name, one source (88.9-52 R3)', () => {
     expect(count(src, 'srHeading={PROFILE_PAGE_NAME}'), 'the signed-out frame and the session-expired frame').toBe(2);
     expect(count(src, '>{PROFILE_PAGE_NAME}</span>'), 'the breadcrumb current-page crumb').toBe(1);
     expect(count(src, '>Profile</span>'), 'a hand-typed crumb').toBe(0);
+  });
+});
+
+// Phase 89.6-22 (Profile part 1 at large text, SPEC R4 / R10). The fixes the sweep rows of
+// e2e/support/largeTextSurfaces/profileA.ts found, pinned at the class level: jsdom lays nothing
+// out, so the widths themselves are read by those rows in CI.
+describe('Phase 89.6-22 — Profile part 1 at large text', () => {
+  const classesOf = (el: Element | null): string[] => (el?.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+
+  // O-M3 A+ (owner 2026-11-22: Keep the drop-downs. When one does not fit beside its label it drops
+  // to its own row; 30 min before is accepted rewording).
+  it('89.6-22 O-M3 A+: the reminder row is a bb-cluster that keeps items-center, the select keeps w-auto, and the first choice reads 30 min before', async () => {
+    renderProfile();
+    const select = await screen.findByRole('combobox', { name: 'Remind me' });
+    const row = classesOf(select.parentElement);
+    for (const kept of ['bb-cluster', 'items-center', 'gap-2']) expect(row).toContain(kept);
+    expect(row).not.toContain('flex');
+    expect(classesOf(select)).toContain('w-auto');
+    const options = within(select).getAllByRole('option');
+    expect(options[0].textContent).toBe('30 min before');
+    expect(options[0]).toHaveAttribute('value', '0.5');
+  });
+
+  // GR (owner 2026-11-22: A row stays a row while everything in it fits whole. When it does not, items stack.)
+  it('89.6-22 GR: the theme toggles sit in a bb-cluster row with gap-3 and keep min-w-32', async () => {
+    renderProfile();
+    const light = await screen.findByRole('button', { name: 'Light' });
+    const dark = screen.getByRole('button', { name: 'Dark' });
+    expect(light.parentElement).toBe(dark.parentElement);
+    const row = classesOf(light.parentElement);
+    expect(row).toContain('bb-cluster');
+    expect(row).toContain('gap-3');
+    expect(row).not.toContain('flex');
+    expect(classesOf(light)).toContain('min-w-32');
+    expect(classesOf(dark)).toContain('min-w-32');
+  });
+
+  it('89.6-22 GR: Connect Google Calendar carries no call-site whitespace-nowrap', async () => {
+    renderProfile();
+    const connect = await screen.findByRole('button', { name: /Connect Google Calendar/ });
+    expect(classesOf(connect)).not.toContain('whitespace-nowrap');
+    // The label still wraps inside the Button's own bb-label span (plan 89.6-06).
+    expect(within(connect).getByText('Connect Google Calendar').className).toContain('bb-label');
+  });
+
+  // GR on the title row (CI run 45749612119: the pencil was the outermost element past the window in
+  // every R16-availability cell). The marker is the AMENDED Phase 89.6-22 (profile-title) line on A-1.
+  it('89.6-22 GR: the title and its pencil sit in a bb-cluster that keeps items-center and gap-2', async () => {
+    renderProfile();
+    const title = await screen.findByRole('heading', { level: 1, name: 'Self' });
+    const row = classesOf(title.parentElement);
+    for (const kept of ['bb-cluster', 'items-center', 'gap-2']) expect(row).toContain(kept);
+    expect(row).not.toContain('flex');
+    expect(within(title.parentElement as HTMLElement).getByRole('button', { name: /edit/i })).toBeInTheDocument();
+  });
+
+  // GR on the New Schedule and override forms: the two columns are auto-fit tracks (CI run 45749612119:
+  // When you become unavailable spilled out of its 113px column at 320 / 200%).
+  it('89.6-22 GR: the two-column form rows are auto-fit tracks of at least 6rem, subgrid kept', async () => {
+    renderProfile();
+    await userEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    const label = await screen.findByText('Available From (Start Time)');
+    const grid = label.parentElement?.parentElement ?? null;
+    expect(classesOf(label.parentElement)).toContain('grid-rows-subgrid');
+    expect(classesOf(grid)).toContain('grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))]');
+    expect(classesOf(grid)).not.toContain('grid-cols-2');
+    const source = await pageSource();
+    expect(source.split('grid grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))] gap-3 grid-rows-[auto_auto_auto]').length - 1).toBe(3);
+    expect(source).not.toContain('grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]');
   });
 });

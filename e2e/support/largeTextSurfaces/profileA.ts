@@ -88,7 +88,10 @@ async function recordOffenders(page: Page, label: string): Promise<void> {
   const offenders = await offendersOf(page);
   const body = JSON.stringify(offenders, null, 2);
   await test.info().attach(`offenders-${label}.json`, { body, contentType: 'application/json' });
-  process.stdout.write(`89.6-22 R16-availability offenders ${label}: ${JSON.stringify(offenders)}\n`);
+  // One short line per offender, box first: the CI log reader keeps about 260 characters of a line.
+  offenders.forEach((o, n) => {
+    process.stdout.write(`89.6-22 offender ${label} ${n + 1}/${offenders.length}: ${o.tag} right ${o.right} width ${o.width} left ${o.left} id '${o.id}' class '${o.classes.slice(0, 110)}'\n`);
+  });
 }
 
 // R16-availability: Profile, the Notification Preferences card and the availability section with the
