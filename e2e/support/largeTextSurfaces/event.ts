@@ -396,7 +396,8 @@ const reachMemberPicker: SurfaceRow['reach'] = async (page) => {
   return { root: memberPicker(dialog), dialog };
 };
 
-// D25-members extras, in cell 320x568-dark-200 only (the PR lane has no normal-text cell): after the
+// D25-members extras, in cell 320x568-dark-200 only (the PR lane holds no 375 x 667 normal-text
+// cell; AMENDED R17: since R16 it holds one at 320 x 568, which is not the size this read needs): after the
 // cell's own reads, the picker is read at normal text at 375 x 667: the first member's name starts
 // 8px (within 0.5px) after its checkbox ends, and level (within 0.5px) with the Select All text;
 // the cell's size and text are put back after. One joined line is thrown. On the tree before the

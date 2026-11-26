@@ -453,7 +453,13 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
   expect(EXCEPTIONS.filter((entry) => entry.clears === 'cut').map((entry) => entry.id), 'the cut-only exceptions, each excused its own clamp and never a sideways cut').toEqual(['A3-1', 'A10']);
 
   // The excepted list of the sideways-box check (R16): exactly these, each with the standard's reason and bound to its source.
-  expect(SIDEWAYS_BOX_EXCEPTIONS.map((entry) => entry.id), 'the sideways-box check excepts tables and grids, the three named grids and the QR code, and nothing else').toEqual(['SB-1', 'SB-2', 'SB-3', 'SB-4', 'SB-5']);
+  // R17 (2026-11-26): four entries. SB-5 (the QR code's own box) was REMOVED: it matched nothing on the real QR dialog (the box
+  // that scrolls sideways there is the dialog box, at the two page-zoom cells only, and the too-wide item is the dialog body around
+  // the code), and an exception that matches nothing is dead. The QR code's size at those widths is recorded by the L2 ruling.
+  expect(
+    SIDEWAYS_BOX_EXCEPTIONS.map((entry) => entry.id),
+    'the sideways-box check excepts tables and grids and the three named grids, and nothing else; the QR code has NO entry (SB-5 matched nothing on the real QR dialog and was removed by R17: its sideways scroll at the page-zoom widths is recorded under L2, not excepted)',
+  ).toEqual(['SB-1', 'SB-2', 'SB-3', 'SB-4']);
   for (const entry of SIDEWAYS_BOX_EXCEPTIONS) {
     expect(entry.selector.trim(), `${entry.id}: no selector`).not.toBe('');
     expect(entry.reason, `${entry.id}: its reason is not one of the standard's excepted kinds`).toMatch(/^(data tables \(not individual cells\)|images required for understanding \(such as maps and diagrams\))/);
