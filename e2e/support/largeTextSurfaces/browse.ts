@@ -11,6 +11,7 @@ import type { Locator, Page } from '@playwright/test';
 import { settleAnimations } from '../inFlight';
 import { toDialogTop } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
+import { stageNight } from './night';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
 // owns. No fallback id, as in e2e/support/largeTextSurfaces/members.ts ("No fallback id").
@@ -121,9 +122,133 @@ const browseToolbarExtras = async (page: Page, cell: SweepCell): Promise<void> =
   if (problems.length > 0) throw new Error(`D23: ${problems.join('; ')}`);
 };
 
+// GAMES TO BRING (census D28). The night page is staged by night.ts's stageNight (every member's
+// RSVP reads yes, so the Bringing control shows), and the picker's two reads, at
+// src/app/components/BringGamePicker.js ("const [gamesRes, bringsRes] = await Promise.all(["),
+// are answered by one route registered after it, so it wins
+// over the staged brings: three owned games with no pictures, and one bring of the viewer's own for
+// Weekend Warriors so a ticked row shows its stand-in. The viewer's id is read from the self read's
+// response as it passes (a listener, no route: the guard still strips its timezone parameter).
+const BRING_GAMES = [
+  { id: '89618000-0000-4000-8000-0000000000b1', name: 'E2E Bring Game', thumbnail_url: null },
+  { id: '89618000-0000-4000-8000-0000000000b2', name: 'Weekend Warriors', thumbnail_url: null },
+  { id: '89618000-0000-4000-8000-0000000000b3', name: 'Grandmasterboardgamecollective', thumbnail_url: null },
+];
+const eventPath = (): string => {
+  const path = process.env.E2E_EVENT_DETAIL_PATH ?? '';
+  if (path === '') throw new Error('E2E_EVENT_DETAIL_PATH must be set: the CI step that runs scripts/e2e-fixtures.js exports it, and the Games to Bring rows open that night');
+  return path;
+};
+let viewerId: string | null = null;
+type BringMode = 'listed' | 'empty' | 'load-failed';
+
+/** The owned-games and event-brings reads answered for the mode; undefined for every other read. */
+export const answerBringReads = (url: URL, mode: BringMode = 'listed'): unknown => {
+  if (url.pathname.startsWith('/api/user-games/user/')) return mode === 'empty' ? [] : BRING_GAMES;
+  if (url.pathname.startsWith('/api/event-brings/event/')) {
+    if (viewerId === null) return [];
+    const game = BRING_GAMES[1];
+    return [{ id: '89618000-0000-4000-8000-0000000000c1', user_id: viewerId, game_id: game.id, Game: { id: game.id, name: game.name }, User: { id: viewerId, username: 'E2E viewer' } }];
+  }
+  return undefined;
+};
+
+// One set of routes per page: the sweep runs a reach again on the same page for the light cell, and
+// a page's routes outlive its navigations. failing is set only after the night page has loaded
+// (D28-load-failed: airplane mode once the page is up, SPEC A4, no seed change) and cleared before
+// each navigation, so the page's own Bringing read is never the one aborted.
+const bringStaged = new WeakMap<Page, { failing: boolean }>();
+async function stageBring(page: Page, mode: BringMode): Promise<{ failing: boolean }> {
+  const known = bringStaged.get(page);
+  if (known) {
+    known.failing = false;
+    return known;
+  }
+  const state = { failing: false };
+  bringStaged.set(page, state);
+  page.on('response', async (response) => {
+    const url = new URL(response.url());
+    if (response.request().method() !== 'GET' || !/^\/api\/users\/[^/]+$/.test(url.pathname) || !response.ok()) return;
+    try {
+      const body = (await response.json()) as { id?: unknown };
+      if (typeof body?.id === 'string') viewerId = body.id;
+    } catch {
+      // Not JSON: the brings answer then holds no row of the viewer's.
+    }
+  });
+  await stageNight(page);
+  await page.route(
+    (url) => url.pathname.startsWith('/api/user-games/user/') || url.pathname.startsWith('/api/event-brings/event/'),
+    async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      if (state.failing) {
+        await route.abort('failed');
+        return;
+      }
+      await route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, json: answerBringReads(new URL(route.request().url()), mode) });
+    },
+  );
+  return state;
+}
+
+const bringDialog = (page: Page): Locator => page.getByRole('dialog', { name: 'Games to Bring', exact: true });
+
+/** The staged night, the Bringing section's control, the picker open and settled; read from its top. */
+async function openGamesToBring(page: Page, mode: BringMode): Promise<{ root: Locator; dialog: Locator }> {
+  const state = await stageBring(page, mode);
+  await page.goto(eventPath());
+  const heading = page.getByRole('heading', { name: 'Bringing', exact: true });
+  await heading.waitFor({ state: 'visible', timeout: 15_000 });
+  const control = heading.locator('xpath=..').getByRole('button', { name: /^(Add games|Edit)$/ });
+  await control.waitFor({ state: 'visible', timeout: 15_000 });
+  if (mode === 'load-failed') state.failing = true;
+  await control.click();
+  const dialog = bringDialog(page);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  if (mode === 'listed') await dialog.getByRole('checkbox', { name: 'Weekend Warriors', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  if (mode === 'empty') await dialog.getByText("You haven't added any games to your collection yet.", { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  if (mode === 'load-failed') await dialog.locator('p.text-content-status-error').first().waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(dialog);
+  await toDialogTop(dialog);
+  return { root: dialog, dialog };
+}
+const reachGamesToBring: SurfaceRow['reach'] = (page) => openGamesToBring(page, 'listed');
+const reachBringEmpty: SurfaceRow['reach'] = (page) => openGamesToBring(page, 'empty');
+const reachBringFailed: SurfaceRow['reach'] = (page) => openGamesToBring(page, 'load-failed');
+
+// D28 extras: Save can be reached (scrolled into view, inside the dialog box). Read-only: the
+// button is never pressed. The dialog is put back at its top for the next cell.
+const saveReachable = async (page: Page): Promise<void> => {
+  const dialog = bringDialog(page);
+  const save = dialog.getByRole('button', { name: 'Save', exact: true });
+  await save.scrollIntoViewIfNeeded();
+  const read = await save.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const d = (el.closest('[role="dialog"]') as HTMLElement).getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, dTop: d.top, dBottom: d.bottom, dLeft: d.left, dRight: d.right, vh: window.innerHeight };
+  });
+  await toDialogTop(dialog);
+  const line = JSON.stringify(read);
+  if (read.top < read.dTop - 0.5 || read.bottom > read.dBottom + 0.5 || read.left < read.dLeft - 0.5 || read.right > read.dRight + 0.5) throw new Error(`D28: Save is not inside the dialog once scrolled to (${line})`);
+  if (read.top < -0.5 || read.bottom > read.vh + 0.5) throw new Error(`D28: Save cannot be scrolled into the window (${line})`);
+};
+// D28-load-failed extras: the failure line is visible and Save is disabled (A03's branch, staged).
+const failedBranchHolds = async (page: Page): Promise<void> => {
+  const dialog = bringDialog(page);
+  const problems: string[] = [];
+  if (!(await dialog.locator('p.text-content-status-error').first().isVisible())) problems.push('the load-failure line is not visible');
+  if (!(await dialog.getByRole('button', { name: 'Save', exact: true }).isDisabled())) problems.push('Save is not disabled after a failed load');
+  if (problems.length > 0) throw new Error(`D28-load-failed: ${problems.join('; ')}`);
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'D23', census: 'D23', kind: 'dialog', owner: '89.6-18', status: 'enforced', reach: reachBrowseGames, answers: answerSuggestions, extras: browseToolbarExtras },
-  { id: 'D28', census: 'D28', kind: 'dialog', owner: '89.6-18', status: 'pending' },
+  { id: 'D28', census: 'D28', kind: 'dialog', owner: '89.6-18', status: 'enforced', state: 'three owned games, one ticked (the no-picture stand-in)', reach: reachGamesToBring, answers: (url) => answerBringReads(url, 'listed'), extras: saveReachable },
+  { id: 'D28-load-failed', census: 'D28', kind: 'dialog', owner: '89.6-18', state: 'load-failed', status: 'enforced', reach: reachBringFailed, extras: failedBranchHolds },
+  { id: 'D28-empty', census: 'D28', kind: 'dialog', owner: '89.6-18', state: 'empty', status: 'enforced', reach: reachBringEmpty, answers: (url) => answerBringReads(url, 'empty') },
   { id: 'R07-suggestions', census: 'R07', kind: 'route', owner: '89.6-18', status: 'pending' },
   { id: 'R08-suggestions', census: 'R08', kind: 'route', owner: '89.6-18', status: 'pending' },
 ];

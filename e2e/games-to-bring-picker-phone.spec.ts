@@ -234,7 +234,10 @@ test.describe('Games to Bring at 375px (88.6.2-22)', () => {
   // row, broken only after the name has the row's full width), the row holds its thumbnail and
   // tick box whole, the row is at least 44px and inside the dialog, and the dialog does not scroll
   // sideways. The page behind the dialog is not this test's subject; its sideways scroll is logged.
-  test('R4 D2 (88.9-52): at 320 wide with 200% text a picker row keeps each word of a two-word game name whole, with its thumbnail and tick box whole', async ({
+  // AMENDED Phase 89.6-18 (S2, owner "Drop", first look 2026-11-22; the Play history rule): at 320 /
+  // 200% the thumbnail well is no longer drawn (no layout box); the 2rem well is read at 375 with
+  // ordinary text, where it still shares the line with the name and the tick box.
+  test('R4 D2 (88.9-52), S2 Drop (89.6-18): at 320 wide with 200% text a picker row keeps each word whole and drops its picture', async ({
     page,
   }) => {
     await page.route(
@@ -281,6 +284,7 @@ test.describe('Games to Bring at 375px (88.6.2-22)', () => {
         return {
           row: box(el),
           well: box(el.firstElementChild as Element),
+          wellDisplay: getComputedStyle(el.firstElementChild as Element).display,
           tick: box(el.lastElementChild as Element),
           rem: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
           dialog: box(dialogEl),
@@ -296,6 +300,9 @@ test.describe('Games to Bring at 375px (88.6.2-22)', () => {
       before.tick.top < before.well.bottom && before.tick.bottom > before.well.top && before.tick.left > before.well.right,
       `R4 D2: at ordinary text the tick box no longer shares the thumbnail's line (${beforeLine})`,
     ).toBe(true);
+    // At ordinary text the well is drawn at 2rem (S2 drops it at large text only).
+    expect(Math.abs(before.well.width - 2 * before.rem), `S2: at ordinary text the well is not 2rem wide (${beforeLine})`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(before.well.height - 2 * before.rem), `S2: at ordinary text the well is not 2rem tall (${beforeLine})`).toBeLessThanOrEqual(0.5);
 
     await setNarrowLargeText(page, 'R4 D2 picker row');
     // The row is named: a word may break only once the name has the row's whole width to itself.
@@ -306,9 +313,9 @@ test.describe('Games to Bring at 375px (88.6.2-22)', () => {
     console.log(`[88.9-52 R4 D2 picker row] 320 / 200%: ${JSON.stringify(read)} ${afterLine}`);
     expectWholeWords(read, ['Weekend', 'Warriors'], 'R4 D2 picker row at 320 / 200%', { pageSideways: false });
     await expectHeldInside(row, 'R4 D2 picker row');
-    // The neighbours kept their sizes (2rem thumbnail, 1.25rem tick box): they moved, they did not shrink.
-    expect(Math.abs(after.well.width - 2 * after.rem), `R4 D2: the thumbnail well is not 2rem wide (${afterLine})`).toBeLessThanOrEqual(0.5);
-    expect(Math.abs(after.well.height - 2 * after.rem), `R4 D2: the thumbnail well is not 2rem tall (${afterLine})`).toBeLessThanOrEqual(0.5);
+    // S2 Drop: the thumbnail well is not displayed (no layout box); the name is its text twin.
+    expect(after.wellDisplay, `S2: at 320 / 200% the thumbnail well is still drawn (${afterLine})`).toBe('none');
+    // The tick box kept its size (1.25rem): it moved, it did not shrink.
     expect(Math.abs(after.tick.width - 1.25 * after.rem), `R4 D2: the tick box is not 1.25rem wide (${afterLine})`).toBeLessThanOrEqual(0.5);
     expect(Math.abs(after.tick.height - 1.25 * after.rem), `R4 D2: the tick box is not 1.25rem tall (${afterLine})`).toBeLessThanOrEqual(0.5);
     // The row is the control: at least 44px, inside the dialog, and the dialog does not scroll sideways.
