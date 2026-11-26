@@ -178,6 +178,8 @@ const RATIFIED_ROWS: RatifiedRow[] = [
   { id: 'NC-2', text: 'Confirmation cancelled.', site: 'components/ui/useConfirmAction.ts', kind: 'chunk' },
   { id: 'NC-3', text: '{n} results available', site: 'components/ui/Combobox.tsx', kind: 'fragments', fragments: [' result', '', 's', ' available'] },
   { id: 'NC-4', text: 'Invite link copied to the clipboard.', site: 'app/components/FriendInvitePanel.js', kind: 'chunk' },
+  // Phase 89.6-26 W2 (owner ruling, 2026-11-22: "W2) yes"): the header's sign-in entry reads Sign in
+  { id: 'W2', text: 'Sign in', site: 'app/Header.js', kind: 'chunk' },
   // Code-review rulings CR-1..CR-7 (owner 2026-10-19, "ratify all"; close ledger §I, COPY-TABLE.html group
   // "Ratified 2026-10-19"). CR-7 reuses A4 and adds no row. CR3a, CR5a and CR5b use U+2026 (see the header).
   { id: 'CR1a', text: "Couldn't copy the link. Press and hold the link to copy it.", site: 'app/components/QRCodeModal.js', kind: 'chunk' },
@@ -211,7 +213,7 @@ const EXPECTED_IDS = [
   'G7', 'G8', 'P2', 'P8', 'F1', 'F2', 'F7', 'L1a', 'L1b', 'L1c', 'L2', 'X1',
   'X68a', 'X68b', 'X68c',
   'X3', 'X3r', 'R1', 'R2', 'R3', 'R4', 'R5', 'R9', 'FR1', 'N7', 'N8a', 'N8b', 'N8c', 'N8d',
-  'S1a', 'S1b', 'C7c', 'B1', 'RF1', 'Q1a', 'Q1b', 'NC-1', 'NC-2', 'NC-3', 'NC-4',
+  'S1a', 'S1b', 'C7c', 'B1', 'RF1', 'Q1a', 'Q1b', 'NC-1', 'NC-2', 'NC-3', 'NC-4', 'W2',
   // owner rulings 2026-10-13 to 2026-10-15
   'GD1', 'GD2', 'E16', 'E17', 'E18', 'GD3', 'GD4', 'N9', 'N10', 'G9', 'F8a', 'F8b', 'C8',
   // close rulings 2026-10-17 to 2026-10-18
@@ -432,11 +434,11 @@ describe('AC-33 copy gate: every ratified string at its site (D-30, D-32, D-47)'
     expect(rowMatches(row, readSrc(row.site)), `${row.id} "${row.text}" is not at ${row.site}`).toBe(true);
   });
 
-  it('the row roster is exact (122 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
+  it('the row roster is exact (123 ids, no duplicates; E7, X2 and T1 carry no literal)', () => {
     const ids = RATIFIED_ROWS.map((r) => r.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect([...ids].sort()).toEqual([...EXPECTED_IDS].sort());
-    expect(ids).toHaveLength(122);
+    expect(ids).toHaveLength(123);
     expect(NO_LITERAL.map((n) => n.none).sort()).toEqual(['E7', 'T1', 'X2']);
     for (const n of NO_LITERAL) expect(ids).not.toContain(n.none);
   });

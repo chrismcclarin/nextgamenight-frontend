@@ -274,10 +274,13 @@ describe('Header — one Main navigation landmark (AC-18, copy row H5)', () => {
     expect(nav.getAttribute('aria-label')).toBe('Main');
     expect(screen.getByRole('navigation', { name: 'Main' })).toBe(nav);
 
-    // The brand link plus Login in each of the two lists.
+    // The brand link plus Sign in in each of the two lists (89.6-26 W2: the word every banner and
+    // link in the app uses); no header entry reads Login.
     const links = Array.from(document.querySelectorAll('a'));
     expect(links).toHaveLength(3);
     expect(links.filter((a) => !nav.contains(a))).toEqual([]);
+    expect(screen.getAllByRole('link', { name: 'Sign in', hidden: true })).toHaveLength(2);
+    expect(screen.queryByText('Login')).toBeNull();
     cleanup();
 
     // 88.9-52 W6: while the session is still being read, the strip is not empty. The brand (logo
@@ -294,6 +297,7 @@ describe('Header — one Main navigation landmark (AC-18, copy row H5)', () => {
     expect(waitingLinks[0]).toHaveTextContent('Next Game Night');
     expect(waitingNavs[0].contains(waitingLinks[0])).toBe(true);
     expect(screen.queryByRole('button', { name: 'Toggle menu' })).toBeNull();
+    expect(screen.queryByText('Sign in')).toBeNull();
     expect(screen.queryByText('Login')).toBeNull();
     expect(document.querySelectorAll('[inert]')).toHaveLength(0);
   });

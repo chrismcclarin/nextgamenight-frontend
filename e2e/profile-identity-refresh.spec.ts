@@ -213,7 +213,8 @@ test.describe('Profile identity refresh (88.6.1-79)', () => {
     // declined arm — the page's signed-out banner with Sign in — and no second request.
     await page.context().clearCookies();
     await page.goto('/userProfile');
-    const signIn = page.getByRole('link', { name: 'Sign in', exact: true }).first();
+    // 89.6-26 (W2): scoped to main; the header now has a Sign in link too.
+    const signIn = page.getByRole('main').getByRole('link', { name: 'Sign in', exact: true }).first();
     await expect(signIn).toBeVisible({ timeout: 15_000 });
     await expect(signIn).toHaveAttribute('href', /^\/api\/auth\/login\?returnTo=%2FuserProfile/);
     await expect(page.getByText("Couldn't load your profile")).toBeVisible();

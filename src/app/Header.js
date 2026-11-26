@@ -144,6 +144,9 @@ function Header(){
     const sessionKnown = !isLoading;
     if (error) return <div>{error.message}</div>;
 
+    // DECISION Phase 89.6-26 (W2): the header's sign-in entry reads Sign in, the word every banner and
+    // link in the app uses (owner ruling W2, 2026-11-22: 'W2) yes'), chosen OVER Login beside Sign in on
+    // the same page. Changing this is a decision, not a cleanup.
     const navLinks = user
         ? [
             { href: '/', label: 'Home', isLink: true },
@@ -152,7 +155,7 @@ function Header(){
             { href: '/api/auth/logout', label: 'Logout', isLink: false },
           ]
         : [
-            { href: '/api/auth/login', label: 'Login', isLink: false },
+            { href: '/api/auth/login', label: 'Sign in', isLink: false },
           ];
 
     return (

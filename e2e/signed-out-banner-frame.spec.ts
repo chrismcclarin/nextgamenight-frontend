@@ -62,7 +62,8 @@ async function readFrame(page: Page, path: string, heading: string): Promise<Fra
   await page.goto(path);
   await expect(page).toHaveURL(new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$'), { timeout: 15_000 });
 
-  const signIn = page.getByRole('link', { name: 'Sign in', exact: true });
+  // 89.6-26 (W2): scoped to main; the header now has a Sign in link too.
+  const signIn = page.getByRole('main').getByRole('link', { name: 'Sign in', exact: true });
   await expect(signIn, `${path}: the signed-out banner with Sign in never rendered`).toBeVisible({ timeout: 15_000 });
   const frame = page.locator('[data-slot="page-frame"]');
   await expect(frame, `${path}: the banner is not inside the shared centred frame`).toHaveCount(1);

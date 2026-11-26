@@ -90,10 +90,12 @@ test.describe('Phase 88.6.1-25 — a signed-out event link at phone width (phone
     // Back to the group in the SAME tab without signing in: no second redirect, no hang. The Sign
     // in control is awaited FIRST, so the loading-line check reads a rendered page, not a blank one.
     await page.goto(GROUP_PATH);
+    // 89.6-26 (W2): scoped to main; the header now has a Sign in link too.
     await expect(
       page
+        .getByRole('main')
         .getByRole('link', { name: 'Sign in', exact: true })
-        .or(page.getByRole('button', { name: 'Sign in', exact: true }))
+        .or(page.getByRole('main').getByRole('button', { name: 'Sign in', exact: true }))
         .first(),
       'the return visit offers a visible Sign in control'
     ).toBeVisible({ timeout: 15_000 });
