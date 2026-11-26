@@ -314,6 +314,11 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
   // (e2e/month-nav-row.spec.ts ("HOW 200% IS PRODUCED.")), not browser zoom. Read-only: nothing is
   // clicked after the dialog opens, and the suggestions response is this file's route.
   // RED on the tree before R4 C2: the first size assertion reads 32.
+  // AMENDED Phase 89.6-18 (O-M4 Fixed+, owner pick 2026-11-22: 'The box stays 44px, and the icon
+  // inside grows with the text up to 32px'): the 88px squares above are history. At 320 / 200% the
+  // steppers hold 44 by 44 with their glyphs capped at 32px, the minus, the 128px box and the plus
+  // share one line (44 + 8 + 128 + 8 + 44 = 232 of 264px), and every toolbar control stays inside
+  // the toolbar. The 375 arm also reads the count box at 44px or more (S1, owner "Fix").
   // SPLIT Phase 88.9-52 (owner 2026-11-18): the ordinary-text reads and the 320 / 200% read are two
   // tests over this one body, so the sizes that work stay gated while the 200% read is a known failure.
   const stepperRowProof = async (page: Page, large: boolean) => {
@@ -358,6 +363,8 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
         expect(Math.abs(phone.dec.top - phone.inc.top), 'R4 C2: at 375 the two steppers are not on one line').toBeLessThanOrEqual(1);
         expect(Math.abs(phone.box.left - phone.dec.right - 4), `R4 C2: at 375 the box starts ${phone.box.left - phone.dec.right}px after the decrease stepper, expected 4`).toBeLessThanOrEqual(0.5);
         expect(Math.abs(phone.inc.left - phone.box.right - 4), `R4 C2: at 375 the increase stepper starts ${phone.inc.left - phone.box.right}px after the box, expected 4`).toBeLessThanOrEqual(0.5);
+        // S1 (owner "Fix", first look 2026-11-22; 89.6-18): the count box meets the 44px floor (34px before).
+        expect(phone.box.height, `S1: at 375 the player-count box is ${phone.box.height}px tall, under 44`).toBeGreaterThanOrEqual(43.5);
         expectInsideBar(phone, '375');
       }
 
@@ -377,18 +384,34 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
         return;
       }
 
-      // 320 with text at 200%: 88px squares, wrapped, nothing outside the toolbar.
+      // 320 with text at 200% (O-M4 Fixed+, 89.6-18): the steppers hold 44 by 44 and their glyphs stop
+      // at 32px, the minus, the box and the plus share one line, and nothing leaves the toolbar.
       await page.addStyleTag({ content: 'html{font-size:200% !important}' });
       await expect
         .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize), {
           message: 'R4 C2: the root font size did not become 32px after the 200% style tag',
         })
         .toBe('32px');
-      await expect.poll(async () => (await rect(decrement, 'the decrease stepper')).width, { message: 'R4 C2: the decrease stepper did not grow to 88px at 200% text' }).toBeGreaterThan(87);
+      await expect.poll(async () => (await rect(count, 'the player-count box')).width, { message: 'O-M4: the 4rem player-count box did not grow to 128px at 200% text' }).toBeGreaterThan(127);
       const big = await readRow();
-      expectSquare(big.dec, 88, 'the decrease stepper at 320 / 200%');
-      expectSquare(big.inc, 88, 'the increase stepper at 320 / 200%');
+      expectSquare(big.dec, 44, 'the decrease stepper at 320 / 200%');
+      expectSquare(big.inc, 44, 'the increase stepper at 320 / 200%');
+      for (const [name, stepper] of [['decrease', decrement], ['increase', increment]] as const) {
+        const glyph = await stepper.evaluate((el) => Number.parseFloat(getComputedStyle((el.firstElementChild as Element | null) ?? el).fontSize));
+        expect(glyph, `O-M4: the ${name} stepper's glyph is ${glyph}px at 320 / 200%, over the 32px cap`).toBeLessThanOrEqual(32);
+      }
+      const centre = (r: { top: number; height: number }) => r.top + r.height / 2;
+      expect(Math.abs(centre(big.dec) - centre(big.box)), `O-M4: at 320 / 200% the box is not on the decrease stepper's line (${JSON.stringify(big)})`).toBeLessThanOrEqual(1);
+      expect(Math.abs(centre(big.inc) - centre(big.box)), `O-M4: at 320 / 200% the box is not on the increase stepper's line (${JSON.stringify(big)})`).toBeLessThanOrEqual(1);
       expectInsideBar(big, '320 / 200%');
+      const strays = await controls.evaluate((bar) => {
+        const edge = bar.getBoundingClientRect().right;
+        return Array.from(bar.querySelectorAll('button, select'))
+          .map((el) => ({ name: (el.getAttribute('aria-label') ?? el.textContent ?? '').trim(), right: el.getBoundingClientRect().right }))
+          .filter((el) => el.right > edge + 0.5)
+          .map((el) => `${el.name} ends at ${el.right.toFixed(1)}, toolbar edge ${edge.toFixed(1)}`);
+      });
+      expect(strays, 'R5-01a: a toolbar control ends past the toolbar at 320 / 200%').toEqual([]);
     } finally {
       route.release();
     }
@@ -398,7 +421,7 @@ test.describe('Browse Games dialog at 375px (88.6.1-32)', () => {
     await stepperRowProof(page, false);
   });
 
-  test('R4 C2 (88.9-52): at 320px with text at 200% the steppers are 88px squares and nothing in the row leaves the dialog', async ({ page }) => {
+  test('R4 C2 (88.9-52), O-M4 Fixed+ (89.6-18): at 320px with text at 200% the steppers hold 44 by 44, the minus, box and plus share a line, and nothing in the toolbar leaves the dialog', async ({ page }) => {
     // DECISION Phase 88.9-52 (owner 2026-11-18): this 320 wide / 200% text read is marked as an
     // expected failure, kept running, over skipping it, deleting it or patching the screen. The
     // fix / see / fix rule stopped screen-by-screen patching at this size; Phase 89.6 researches
