@@ -1377,7 +1377,14 @@ export default function EventScheduler({
         <span key={announcement.seq}>{announcement.text}</span>
       </StatusRegion>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        {/* DECISION Phase 89.6-24 (scheduler-rows): Back / Today / Next are the shared bb-cluster (the
+            same 0.5rem gap and centre line at normal text), so a button that cannot fit whole moves
+            to the next line, chosen OVER the plain flex group that ran past the dialog box at 320 and
+            375 / 200% (run 45832681571: Next 319-432 in a 24-296 box) and OVER smaller buttons. The
+            availability legend below takes the same block. GR (owner 2026-11-22: 'A row stays a row
+            while everything in it fits whole. When it does not, items stack. Nothing is squeezed,
+            shrunk, cut or broken to avoid stacking.'). Changing this is a decision, not a cleanup. */}
+        <div className="bb-cluster">
           <button type="button" onClick={goBack} className={NAV_BUTTON_CLASS}>
             Back
           </button>
@@ -1482,7 +1489,8 @@ export default function EventScheduler({
       </div>
 
       {totalMembers > 0 && (
-        <div className="flex items-center gap-2 text-xs text-content-muted">
+        // The shared bb-cluster, as the Back / Today / Next group above ("DECISION Phase 89.6-24 (scheduler-rows)").
+        <div className="bb-cluster text-xs text-content-muted">
           <span>Availability:</span>
           {/* Swatches render FROM the exported ramp, never hand-copied literals -- a legend with
               its own copy of the colours is free to desync from the ramp it describes, and no

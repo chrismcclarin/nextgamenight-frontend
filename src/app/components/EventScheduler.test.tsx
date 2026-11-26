@@ -2438,3 +2438,24 @@ describe('89.6-24 CI-01f — the phone day window follows text size', () => {
     expect(parseFloat(decl![1]) * 16, 'the window is 305px at a 16px root (normal text unchanged)').toBe(305);
   });
 });
+
+// Phase 89.6-24, GR (owner 2026-11-22: 'A row stays a row while everything in it fits whole. When it
+// does not, items stack. Nothing is squeezed, shrunk, cut or broken to avoid stacking.'). Run
+// 45832681571 read Create Event and Edit Event at 320 and 375 / 200%: Back / Today / Next ran past the
+// dialog box (Next 319-432 in a 24-296 box) and so did the availability legend (More available
+// 351-453), so the dialog scrolled sideways by 158px and 103px. Both are the shared cluster now: an
+// item that cannot fit whole moves to the next line. jsdom lays nothing out: class pins.
+describe('89.6-24 GR — the scheduler rows stack by whole items', () => {
+  it('89.6-24 GR: the Back / Today / Next group and the availability legend are bb-clusters', () => {
+    render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
+    const nav = screen.getByRole('button', { name: 'Back' }).parentElement as HTMLElement;
+    expect(within(nav).getByRole('button', { name: 'Next' })).toBeInTheDocument();
+    const legend = screen.getByText('Availability:').parentElement as HTMLElement;
+    expect(within(legend).getByText('More available')).toBeInTheDocument();
+    for (const [what, el] of [['the nav group', nav], ['the legend', legend]] as const) {
+      const tokens = el.className.split(/\s+/);
+      expect(tokens, what).toContain('bb-cluster');
+      expect(tokens, what).not.toContain('flex');
+    }
+  });
+});

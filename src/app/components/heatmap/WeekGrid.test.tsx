@@ -55,8 +55,10 @@ describe('WeekGrid — CSS-grid geometry (88.1-02 C12)', () => {
     // The default gutter is 32px since the 88.6.1 wave 4 CI gate (28px from 88.6.1-24, 24px
     // before): register owner item 66, the hour label overflowing its gutter cell - "12p" at 24px,
     // then "10p" at 28px in CI's desktop project. See the DECISION on `gutterPx` in WeekGrid.tsx.
+    // AMENDED Phase 89.6-24 (gutter-rem): the gutter track is written in rem (32px at a 16px root),
+    // so it grows with the text like the hour label inside it.
     expect(screen.getByRole('grid')).toHaveStyle({
-      gridTemplateColumns: '32px repeat(3, 1fr)',
+      gridTemplateColumns: '2rem repeat(3, 1fr)',
     });
   });
 
@@ -65,7 +67,7 @@ describe('WeekGrid — CSS-grid geometry (88.1-02 C12)', () => {
       <WeekGrid variant="read" days={7} slots={1} gutterPx={40} getCell={readCell} ariaLabel="geometry" />
     );
     expect(screen.getByRole('grid')).toHaveStyle({
-      gridTemplateColumns: '40px repeat(7, 1fr)',
+      gridTemplateColumns: '2.5rem repeat(7, 1fr)',
     });
   });
 

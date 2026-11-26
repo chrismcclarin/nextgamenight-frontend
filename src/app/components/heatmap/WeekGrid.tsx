@@ -97,6 +97,7 @@ interface WeekGridBaseProps {
   cellClassName?: string;
   /**
    * Width of the time-axis gutter column, in px. Default 32 (28 from 88.6.1-24, 24 before). 87.8-13 F-2's rule stands:
+   * (AMENDED Phase 89.6-24: px at a 16px root; the track is written as gutterPx / 16 rem, so it grows with the text.)
    * the gutter fits the widest compact label, and the old 40px "read as dead left padding" at
    * 375px. F-2's PREMISE is corrected here: it sized 24 for "12p" at 10px mono, but this grid's
    * axis label is `text-xs sm:text-sm` (12px, 14px), not mono. The day columns take `1fr` each, so
@@ -508,7 +509,12 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
         // the full-size scrolled CONTENT and travel with the scroll instead of sticking to the
         // viewport. Harmless when no overlay is passed — there is nothing absolute to resolve.
         className="grid gap-px relative"
-        style={{ gridTemplateColumns: `${gutterPx}px repeat(${days}, 1fr)` }}
+        // DECISION Phase 89.6-24 (gutter-rem): the gutter track is written in rem (gutterPx / 16, so
+        // 32px is 2rem: identical at a 16px root), chosen OVER the px track, under which the hour
+        // label grew with the text and spilled out of its fixed cell at 200% (run 45832681571: "10p"
+        // 22px past its box at 768) and OVER a smaller label (P1). gutterPx keeps its meaning at
+        // normal text. Changing this back to px is a decision, not a cleanup.
+        style={{ gridTemplateColumns: `${gutterPx / 16}rem repeat(${days}, 1fr)` }}
         role="grid"
         aria-label={ariaLabel}
         onPointerDown={handleGridPointerDown}
