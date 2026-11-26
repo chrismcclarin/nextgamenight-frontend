@@ -294,8 +294,13 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     const group = label.parentElement as HTMLElement;
     const row = group.parentElement as HTMLElement;
     expect(row).toHaveClass('flex', 'flex-wrap', 'items-center', 'justify-between', 'gap-2');
-    expect(group).toHaveClass('flex', 'flex-wrap', 'items-center', 'gap-2', 'min-w-0');
-    expect(label).toHaveClass('flex', 'flex-wrap', 'items-center', 'gap-2', 'min-w-0');
+    // AMENDED Phase 89.6-17 (O-M3, owner pick A+): the left group and the label keep their natural
+    // width (no min-w-0, HR-2), so the select drops to its own line instead of being squeezed under
+    // its chosen label; both still wrap.
+    expect(group).toHaveClass('flex', 'flex-wrap', 'items-center', 'gap-2');
+    expect(label).toHaveClass('flex', 'flex-wrap', 'items-center', 'gap-2');
+    expect(group, 'the left group still carries min-w-0').not.toHaveClass('min-w-0');
+    expect(label, 'the label still carries min-w-0').not.toHaveClass('min-w-0');
     // w-auto is the 88-21 toolbar decision and stays; max-w-full only bites when the row is too narrow.
     expect(select).toHaveClass('w-auto', 'max-w-full');
     expect(row).toContainElement(screen.getByRole('button', { name: 'Filter' }));

@@ -454,17 +454,18 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
             {refreshNotice}
 
             {/* Sorting Controls */}
-            {/* DECISION Phase 88.9-52 (W10): the row, its left group and the label all wrap and may shrink (flex-wrap, min-w-0), and the select is capped at its row (max-w-full), chosen OVER the one unbreakable line this was: at 375px with doubled text that line was wider than the screen and the whole group page scrolled sideways (measured 643px). At ordinary text size everything fits on one line and nothing here bites; the 88-21 w-auto below stands. gap-2 is the space between wrapped lines and between the left group and Filter. Taking the wraps off is a decision, not a cleanup. */}
+            {/* DECISION Phase 88.9-52 (W10): the row, its left group and the label all wrap and may shrink (flex-wrap, min-w-0), and the select is capped at its row (max-w-full), chosen OVER the one unbreakable line this was: at 375px with doubled text that line was wider than the screen and the whole group page scrolled sideways (measured 643px). At ordinary text size everything fits on one line and nothing here bites; the 88-21 w-auto below stands. gap-2 is the space between wrapped lines and between the left group and Filter. Taking the wraps off is a decision, not a cleanup. AMENDED Phase 89.6-17 (O-M3): owner pick O-M3 = A+, 2026-11-22 ('Keep the drop-downs. When one does not fit beside its label it drops to its own row'): the left group and the label keep their natural width (no min-w-0, HR-2), so the select moves to its own line at its natural width, capped at the row, instead of being squeezed under its chosen label; pixel-identical at 375 normal text. */}
             <div className="mb-6 flex flex-wrap items-center justify-between gap-2 bg-surface-page p-edge-card md:p-edge-page rounded-card">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <label className="flex min-w-0 flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex flex-wrap items-center gap-2">
                         <span className="text-sm text-content-secondary whitespace-nowrap">Sort by:</span>
                         {/* DECISION Phase 88-21 (Req 1): `w-auto` overrides the primitive's
                             `block w-full`. This select sits INLINE beside its "Sort by:" span on
                             one toolbar row, unlike the two filter selects below it which are
                             stacked and genuinely full-width. Taking the primitive default here
                             would push the select onto its own line and break the toolbar. Same
-                            override 88-19 used for the reminder-window select. */}
+                            override 88-19 used for the reminder-window select.
+                            AMENDED Phase 89.6-17 (O-M3): w-auto stands as the select's natural width up to max-w-full; the row wraps only when the select does not fit (A+). */}
                         <SelectControl
                             id="group-games-sort"
                             name="group-games-sort"
