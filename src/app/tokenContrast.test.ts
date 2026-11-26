@@ -2834,6 +2834,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // Measured at 88.9-69 with src/lib/wcag.ts: the step is 21.2973 in light and 10.2688 in dark,
     // the lowest icon ratio 7.3532 (dark, hovered), the lowest hover-against-ground 1.3049 (light,
     // orange ground). Before this plan the step was 2.3473 in light and 0 in dark.
+    // AMENDED Phase 89.6-17 (O-9b): the gear wears the Home pair (bg-btn-gear); recomputed: step 10.27 light / 7.03 dark, lowest icon 6.00 (dark, hovered), lowest hover against a flat ground 1.88 (dark, uncoloured).
     const pageSrc = withoutComments(fs.readFileSync(path.join(__dirname, 'groupHomePage', 'page.js'), 'utf8'));
     const opener = 'onClick={() => setShowGroupSettings(true)}';
     const at = pageSrc.indexOf(opener);
@@ -3082,7 +3083,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       },
       {
         name: 'group page',
-        arms: armsOf(['groupHomePage', 'page.js'], '<Icon name="Settings" size={20} />'),
+        // AMENDED Phase 89.6-17 (gear anchor): the anchor carries followText (the cog follows the text, O-M4).
+        arms: armsOf(['groupHomePage', 'page.js'], '<Icon name="Settings" size={20} followText />'),
         grounds: [presets, [resolve('dark', '--color-bg-elevated')]],
       },
     ];

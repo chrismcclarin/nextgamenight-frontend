@@ -1442,7 +1442,8 @@ function GroupHomePage(){
                         in light and 10.27 in dark, the icon stays over 7:1 on the hovered fill, and the
                         hovered fill stands at least 1.30 off every preset header ground (the token
                         contrast suite's Gear hover test holds all 18 arms).
-                        AMENDED Phase 88.9-52 (W5): in DARK the edge is the card line (purple-700), chosen OVER the control edge, which is transparent there (on the plain header the fill IS the header, 1.00, and on the green header 1.00, so the gear showed as a bare cog) and OVER the strong line (rejected for the home cog as a 3:1 neutral border). 1.45 on the plain header, 1.45-1.98 on the eight preset grounds; the light control edge reads 1.60 and does not move. On hover the fill reaches the edge colour, so the box fills in. */}
+                        AMENDED Phase 88.9-52 (W5): in DARK the edge is the card line (purple-700), chosen OVER the control edge, which is transparent there (on the plain header the fill IS the header, 1.00, and on the green header 1.00, so the gear showed as a bare cog) and OVER the strong line (rejected for the home cog as a 3:1 neutral border). 1.45 on the plain header, 1.45-1.98 on the eight preset grounds; the light control edge reads 1.60 and does not move. On hover the fill reaches the edge colour, so the box fills in.
+                        AMENDED Phase 89.6-17 (O-9b): owner pick O-9b = B, 2026-11-22 ('The Home gear's look: blue box, white cog'): the gear wears the Home gear's fill, hover, ink and edge tokens, chosen OVER the neutral elevated box; and owner pick O-M4 = Fixed+ ('The box stays 44px, and the icon inside grows with the text up to 32px'): the box is held at its normal-text 44 x 44 in px and the cog follows the text. The 88.9-69 hover pair and the 88.9-52 W5 dark edge above are superseded by the Home pair (measured: step 10.27 L* light, 7.03 dark; icon 6.00 or more; hover 1.88 or more off every flat header ground). 44px, not the Home gear's 46: this gear's own normal-text size is held. Changing it is a decision, not a cleanup. */}
                     {canEditGroup && (
                         <div className="bb-row-end relative z-20">
                             <button
@@ -1454,9 +1455,9 @@ function GroupHomePage(){
                                 // header it sits on.
                                 // AMENDED Phase 89.6-13: owner pick O-1 = B retired the halo, so the arms were
                                 // identical and collapsed into one literal; the collapse IS this decision.
-                                className="inline-flex items-center justify-center min-h-11 min-w-11 bg-surface-elevated border border-line-control dark:border-line text-content-primary rounded-btn hover:bg-btn-secondary-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring"
+                                className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] bg-btn-gear hover:bg-btn-gear-hover text-btn-primary-text border border-transparent dark:border-btn-primary rounded-btn active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring"
                             >
-                                <Icon name="Settings" size={20} />
+                                <Icon name="Settings" size={20} followText />
                             </button>
                         </div>
                     )}

@@ -1420,6 +1420,7 @@ const GroupList = ({
                          8.2958 on the dark card and 6.7656-9.2279 on the eight dark halos). Glyph, hidden
                          wrapper, title stay (F5b, D-52). The group-page gear is not ruled and stays
                          neutral. Going back is a decision, not a cleanup.
+                         AMENDED Phase 89.6-17 (O-9b): ruled B on 2026-11-22; the group-page gear now wears this pair (src/app/groupHomePage/page.js ("size={20} followText")).
                          THE 88.9-58 SENTENCE ABOVE IS CLOSED: 88.9-59 landed. The repainted fill, measured
                          2026-11-15 with `src/lib/wcag.ts` on every ground the card paints: **7.7948** on
                          the white card and **5.7553-5.8098** on the eight preset light grounds; in dark

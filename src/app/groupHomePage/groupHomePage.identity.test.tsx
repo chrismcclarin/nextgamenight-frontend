@@ -741,13 +741,18 @@ describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV
     const gears = screen.getAllByRole('button', { name: 'Group settings' });
     expect(gears).toHaveLength(1);
     const gear = gears[0];
-    expect(gear).toHaveClass('min-h-11', 'min-w-11', 'border', 'border-line-control', 'bg-surface-elevated');
-    // AMENDED Phase 88.9-69 (gear hover, 88.9-64 hand-off d): the hover is the secondary pair's
-    // hover fill, a visible step in both themes, and no longer the surface wash (2.35 L* in light,
-    // none in dark). The numbers are pinned in the token contrast suite's Gear hover test.
-    expect(gear, 'the gear still hovers on the surface wash').toHaveClass('hover:bg-btn-secondary-hover');
+    // AMENDED Phase 89.6-17 (O-9b): owner pick O-9b = B ('The Home gear's look: blue box, white cog')
+    // and O-M4 = Fixed+ ('The box stays 44px, and the icon inside grows with the text up to 32px'):
+    // the gear wears the Home gear's fill, hover, ink and edge tokens, its box is held at 44px in px,
+    // and the cog follows the text (Icon followText, read by its data-follow-text marker; jsdom drops
+    // the inline min() size). The 88.9-69 hover pair and the neutral elevated box are gone.
+    const HOME_GEAR = ['bg-btn-gear', 'hover:bg-btn-gear-hover', 'text-btn-primary-text', 'border-transparent', 'dark:border-btn-primary'] as const;
+    const OLD_GEAR = ['bg-surface-elevated', 'border-line-control', 'hover:bg-btn-secondary-hover', 'min-h-11', 'min-w-11'] as const;
+    expect(gear).toHaveClass(...HOME_GEAR, 'border', 'min-h-[44px]', 'min-w-[44px]');
+    for (const old of OLD_GEAR) expect(gear, `the gear still carries ${old}`).not.toHaveClass(old);
     expect(gear).not.toHaveClass('hover:bg-surface-hover');
     expect(gear.querySelector('svg[aria-hidden="true"]'), 'the gear has no hidden svg glyph').not.toBeNull();
+    expect(gear.querySelector('svg[data-follow-text]'), 'the gear cog does not follow the text (Icon followText)').not.toBeNull();
     expect(gear.textContent ?? '', 'the gear carries a text glyph').not.toMatch(/[⋮⚙]/);
     expect(h.groupSettingsProps).toBeNull();
     await userEvent.setup().click(gear);
@@ -759,7 +764,8 @@ describe('groupHomePage round-2 look (88.9-31: T1, F5b, B2a G halos, GH-01 / NAV
     await renderHeaderAt('owner');
     const tintedGear = screen.getByRole('button', { name: 'Group settings' });
     expectRingGround(tintedGear, 'group', 'the tinted gear');
-    expect(tintedGear, 'the tinted gear still hovers on the surface wash').toHaveClass('hover:bg-btn-secondary-hover');
+    expect(tintedGear, 'the tinted gear does not wear the Home gear look').toHaveClass(...HOME_GEAR);
+    for (const old of OLD_GEAR) expect(tintedGear, `the tinted gear still carries ${old}`).not.toHaveClass(old);
     expect(tintedGear).not.toHaveClass('hover:bg-surface-hover');
     (groupsAPI.getGroup as Mock).mockResolvedValue({ id: 'GROUP1', name: 'My Group' });
   });
