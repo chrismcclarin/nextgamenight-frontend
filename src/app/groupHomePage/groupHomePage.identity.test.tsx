@@ -848,6 +848,37 @@ describe('groupHomePage breadcrumb — hidden separator, min-w-0, ring (88.6.1-5
     expect(homeTokens).toContain('focus:outline-hidden');
     expectFocusRing(homeTokens, 'Home');
   });
+
+  // 89.6-17 R17 (2026-11-26). jsdom lays nothing out, so this pins the STRUCTURE the rule needs; the
+  // rendered proof is the sweep row R07-long in its 320 x 568 normal-text cell.
+  // The marker is at src/app/groupHomePage/page.js ("DECISION Phase 89.6-17 (group-crumbs, R17)").
+  it('BH-2 (89.6-17 R17): the crumbs are whole items, the separator ends the Home item, and nothing stands before the name in its own item', async () => {
+    await renderHeaderAt('member');
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+
+    const box = nav.firstElementChild as HTMLElement | null;
+    expect(box, 'the nav has no crumb box').not.toBeNull();
+    expect(nav.children, 'the nav holds something beside the crumb box').toHaveLength(1);
+    expect(box!.className.split(/\s+/), 'the crumb box is not the house crumbs block').toContain('bb-crumbs');
+
+    const items = Array.from(box!.children);
+    expect(items, 'the crumb box does not hold exactly two items (Home with its separator, the group name)').toHaveLength(2);
+    const [homeItem, nameItem] = items;
+
+    const separator = within(nav).getByText('>');
+    expect(homeItem.contains(within(nav).getByRole('link', { name: 'Home' })), 'the Home link is not in the first item').toBe(true);
+    expect(homeItem.contains(separator), 'the separator is not in the Home item: it would take room on the name\'s line').toBe(true);
+    expect(separator.previousElementSibling, 'the separator does not follow the Home link').toBe(within(nav).getByRole('link', { name: 'Home' }));
+    // The gap before the separator is its own margin; the gap after it is the block's column gap.
+    const separatorTokens = separator.className.split(/\s+/);
+    expect(separatorTokens, 'the separator lost its left margin').toContain('ml-2');
+    for (const token of ['mx-2', 'mr-2']) expect(separatorTokens, `the separator carries ${token}: 8px more before the name`).not.toContain(token);
+
+    const current = nameItem.querySelector('[aria-current="page"]');
+    expect(current, 'the group name is not in the second item').not.toBeNull();
+    expect(nameItem.textContent, 'the second item holds more than the group name').toBe(current!.textContent);
+    expect(nameItem.firstElementChild, 'something stands before the group name in its item').toBe(current);
+  });
 });
 
 // 88.6.1-55 Task 3 (Req 9; D-09a / D-37 precedent). Every absence below is asserted synchronously

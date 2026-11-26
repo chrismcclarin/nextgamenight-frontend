@@ -1162,10 +1162,40 @@ function GroupHomePage(){
                 record match the code. The separator below is hidden from assistive tech in the same
                 plan (D-46), so a screen reader no longer reads "greater than" between the crumbs; it
                 looks the same. */}
+            {/* DECISION Phase 89.6-17 (group-crumbs, R17): GR (owner, 2026-11-22: 'A row stays a row while
+                everything in it fits whole. When it does not, items stack. Nothing is squeezed, shrunk,
+                cut or broken to avoid stacking.') and the UI-SPEC's row for this breadcrumb (breadcrumb
+                items wrap as units): the crumbs are .bb-crumbs items, and the separator ENDS the Home
+                item, so the group name is an item of its own with a whole line to itself when it does
+                not fit beside 'Home >'. Measured on the real page (2026-11-26, normal text): Home, the
+                separator and the name were one run with no place to wrap, so a 259px first word broke
+                in a 264px pill at 320 (195px + 64px) and in a 319px pill at 375 (250px + 9px), though a
+                line of its own holds it. Found by the sweep's 320 x 568 normal-text cell (row R07-long).
+                Chosen OVER the planning page's shape, the separator inside the crumb AFTER it,
+                src/app/groupPlanning/page.js ("DECISION Phase 89.6-20 (planning-crumbs)"): the separator
+                (8px) and its margin (8px) sit on that crumb's first line, so the same word needs 275px
+                of the 264px and still breaks (arithmetic on the measured widths, not a rendered frame
+                of that shape); OVER a break opportunity after the separator in that shape (the separator would
+                stand alone on a line above the name); OVER a bare break opportunity in the inline run
+                (a long name would still wrap inside itself beside 'Home >', not as a unit); and OVER the
+                separator as an item of its own (it could start a line). A div and spans OVER an ol and
+                li, and the separator still aria-hidden, so what a screen reader hears is unchanged
+                (spoken output is Phase 89.8's, SPEC A7). The separator keeps its 8px before it as its
+                own margin and gets its 8px after it from the block's column gap, so a name that fits
+                beside 'Home >' is pixel-identical; a name that does not moves to the next line whole,
+                and the pill is 4px taller there (the block's row gap). The nav's own tokens above are
+                untouched. Pinned by src/app/groupHomePage/groupHomePage.identity.test.tsx ("BH-2 (89.6-17 R17): the crumbs are whole items, the separator ends the Home item, and nothing stands before the name in its own item").
+                Changing this is a decision, not a cleanup. */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-edge-card py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                <Link href="/" className="rounded-sm px-1 -mx-1 text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
-                <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
-                <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || GROUP_PAGE_NAME}</span>
+                <div className="bb-crumbs">
+                    <span>
+                        <Link href="/" className="rounded-sm px-1 -mx-1 text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
+                        <span aria-hidden="true" className="text-content-muted ml-2">{'>'}</span>
+                    </span>
+                    <span>
+                        <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || GROUP_PAGE_NAME}</span>
+                    </span>
+                </div>
             </nav>
 
             {/* Header — Phase 69-04 layout: ALWAYS stack title row above
