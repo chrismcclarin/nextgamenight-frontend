@@ -15,6 +15,7 @@ import { ReservedLabel } from '@/components/ui/ReservedLabel';
 import { DEFAULT_ARMED_LABEL, DEFAULT_ARMED_NAME, DISARM_ANNOUNCEMENT } from '@/components/ui/useConfirmAction';
 import { useDismissal } from '@/components/ui/useDismissal';
 import { cn } from '@/lib/cn';
+import { iconTextSize } from '@/components/ui/Icon';
 
 /**
  * KebabMenu — reusable ⋮ trigger + dropdown overlay.
@@ -580,7 +581,13 @@ export default function KebabMenu({
           DropdownMenu, which is not a dependency and portals by default.
           Re-adding the popup-role attribute in ANY form, including the `="true"` value, is
           FORBIDDEN: ARIA maps that value to the menu role, so it re-asserts the exact claim
-          this removal makes. */}
+          this removal makes.
+
+          AMENDED Phase 89.6-26 (O-M4-icons): owner pick O-M4 = Fixed+, 2026-11-22 ('The box stays
+          44px, and the icon inside grows with the text up to 32px'): the box is held at 44px in px
+          and the glyph follows text to 32px through iconTextSize, chosen OVER the rem box that became
+          88px at 200% (it pushed the check-in card's dots under the title, plan 89.6-42) and OVER a
+          fixed 24px glyph. At 100% it is the same 44px box and 24px glyph. */}
       <button
         type="button"
         ref={triggerRef}
@@ -596,7 +603,7 @@ export default function KebabMenu({
            AMENDED Phase 88.9-50 (plan review 2026-11-08): the groupPlanning desktop arm named above was a census false positive — OpenPollCard's li paints bg-surface-card at every width (src/app/components/OpenPollsList.js ("const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex flex-wrap items-start';")), so every live host is a card and the default key is right; no md companion on this trigger, chosen OVER one (it would paint a page-coloured gap on a card row from 768px, band 1.31 / 1.22).
            AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B, 2026-11-22 ('Two-colour ring, 2px: a thin inner band plus a darker outer ring; passes all 96') made the halo inert; the host-ground key is retired, so this site passes or reads no ground. */
         className={cn(
-          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring'
+          'inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-content-muted hover:text-content-primary leading-none rounded-sm hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring'
         )}
         aria-expanded={open}
         /* DECISION Phase 88.6-16 (D-12): `aria-controls` is the HONEST replacement
@@ -617,6 +624,7 @@ export default function KebabMenu({
         {...(open ? { 'aria-controls': listId } : {})}
         aria-label={ariaLabel}
         title={ariaLabel}
+        style={{ fontSize: iconTextSize(24) }}
       >
         {/* Unicode vertical-ellipsis — matches gameDetail event-actions kebab. */}
         ⋮

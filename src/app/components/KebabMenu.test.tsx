@@ -525,13 +525,16 @@ describe('KebabMenu busy item (rule 1, 88.9-46)', () => {
 // HOST paints, passed as a typed key. AMENDED Phase 89.6-38 (host-ground): owner pick O-1 = B (2026-11-22) made the halo inert and plan 89.6-38 retired the host-ground key,
 // so the trigger takes no ground from any host.
 describe('KebabMenu trigger host halo (88.9-35)', () => {
+  // RE-PINNED by Phase 89.6-26 (O-M4-icons, owner pick O-M4 = Fixed+): the box is held at 44px in px
+  // and the glyph's size is inline (iconTextSize; jsdom drops an inline min(), so the e2e sweep row
+  // O04 reads the computed size). The rem floor and the text-2xl glyph are gone.
   const SHIPPED = [
-    'min-h-11',
-    'min-w-11',
-    'text-2xl',
+    'min-h-[44px]',
+    'min-w-[44px]',
     'leading-none',
     'focus:outline-hidden',
   ];
+  const GONE = ['min-h-11', 'min-w-11', 'text-2xl'];
   const trigger = () => screen.getByRole('button', { name: 'Member actions' });
 
   // 89.6-38 (O-1 B): this it once read which halo each host key selected (card by default, the
@@ -540,6 +543,7 @@ describe('KebabMenu trigger host halo (88.9-35)', () => {
   it('89.6-38 (O-1 B): the trigger carries the two-tone ring and no halo token', () => {
     render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
     for (const token of SHIPPED) expect(trigger()).toHaveClass(token);
+    for (const token of GONE) expect(trigger()).not.toHaveClass(token);
     expectFocusRing(trigger(), 'the kebab trigger');
     expectRingGround(trigger(), 'card', 'the kebab trigger carries no halo token');
   });

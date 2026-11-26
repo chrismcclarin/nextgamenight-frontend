@@ -226,7 +226,7 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     //  2-4. the hand-rolled event-actions kebab's trigger and its two destructive items —
     //     RETIRED onto the shared `KebabMenu`, whose own trigger carries the wash and is
     //     already counted in this set:
-    //     src/app/components/KebabMenu.js ("text-2xl text-content-muted hover:text-content-primary").
+    //     src/app/components/KebabMenu.js ("justify-center text-content-muted hover:text-content-primary") (re-anchored by 89.6-26: the trigger lost text-2xl).
     //     AMENDED Phase 88.9-52 (R4 L1, after G3 / R20): this sentence used to say the trigger AND
     //     the two item arms carry the wash and are counted here. That is now true of the trigger
     //     only. G3 moved both item arms onto the gated ghost wash, and this scanner counts only
