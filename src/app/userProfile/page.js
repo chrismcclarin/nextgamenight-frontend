@@ -50,6 +50,7 @@ import { Input, SelectControl } from '../../components/ui/Input';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
+import { revealTabInStrip, useScrollEdges } from '../../lib/hooks/useScrollEdges';
 import { Button } from '../../components/ui/Button';
 import { ReservedLabel } from '../../components/ui/ReservedLabel';
 import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
@@ -331,6 +332,9 @@ function Profile(){
     // See `DECISION Phase 88.6.1-59 (D-35, availability forms)` at Save Schedule.
     const savePatternInFlightRef = useRef(false);
     const availabilityHeadingRef = useRef(null);
+    // X-01 (89.6-22): the availability tab strip's scroll box, and which of its ends hide a tab (the strip-cue marker at the strip).
+    const tabStripRef = useRef(null);
+    const stripEdges = useScrollEdges(tabStripRef);
     const addScheduleToggleRef = useRef(null);
     const addOverrideToggleRef = useRef(null);
     const availabilityRecovery = useFocusRecovery({ fallback: availabilityHeadingRef });
@@ -3297,10 +3301,10 @@ function Profile(){
                             ) : checkingCalendarStatus ? (
                                 <div className="text-sm text-content-muted">Checking your calendar...</div>
                             ) : googleCalendarConnected ? (
+                                // labels-wrap (89.6-22): see the DECISION Phase 89.6-22 (labels-wrap) marker at Connect Google Calendar
                                 <Button
                                     variant="danger"
                                     onClick={handleDisconnectGoogleCalendar}
-                                    className="whitespace-nowrap"
                                 >
                                     Disconnect Calendar
                                 </Button>
@@ -3774,9 +3778,10 @@ function Profile(){
 
                     {/* Reset to defaults */}
                     <div className="mt-4 text-right">
+                        {/* DECISION Phase 89.6-22 (reset-floor): Reset to defaults holds the 44px floor (min-h-11) with its ring rounded and 4px side room paid back, chosen OVER the bare 20px underlined text (under the 44px floor, P4). Changing this is a decision, not a cleanup. */}
                         <button
                             onClick={handleResetPreferences}
-                            className="text-sm text-content-muted hover:text-content-secondary underline"
+                            className="inline-flex min-h-11 items-center -mx-1 px-1 rounded-btn text-sm text-content-muted hover:text-content-secondary underline focus:outline-hidden focus-visible:focus-ring"
                         >
                             Reset to defaults
                         </button>
@@ -3804,14 +3809,39 @@ function Profile(){
                         `DECISION Phase 88.6.1-59 (AC-29 / RF1)` at the schedules list. */}
                     <RetainedContentFocusGuard retained={patternsRetained} focusTarget={availabilityTab === 'recurring' ? schedulesHeadingRef : overridesHeadingRef} />
                     <Tabs value={availabilityTab} onValueChange={setAvailabilityTab}>
-                    <TabsList aria-label="Availability settings" className="mb-4">
-                        <TabsTrigger value="recurring">
+                    {/* relative: the strip's edge cues (89.6-22, strip-cue) sit over the scroll box; the strip's mb-4 moved to this wrapper (pixel-identical). */}
+                    <div className="relative mb-4">
+                    {/* 89.6-22 (strip-cue): a tab reached by keyboard (Radix arrow keys focus it plainly) is brought clear of the
+                        edge cues by the one shared helper, src/lib/hooks/useScrollEdges.ts ("export function revealTabInStrip("),
+                        never a copy; the browser scrolls a focused tab only when it is wholly hidden. */}
+                    <TabsList ref={tabStripRef} aria-label="Availability settings">
+                        <TabsTrigger
+                            value="recurring"
+                            onFocus={(e) => {
+                                const strip = tabStripRef.current;
+                                if (strip) revealTabInStrip(strip, e.currentTarget);
+                            }}
+                        >
                             Schedules
                         </TabsTrigger>
-                        <TabsTrigger value="specific">
+                        <TabsTrigger
+                            value="specific"
+                            onFocus={(e) => {
+                                const strip = tabStripRef.current;
+                                if (strip) revealTabInStrip(strip, e.currentTarget);
+                            }}
+                        >
                             Specific Dates
                         </TabsTrigger>
                     </TabsList>
+                    {/* DECISION Phase 89.6-22 (strip-cue): at large text the scrolling availability strip fades the end that hides a tab (Specific Dates is about 257px at 320 / 200%), chosen OVER wrapping the strip (DECISION Phase 88-07 in Tabs.tsx: scroll, never wrap) and OVER dropping the trigger's nowrap (the label would wrap inside a scrolling strip and still hide). Plan 89.6-21's hook and look, faded from the card fill. No scroll padding on the strip (plan 89.6-21 measured that scroll-px-8 cut a pressed tab wider than the room between the cues). Shown at look 2. Nothing renders while both tabs fit, so normal text is unchanged. Changing this is a decision, not a cleanup. */}
+                    {stripEdges.start && (
+                        <span aria-hidden="true" data-strip-cue="start" className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-linear-to-r from-surface-card to-transparent" />
+                    )}
+                    {stripEdges.end && (
+                        <span aria-hidden="true" data-strip-cue="end" className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-linear-to-l from-surface-card to-transparent" />
+                    )}
+                    </div>
 
                     {/* Schedules Tab */}
                     <TabsContent value="recurring">
@@ -4097,7 +4127,7 @@ function Profile(){
                             ) : (
                                 <>
                                 <RefreshFailedNotice state={patternsError} retained={patternsRetained} focusTarget={schedulesHeadingRef} className="mb-3" />
-                                <div className="space-y-2">
+                                <div className="space-y-2 @container/pattern-list">
                                     {availabilityPatterns
                                         .filter(p => p.type === 'recurring_pattern')
                                         .map(pattern => (
@@ -4127,9 +4157,16 @@ function Profile(){
                                                AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22; the Delete ring is
                                                now the outset two-tone utility (2px offset plus 2px band, reach 4px), so it lies over
                                                the bottom edge line and 3px into the 8px gap between rows, still whole (read at 320
-                                               and 375 in light by plan 89.6-13). */
-                                            <div key={pattern.id} className="px-edge-card pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
-                                                <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
+                                               and 375 in light by plan 89.6-13).
+                                               AMENDED Phase 89.6-22 (pattern-rows): while the list is narrower than 14rem (large text on a
+                                               phone, and the page-zoom widths) the row is ONE column: hours, then the dates or Available /
+                                               Busy line, then Delete on its own line, chosen OVER the two columns there (the 2-line
+                                               words beside the Delete reserve: Available split at 320 / 200%, CI run 45755303102) and OVER
+                                               narrowing the reserve (the armed label must keep its width, X69). At every phone width with
+                                               normal text the list is at least 17rem, so the rows above are unchanged. GR (owner,
+                                               2026-11-22). The override rows below carry the same classes. */
+                                            <div key={pattern.id} className="px-edge-card pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] @max-[14rem]/pattern-list:grid-cols-1 items-center gap-x-2">
+                                                <p className="text-content-primary col-span-2 @max-[14rem]/pattern-list:col-span-1 sm:col-span-1 sm:col-start-1 sm:row-start-1">
                                                     {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                 </p>
                                                 <p className="text-sm text-content-secondary sm:col-start-1 sm:row-start-2">
@@ -4296,14 +4333,14 @@ function Profile(){
                             ) : (
                                 <>
                                 <RefreshFailedNotice state={patternsError} retained={patternsRetained} focusTarget={overridesHeadingRef} className="mb-3" />
-                                <div className="space-y-2">
+                                <div className="space-y-2 @container/pattern-list">
                                     {availabilityPatterns
                                         .filter(p => p.type === 'specific_override')
                                         .map(pattern => (
                                             // W37 (88.9-52): the two-line phone grid of the schedule rows (their DECISION marker).
                                             // R17 (88.9-52): 82px on a phone, no padding under the control line (the AMENDED line there).
-                                            <div key={pattern.id} className="px-edge-card pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
-                                                <p className="text-content-primary col-span-2 sm:col-span-1 sm:col-start-1 sm:row-start-1">
+                                            <div key={pattern.id} className="px-edge-card pt-3 pb-0 sm:pb-3 border border-line rounded-lg grid grid-cols-[minmax(0,1fr)_auto] @max-[14rem]/pattern-list:grid-cols-1 items-center gap-x-2">
+                                                <p className="text-content-primary col-span-2 @max-[14rem]/pattern-list:col-span-1 sm:col-span-1 sm:col-start-1 sm:row-start-1">
                                                     {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                 </p>
                                                 <p className="text-sm text-content-secondary sm:col-start-1 sm:row-start-2">

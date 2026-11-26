@@ -7639,4 +7639,80 @@ describe('Phase 89.6-22 — Profile part 1 at large text', () => {
     expect(source.split('grid grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))] gap-3 grid-rows-[auto_auto_auto]').length - 1).toBe(3);
     expect(source).not.toContain('grid grid-cols-2 gap-3 grid-rows-[auto_auto_auto]');
   });
+
+  // X-01, the strip half: at large text the availability strip scrolls (DECISION Phase 88-07 in
+  // Tabs.tsx) and nothing said Specific Dates was hidden past its edge. An aria-hidden cue now fades
+  // each end that hides a tab, and none renders when both tabs fit. jsdom lays nothing out, so the
+  // strip's box is stubbed and ResizeObserver stood in. The marker is DECISION Phase 89.6-22 (strip-cue).
+  it('89.6-22 X-01: the availability strip shows an edge cue only where a tab is hidden', async () => {
+    class StubResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', StubResizeObserver);
+    let stripWidth = 456;
+    const isStrip = (el: Element) => el.getAttribute('role') === 'tablist';
+    const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
+    const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get(this: HTMLElement) { return isStrip(this) ? stripWidth : 0; } });
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get(this: HTMLElement) { return isStrip(this) ? 270 : 0; } });
+    try {
+      const first = renderProfile();
+      await screen.findByRole('tablist', { name: 'Availability settings' });
+      const cues = () => Array.from(document.querySelectorAll('[data-strip-cue]')) as HTMLElement[];
+      await waitFor(() => expect(cues().map((cue) => cue.dataset.stripCue)).toEqual(['end']));
+      expect(cues()[0]).toHaveAttribute('aria-hidden', 'true');
+      expect(classesOf(cues()[0])).toEqual(expect.arrayContaining(['pointer-events-none', 'absolute', 'w-8', 'from-surface-card']));
+      first.unmount();
+      stripWidth = 270;
+      renderProfile();
+      await screen.findByRole('tablist', { name: 'Availability settings' });
+      expect(cues()).toEqual([]);
+    } finally {
+      if (scroll) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', scroll);
+      if (client) Object.defineProperty(HTMLElement.prototype, 'clientWidth', client);
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // Rule 10 and the 44px floor (final-pass correction 16): Reset to defaults was about 20px tall with no ring classes.
+  it('89.6-22 rule 10: Reset to defaults carries the house ring, 4px side room paid back and the 44px floor', async () => {
+    renderProfile();
+    const reset = await screen.findByRole('button', { name: 'Reset to defaults' });
+    expectFocusRing(reset, 'Reset to defaults');
+    const classes = classesOf(reset);
+    for (const kept of ['-mx-1', 'px-1', 'rounded-btn', 'inline-flex', 'min-h-11', 'items-center', 'focus:outline-hidden']) expect(classes).toContain(kept);
+  });
+
+  // GR (CI run 45755303102: D32 read the page 22px sideways at 320 / 200%, the nowrap Disconnect Calendar behind the dialog).
+  it('89.6-22 GR: Disconnect Calendar carries no call-site whitespace-nowrap', async () => {
+    const { googleCalendarAPI } = await import('@/lib/api');
+    const status = googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>;
+    status.mockResolvedValue({ connected: true });
+    try {
+      renderProfile();
+      const disconnect = await screen.findByRole('button', { name: 'Disconnect Calendar' });
+      expect(classesOf(disconnect)).not.toContain('whitespace-nowrap');
+    } finally {
+      status.mockReset().mockResolvedValue({ connected: false });
+    }
+  });
+
+  // GR on the pattern rows (CI run 45755303102: Available split beside the Delete reserve at 320 / 200%).
+  // The marker is the AMENDED Phase 89.6-22 (pattern-rows) line on W37.
+  it('89.6-22 GR: a pattern row is one column while its list is narrower than 14rem', async () => {
+    h.patterns = [
+      { id: 'p-1', type: 'recurring_pattern', pattern_data: { dayOfWeek: 3, startTime: '19:00', endTime: '23:00' }, start_date: '2026-01-07', end_date: '2026-12-30', is_available: null },
+    ];
+    renderProfile();
+    const del = await screen.findByRole('button', { name: 'Delete Wednesday schedule' });
+    const row = del.parentElement as HTMLElement;
+    expect(classesOf(row.parentElement)).toContain('@container/pattern-list');
+    expect(classesOf(row)).toContain('@max-[14rem]/pattern-list:grid-cols-1');
+    expect(classesOf(row.firstElementChild)).toContain('@max-[14rem]/pattern-list:col-span-1');
+    const source = await pageSource();
+    expect(source.split('@max-[14rem]/pattern-list:grid-cols-1').length - 1, 'the schedule and override rows').toBe(2);
+    expect(source.split('space-y-2 @container/pattern-list').length - 1, 'the two lists').toBe(2);
+  });
 });
