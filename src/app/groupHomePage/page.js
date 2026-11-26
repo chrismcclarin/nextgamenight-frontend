@@ -1798,6 +1798,14 @@ function GroupHomePage(){
                         `px-4 py-2 md:px-6 md:py-3` are deleted as dead (unlayered `.btn` padding),
                         and the per-site focus ring with them (A-2 ARM A — the ring's one home is
                         the cva base). A decision, not a cleanup. */}
+                    {/* AMENDED Phase 89.6-17 (cta-label-wrap): no whitespace-nowrap on this link either,
+                        as on Manage Members (this file ("no whitespace-nowrap on this button, chosen")).
+                        Under asChild the label is the link's own text, not span.bb-label, and with
+                        nowrap it ran past the button at 320 wide with text at 200% (text end 288.5,
+                        button edge 264: plan 89.6-06's hand-off); without it the words wrap inside the
+                        button, centred. One line at normal text, so nothing moves there. Written above
+                        the Button, not inside it: groupColourRendering test 22 finds the asChild host
+                        within 1500 characters of its Link. Re-adding nowrap is a decision, not a cleanup. */}
                     <Button
                         asChild
                         variant="primary"
@@ -1808,14 +1816,7 @@ function GroupHomePage(){
                            was silently overriding — and the ring survives as
                            `ring-2 ring-white/15`, the same 15% white at the same
                            2px. Dropping the ring would still pass 88-29's
-                           zero-`rgba(0,0,0` gate while looking wrong.
-                           AMENDED Phase 89.6-17 (cta-label-wrap): no whitespace-nowrap here either,
-                           as on Manage Members (this file ("no whitespace-nowrap on this button, chosen")).
-                           Under asChild the label is the link's own text, not span.bb-label, and
-                           with nowrap it ran past the button at 320 wide with text at 200% (text end
-                           288.5, button edge 264: plan 89.6-06's hand-off); without it the words wrap
-                           inside the button, centred. One line at normal text, so nothing moves
-                           there. Re-adding nowrap is a decision, not a cleanup. */
+                           zero-`rgba(0,0,0` gate while looking wrong. */
                         className={
                             'shadow-theme-lg enabled-hover:shadow-theme-lg ' +
                             'text-center' +
