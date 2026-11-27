@@ -32,6 +32,20 @@ import { setTextMode } from './support/wordLines';
 const MIN_RADIUS = 4;
 const MIN_SIDE_ROOM = 5.5;
 
+const PX = 0.5;
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// The red run's own reads (CI run 45943313146, FE 2398bbb, its log line "89.6-43 before-read"):
+// the brand link's border box and the site name's box at 375 x 667 with 100% text, before the fix.
+const BRAND_BOX_375: Box = { x: 16, y: 14.5, width: 189.265625, height: 34 };
+const NAME_BOX_375: Box = { x: 60, y: 17.5, width: 145.265625, height: 28 };
+
 let hold: SweepHold | undefined;
 
 test.afterEach(() => {
@@ -49,13 +63,6 @@ async function ringProblems(page: Page, control: Locator, label: string): Promis
     problems.push(`${label}: G2 ink to ring is ${room.inkToRing.left.toFixed(2)}px left and ${room.inkToRing.right.toFixed(2)}px right, under 6 (${room.summary})`);
   }
   return problems;
-}
-
-interface Box {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 const boxOf = (locator: Locator): Promise<Box> =>
@@ -81,12 +88,16 @@ test('G1 + G2 (89.6-43): the brand link and the desktop list links', async ({ pa
   const brand = nav.getByRole('link', { name: 'Next Game Night' });
   await expect(page.getByRole('button', { name: 'Toggle menu', exact: true }), 'the session never became known at 375 wide').toBeVisible({ timeout: 15_000 });
 
-  // The before-read: the brand link's border box and the site name's box at 375 x 667, 100% text,
-  // printed first so the red run records where both sat before the fix.
-  const brandBefore = await boxOf(brand);
-  const nameBefore = await boxOf(brand.getByText('Next Game Night', { exact: true }));
-  // eslint-disable-next-line no-console -- the before-read is copied from the red run's log into the fix commit (plan 89.6-43)
-  console.log(`89.6-43 before-read brand=${boxText(brandBefore)} name=${boxText(nameBefore)}`);
+  // Normal-text identity at 375 x 667: the site name sits exactly where it sat before the fix, and
+  // the brand link's border box is the old one grown by the paid-back padding (4px a side), so its
+  // margin box, and with it every neighbour, is unchanged.
+  const brandNow = await boxOf(brand);
+  const nameNow = await boxOf(brand.getByText('Next Game Night', { exact: true }));
+  const off = (now: Box, was: Box): number =>
+    Math.max(Math.abs(now.x - was.x), Math.abs(now.y - was.y), Math.abs(now.width - was.width), Math.abs(now.height - was.height));
+  expect(off(nameNow, NAME_BOX_375), `375 x 667, 100% text: the site name moved (now ${boxText(nameNow)}, before ${boxText(NAME_BOX_375)})`).toBeLessThanOrEqual(PX);
+  const grown: Box = { x: BRAND_BOX_375.x - 4, y: BRAND_BOX_375.y, width: BRAND_BOX_375.width + 8, height: BRAND_BOX_375.height };
+  expect(off(brandNow, grown), `375 x 667, 100% text: the brand link is not its old box grown 4px a side (now ${boxText(brandNow)}, before ${boxText(BRAND_BOX_375)})`).toBeLessThanOrEqual(PX);
 
   const problems: string[] = [];
   problems.push(...(await ringProblems(page, brand, 'brand link, 375 x 667, 100% text')));

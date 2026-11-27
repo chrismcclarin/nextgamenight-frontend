@@ -310,13 +310,26 @@ function Header(){
                     brand link and both list links wear the HOUSE offset ring with the header-coloured
                     halo (9.00 light / 10.76 dark), chosen OVER the UA outline (2.51:1 light at 1280)
                     and OVER the fleet no-offset ring-ring (A10a, not picked).
+                    AMENDED Phase 89.6-43 (logo-ring): the brand link and both list links draw a
+                    4px-rounded ring with 4px side room paid back by a negative margin (rule 10
+                    G1 + G2), owner pick O-1 B, 2026-11-22, answering his 'the ring is too close on
+                    the right hand side to Night' and 'Why do some rings get rounded corners and
+                    others get square corners?'; at ordinary text nothing moves.
                     Splitting, moving or renaming this landmark is a decision, not a cleanup. */}
                 <nav aria-label={MAIN_NAV_LABEL} className="w-full max-w-[100rem] mx-auto px-4 h-full">
                     {/* 88.9-52 (R21): this row is the query container the site name measures itself
                         against (its DECISION marker is on the name below). */}
                     <div className="@container flex justify-between items-center h-full">
-                        {/* Brand */}
-                        <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity focus:outline-hidden focus-visible:focus-ring">
+                        {/* Brand.
+                            DECISION Phase 89.6-43 (logo-ring): side room as padding paid back by an equal negative margin,
+                            chosen OVER plain padding (it would move the name and push the menu
+                            button) and OVER a larger outline offset (the ring would sit further
+                            off the logo mark on the left, where it already looked roomier). The
+                            link's margin box is what it was, so the name, the logo and every
+                            neighbour stay where they were; only the link's own border box is 4px
+                            wider a side. e2e/chrome-ring-geometry.spec.ts ("const BRAND_BOX_375")
+                            holds both boxes at 375. Changing this is a decision, not a cleanup. */}
+                        <Link href="/" className="flex items-center gap-2.5 rounded-sm px-1 -mx-1 text-white hover:opacity-90 transition-opacity focus:outline-hidden focus-visible:focus-ring">
                             <DieLogo size={34} />
                             {/* EXEMPT FROM THE R2 TYPE SWEEP — owner: Phase 88.9 (UI-SPEC §4.3,
                                 CONTEXT D-02). `text-lg md:text-xl` is a breakpoint-grown size, and
@@ -402,14 +415,14 @@ function Header(){
                                     {isLink ? (
                                         <Link
                                             href={href}
-                                            className="hover:text-accent transition-colors focus:outline-hidden focus-visible:focus-ring"
+                                            className="rounded-sm px-1 -mx-1 hover:text-accent transition-colors focus:outline-hidden focus-visible:focus-ring"
                                         >
                                             {label}
                                         </Link>
                                     ) : (
                                         <a
                                             href={href}
-                                            className="hover:text-accent transition-colors focus:outline-hidden focus-visible:focus-ring"
+                                            className="rounded-sm px-1 -mx-1 hover:text-accent transition-colors focus:outline-hidden focus-visible:focus-ring"
                                         >
                                             {label}
                                         </a>
