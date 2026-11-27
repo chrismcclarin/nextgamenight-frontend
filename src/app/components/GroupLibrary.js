@@ -338,17 +338,41 @@ export default function GroupLibrary({ groupId }) {
           }
 
           return (
-            <div key={game.id} className="border border-line rounded-card overflow-hidden">
-              {/* Collapsed row */}
+            <div key={game.id} className="bb-media border border-line rounded-card overflow-hidden">
+              {/* Collapsed row.
+                  DECISION Phase 89.6-42 (S2): owner first look 2026-11-22, S2 = Drop ("the Play history rule"):
+                  the row's 2.5rem picture is not drawn while the row's inside is under 13.25rem
+                  (picture 2.5rem + gap 0.75rem + a 10rem words column), the sum GroupGamesList's
+                  R4 C3 drop uses
+                  (src/app/components/GroupGamesList.js ("DECISION Phase 88.9-52 (R4 C3")); the game
+                  name beside it is its text twin. Chosen OVER the picture on its own line (the owner
+                  ruled Drop) and OVER a smaller picture (P1: nothing is shrunk to fit). The row's
+                  edge is the card edge token (12px at every text size; it was 0.75rem, the same 12px
+                  at normal text), so at 320 wide with 200% text the row's inside is 262px against a
+                  424px threshold.
+                  THE CONTAINER IS THE CARD BOX ABOVE, NOT THIS BUTTON, and the threshold is written
+                  against it as 13.25rem + 24px (the 24px is this button's two 12px edges, so it is
+                  the same line as "the row's inside under 13.25rem"; a changed edge changes that
+                  number). Chosen OVER the button as the container, measured 2026-11-26 in Chromium:
+                  a button that is a query container reads a rem threshold again only when its own
+                  box changes size, so with a px edge a change of text size alone left the picture
+                  drawn (341px of row, text 16px to 32px: still drawn; one pixel of width later:
+                  gone), while a plain box reads it again at once. A page loaded at the large size
+                  was right either way; this keeps it right when the size changes on an open page.
+                  The words column and the count keep their R4 D2 wrap rules: the
+                  bb-media row and text blocks are NOT used here, because their 10rem basis would
+                  move the words at 320 with normal text, a change nobody picked. Normal text is
+                  unchanged at 320 and 375; at 768 with 200% text the picture stays. Changing this
+                  is a decision, not a cleanup. */}
               <button
                 onClick={() => setExpandedId(isExpanded ? null : game.id)}
-                className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 p-3 hover:bg-surface-hover active:opacity-75 transition-colors text-left focus:outline-hidden focus-visible:focus-ring-inset"
+                className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 p-edge-card hover:bg-surface-hover active:opacity-75 transition-colors text-left focus:outline-hidden focus-visible:focus-ring-inset"
                 style={{ minHeight: '56px' }}
               >
                 <SafeImage
                   src={game.thumbnail_url || game.image_url}
                   alt={game.name}
-                  className="w-10 h-10 rounded-sm object-cover shrink-0"
+                  className="w-10 h-10 rounded-sm object-cover shrink-0 @max-[calc(13.25rem_+_24px)]:hidden"
                 />
                 <div className="flex-1 max-w-full">
                   {/* §4.5 HIERARCHY outcome: 500 -> 700. This is the row's one primary string. It is a
@@ -372,6 +396,9 @@ export default function GroupLibrary({ groupId }) {
                       stacks a short name at ordinary text); shrinking the picture; letting the
                       count wrap inside itself. NOT DECIDED HERE, the owner's call: not drawing the
                       picture at large text (his Play history ruling, R4 C3) in place of stacking.
+                      AMENDED Phase 89.6-42 (S2): decided 2026-11-22, the owner's S2 = Drop: the
+                      picture is not drawn at large text (see the Phase 89.6-42 S2 decision at the
+                      row); the words and count rules above stand.
                       At ordinary text with an ordinary name nothing moves.
                       The facts line below (players, minutes, weight) is the SECOND cut on this
                       row, routed under the same ruling: it wraps in full too. It is the only

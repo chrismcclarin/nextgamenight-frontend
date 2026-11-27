@@ -351,7 +351,10 @@ test.describe('group home games refresh — phone', () => {
   // picture keeps its 2.5rem square, the owner count is whole on one line, and the row holds
   // everything. The page's own sideways scroll with the Library tab open at this size is recorded
   // in the log: the tab's search and filter controls at 320 / 200% are not this test's subject.
-  test('R4 D2 (88.9-52): at 320 wide with 200% text a Library row keeps each word of a two-word game name and of its facts line whole, with the picture and the owner count whole', async ({
+  // AMENDED Phase 89.6-42 (S2): owner first look 2026-11-22, S2 = Drop (the Play history rule): at
+  // large text the Library row's picture is not drawn, so this test now asserts it absent at
+  // 320 / 200% and present, 2.5rem, at 375 with ordinary text.
+  test('R4 D2 (88.9-52), S2 (89.6-42): at 320 wide with 200% text a Library row keeps each word of a two-word game name and of its facts line whole, drops its picture, and keeps the owner count whole', async ({
     page,
   }) => {
     await page.route(
@@ -408,6 +411,8 @@ test.describe('group home games refresh — phone', () => {
         return {
           row: box(el),
           picture: box(el.firstElementChild as Element),
+          pictureDrawn: (el.firstElementChild as Element).getClientRects().length > 0,
+          paddingLeft: Number.parseFloat(getComputedStyle(el).paddingLeft),
           words: box(el.children[1] as Element),
           count: box(count),
           countLines: new Set(Array.from(range.getClientRects()).filter((r) => r.width > 0).map((r) => Math.round(r.top))).size,
@@ -423,6 +428,10 @@ test.describe('group home games refresh — phone', () => {
       `R4 D2: at ordinary text the picture, the words and the owner count no longer share one line (${beforeLine})`,
     ).toBe(true);
     expectWholeWords(await readWordLines(name, row), ['Weekend', 'Warriors'], 'R4 D2 library name at ordinary text', { pageSideways: false });
+    // S2: at ordinary text the picture is drawn, a 2.5rem (40px) square.
+    expect(before.pictureDrawn, `S2: at 375 with ordinary text the Library row's picture is not drawn (${beforeLine})`).toBe(true);
+    expect(Math.abs(before.picture.width - 40), `S2: at 375 with ordinary text the picture is not 40px wide (${beforeLine})`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(before.picture.height - 40), `S2: at 375 with ordinary text the picture is not 40px tall (${beforeLine})`).toBeLessThanOrEqual(0.5);
 
     await setNarrowLargeText(page, 'R4 D2 library row');
     await row.scrollIntoViewIfNeeded();
@@ -436,9 +445,11 @@ test.describe('group home games refresh — phone', () => {
     expectWholeWords(nameRead, ['Weekend', 'Warriors'], 'R4 D2 library name at 320 / 200%', { pageSideways: false });
     expectWholeWords(factsRead, null, 'R4 D2 library facts line at 320 / 200%', { pageSideways: false });
     await expectHeldInside(row, 'R4 D2 library row');
-    // The neighbours moved, they did not shrink or break: a 2.5rem picture and a one-line count.
-    expect(Math.abs(after.picture.width - 2.5 * after.rem), `R4 D2: the picture is not 2.5rem wide (${afterLine})`).toBeLessThanOrEqual(1);
-    expect(Math.abs(after.picture.height - 2.5 * after.rem), `R4 D2: the picture is not 2.5rem tall (${afterLine})`).toBeLessThanOrEqual(1);
+    // S2 = Drop: the picture is not drawn, and the words start at the row's inner edge (its 12px
+    // card edge, the same at every text size); the count is whole on one line.
+    expect(after.pictureDrawn, `S2: at 320 / 200% the Library row still draws its picture (${afterLine})`).toBe(false);
+    expect(Math.abs(after.paddingLeft - 12), `S2: at 320 / 200% the row's left edge is ${after.paddingLeft}px, not the 12px card edge (${afterLine})`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(after.words.left - after.row.left - 12), `S2: at 320 / 200% the words start ${after.words.left - after.row.left}px in from the row's left, expected 12 (${afterLine})`).toBeLessThanOrEqual(0.5);
     expect(after.countLines, `R4 D2: the owner count is on ${after.countLines} lines (${afterLine})`).toBe(1);
     expect(after.row.height, `R4 D2: the row is shorter than 44px (${afterLine})`).toBeGreaterThanOrEqual(44);
   });
