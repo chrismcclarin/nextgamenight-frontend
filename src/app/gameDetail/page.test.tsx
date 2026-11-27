@@ -1306,13 +1306,18 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
       for (const cls of ['hidden', 'md:inline-flex', 'bg-surface-pill-emerald', 'text-content-pill-emerald']) {
         expect(friend).toHaveClass(cls);
       }
+      // AMENDED Phase 89.6-30 (N04): the desktop twin is the Pill block with its display replaced, so
+      // its class list holds no bare inline-flex (tailwind-merge dropped the block's own display for
+      // the hidden passed after it): a phone never shows two Friends.
+      expect(friend.className.split(/\s+/)).not.toContain('inline-flex');
       // R4 B5's 2px phone pull went with the page's phone pill.
       expect(friend.className.split(/\s+/).some((c) => c.includes('-ms-'))).toBe(false);
-      // Still Friend, then the RSVP pill, then Guest.
+      // AMENDED Phase 89.6-30 (N04): it was Friend, then the RSVP pill, then Guest. Owner pick N04 = B
+      // puts the reply tag LAST: Friend, then Guest, then the reply tag.
       const noReply = within(line).getByText('No reply');
       const guest = within(line).getByText('Guest');
-      expect(friend.compareDocumentPosition(noReply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      expect(noReply.compareDocumentPosition(guest) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(friend.compareDocumentPosition(guest) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(guest.compareDocumentPosition(noReply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
       // A guest who is NOT a friend: the name control too (it is what draws the add-friend control), no pill.
       const strangerName = within(dialog).getByText('Player 2');
@@ -1332,12 +1337,15 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
     }
   });
 
-  it('R4 D3 (88.9-52): the viewer\'s own See-all row stays plain text with the You pill, and a roster friend keeps the desktop pill', async () => {
+  // AMENDED Phase 89.6-30 (N04): the title said "with the You pill". Owner pick N04 = B writes the
+  // viewer as (You) in plain grey words, so the title and the last assertion follow. The viewer's own
+  // row is now IN the list (it was not: the read of You was guarded by an if and never ran).
+  it('R4 D3 (88.9-52): the viewer\'s own See-all row stays plain text and reads (You) in plain words, and a roster friend keeps the desktop pill', async () => {
     pinClockBeforeTheNight();
     try {
       const user = userEvent.setup();
       friendship.accepted.add(OTHER_UUID);
-      const participants = [participantRow(), ...SIX_PARTICIPANTS.slice(0, 5)];
+      const participants = [participantRow(), participantRow({ user_id: SELF_UUID, username: 'Me' }), ...SIX_PARTICIPANTS.slice(0, 5)];
       renderEventDetail({ role: 'owner', participants });
       await screen.findByText('Player 0');
       const dialog = await openParticipantsModal(user);
@@ -1346,8 +1354,49 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
       expect(pills[0].className.split(/\s+/)).toEqual(expect.arrayContaining(['hidden', 'md:inline-flex']));
       // No row of the list draws a page pill at phone width any more.
       for (const pill of pills) expect(pill.className.split(/\s+/)).not.toContain('max-md:-ms-0.5');
-      const you = within(dialog).queryByText('You');
-      if (you) expect((you.closest('div') as HTMLElement).querySelector('[data-member-name]')).toBeNull();
+      // AMENDED Phase 89.6-30 (N04): the viewer's row holds (You) in the muted ink, no name control,
+      // and nothing in the dialog is the bare word You.
+      const you = within(dialog).getByText('(You)');
+      expect(you).toHaveClass('text-content-muted');
+      expect((you.closest('div') as HTMLElement).querySelector('[data-member-name]')).toBeNull();
+      expect(within(you.closest('div') as HTMLElement).getByText('Me')).toBeInTheDocument();
+      expect(within(dialog).queryByText('You')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Owner pick N04 = B (2026-11-22): one tag block. jsdom lays nothing out, so this holds the classes and
+  // the order; the rendered heights are read in the sweep,
+  // e2e/support/largeTextSurfaces/night.ts ("export async function readTagLines").
+  it('N04 B (89.6-30): in See-all every tag is one box at regular weight, the reply tag comes last, and the viewer reads (You) in plain words', async () => {
+    pinClockBeforeTheNight();
+    try {
+      const user = userEvent.setup();
+      const participants = [
+        participantRow({ user_id: SELF_UUID, username: 'Me' }),
+        participantRow({ user_id: 'guest-uuid', username: 'Visiting Pat', is_guest: true }),
+        ...SIX_PARTICIPANTS.slice(0, 4),
+      ];
+      renderEventDetail({ role: 'owner', participants });
+      await screen.findByText('Player 0');
+      const dialog = await openParticipantsModal(user);
+
+      // A guest row: Guest and the reply tag are the one box, and the reply tag is last.
+      const guestLine = within(dialog).getByText('Visiting Pat').closest('div') as HTMLElement;
+      const guest = within(guestLine).getByText('Guest');
+      const noReply = within(guestLine).getByText('No reply');
+      for (const tag of [guest, noReply]) {
+        expect(tag).toHaveClass('inline-flex', 'align-middle', 'leading-4', 'whitespace-nowrap', 'text-xs', 'px-1.5', 'py-0.5', 'rounded-sm');
+        expect(tag.className.split(/\s+/)).not.toContain('font-bold');
+      }
+      expect(guest.compareDocumentPosition(noReply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      // The viewer's own row: plain grey words, no tag.
+      const you = within(dialog).getByText('(You)');
+      expect(you).toHaveClass('text-content-muted', 'font-normal');
+      expect(you.className).not.toMatch(/(^|\s)(bg-\S+|px-\S+|py-\S+)(\s|$)/);
+      expect(within(dialog).queryByText('You')).toBeNull();
     } finally {
       vi.useRealTimers();
     }

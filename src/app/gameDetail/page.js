@@ -41,6 +41,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { ReservedLabel } from '../../components/ui/ReservedLabel';
 import { Heading } from '../../components/ui/Heading';
+import Pill from '../../components/ui/Pill';
 import { Input, Textarea, SelectControl } from '../../components/ui/Input';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
@@ -77,12 +78,12 @@ import { toast } from 'sonner';
    hasStarted (P-5 No change), so the two clocks differ on purpose. */
 function RsvpStatusPill({ status, nightStarted = false }) {
     const map = {
-        yes: { label: 'Going', cls: 'bg-surface-pill-green text-content-pill-green' },
-        maybe: { label: 'Maybe', cls: 'bg-surface-pill-amber text-content-pill-amber' },
+        yes: { label: 'Going', tone: 'green' },
+        maybe: { label: 'Maybe', tone: 'amber' },
         // D-15 (88.6-18): `text-content-muted` on `bg-surface-muted` measures 4.3725, below AA.
         // `text-content-secondary` measures 6.9620 on the same ground.
         // AMENDED Phase 88.9-63 (X17a): No reads the neutral pair, 7.35 / 6.96.
-        no: { label: 'No', cls: 'bg-surface-pill-neutral text-content-pill-neutral' },
+        no: { label: 'No', tone: 'neutral' },
     };
     /* `whitespace-nowrap` below is a D-01 FOLD MITIGATION, not decoration. MEASURED in Chromium
        at 375px over the compiled stylesheet: at 10px "NO REPLY" fitted one line inside the
@@ -90,21 +91,14 @@ function RsvpStatusPill({ status, nightStarted = false }) {
        to 46px tall. D-01 names a 375px screenshot check as a GATE on this fold, and this is what
        that gate found. The two-word badges — this one and "New Player" — are the only ones that
        can wrap; every other badge on this surface is a single word.
-       AMENDED Phase 88.9-63 (X16): sentence case; nowrap kept; 375 re-measure at the capture. */
+       AMENDED Phase 88.9-63 (X16): sentence case; nowrap kept; 375 re-measure at the capture.
+       AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [The no-break is no longer written here: it lives in the block, for every fixed-word tag, and the map below names a tone, not a class pair.] */
     if (!status) {
         if (nightStarted) return null;
-        return (
-            <span className="text-xs whitespace-nowrap px-1.5 py-0.5 rounded-sm bg-surface-pill-neutral text-content-pill-neutral">
-                No reply
-            </span>
-        );
+        return <Pill tone="neutral">No reply</Pill>;
     }
     const m = map[status] || map.no;
-    return (
-        <span className={`text-xs px-1.5 py-0.5 rounded-sm ${m.cls}`}>
-            {m.label}
-        </span>
-    );
+    return <Pill tone={m.tone}>{m.label}</Pill>;
 }
 
 // Phase 65-02: compact strip chip for the upcoming-event view. Shows the
@@ -3369,6 +3363,7 @@ export default function GameDetailPage() {
                             //   Self      → 'You' pill on BOTH viewports + route name through plain <span>
                             //               (ClickableMemberName already renders plain <span> for self, so
                             //               the short-circuit is byte-equivalent and avoids a context lookup).
+                            //               AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [The viewer's row reads (You) in plain grey words right after the name, at both widths; the blue You tag is gone.]
                             //   accepted  → 'Friend' pill on DESKTOP ONLY (hidden md:inline-flex) + keep
                             //               name rendering through ClickableMemberName, which draws the
                             //               phone's md:hidden Friend pill right after the name.
@@ -3431,7 +3426,8 @@ export default function GameDetailPage() {
                                             The fills are the X17a pill family (the marker is in globals.css at the
                                             pill tokens), so no pill here carries a raw palette step, a dark arm of
                                             its own or an edge. Bringing capitals back on one pill is a decision,
-                                            not a cleanup. */}
+                                            not a cleanup.
+                                            AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [The pill weights are no longer kept: every tag is 400, set by the block. The names stay 600, and sentence case and no letter-spacing stand.] */}
                                         <span className="text-content-primary font-semibold">
                                             {p.is_custom ? (
                                                 <>{p.username || 'Guest'}{' '}<span className="text-xs text-content-muted ml-0.5">(Guest)</span></>
@@ -3440,7 +3436,14 @@ export default function GameDetailPage() {
                                                 // ClickableMemberName already returns a plain <span> for
                                                 // status === 'self' (no popover, no indicator) so this
                                                 // short-circuit is byte-equivalent on both mobile + desktop.
-                                                <span>{p.username || 'Unknown'}</span>
+                                                // Phase 76 SOCL-06: "You" pill — visible on BOTH viewports per
+                                                // CONTEXT D-SOCL-06: "visible on both mobile and desktop, not
+                                                // just hover". Blue fill matches the existing role-pill family
+                                                // (Owner=purple, Admin=blue) while staying distinguishable from
+                                                // Owner's purple. Self is a viewer-perspective indicator, not a
+                                                // role, but the visual family is the closest existing pattern.
+                                                // AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [The blue You tag that sat after the reply tag is deleted; the note above moved here with it. The viewer still sees it at both widths, as SOCL-06 asked: the words (You) follow the name, a real space apart.]
+                                                <><span>{p.username || 'Unknown'}</span>{' '}<span className="text-xs font-normal text-content-muted">(You)</span></>
                                             ) : friendUuid ? (
                                                 // R4 D3 (88.9-52): keyed on friendUuid, so a guest with an
                                                 // account takes this arm too (it was memberUuid: roster only).
@@ -3489,27 +3492,16 @@ export default function GameDetailPage() {
                                             // the phone pill 4px after the name itself, so this pill is the
                                             // desktop twin on every row: one class string, no guest arm, no pull.
                                             // One Friend per row at every width.
-                                            <span className="hidden md:inline-flex items-center align-middle text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold">
-                                                Friend
-                                            </span>
-                                        )}
-                                        {!repliesLoadState.showError && <RsvpStatusPill status={status} nightStarted={hasStarted(singleEvent, Date.now())} />}
-                                        {isSelfRow && (
-                                            // Phase 76 SOCL-06: "You" pill — visible on BOTH viewports per
-                                            // CONTEXT D-SOCL-06: "visible on both mobile and desktop, not
-                                            // just hover". Blue fill matches the existing role-pill family
-                                            // (Owner=purple, Admin=blue) while staying distinguishable from
-                                            // Owner's purple. Self is a viewer-perspective indicator, not a
-                                            // role, but the visual family is the closest existing pattern.
-                                            <span className="align-middle text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">
-                                                You
-                                            </span>
+                                            // Phase 89.6-30 (N04): the block's own display is replaced by the
+                                            // two display classes passed here (tailwind-merge keeps the later
+                                            // one), so a phone never shows this twin.
+                                            <Pill tone="emerald" className="hidden md:inline-flex">Friend</Pill>
                                         )}
                                         {role === 'owner' && (
-                                            <span className="align-middle text-xs bg-surface-pill-violet text-content-pill-violet px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
+                                            <Pill tone="violet">Owner</Pill>
                                         )}
                                         {role === 'admin' && (
-                                            <span className="align-middle text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
+                                            <Pill tone="blue">Admin</Pill>
                                         )}
                                         {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
                                             when viewer is a full group member. Skips render for game-only
@@ -3518,13 +3510,10 @@ export default function GameDetailPage() {
                                             flow). Tells admins/owners who joined via game-invite QR so they
                                             can decide who to onboard via admin-initiated invite. */}
                                         {p.is_guest && userScope === 'group-member' && (
-                                            <span
-                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber"
-                                                title="Joined via game-invite QR (not a group member)"
-                                            >
-                                                Guest
-                                            </span>
+                                            <Pill tone="amber" title="Joined via game-invite QR (not a group member)">Guest</Pill>
                                         )}
+                                        {/* DECISION Phase 89.6-30 (reply-last): the reply tag is the LAST tag (owner pick N04 = B, 2026-11-22) and the die stays after it, chosen OVER moving the die before the tags: the die is a picture with its own name, not a tag, and the pick orders tags. (You) is regular weight inside the name span OVER inheriting the name's 600: the pick says plain grey words. Changing this is a decision, not a cleanup. */}
+                                        {!repliesLoadState.showError && <RsvpStatusPill status={status} nightStarted={hasStarted(singleEvent, Date.now())} />}
                                         {isBringing && (
                                             <span role="img" title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
                                         )}

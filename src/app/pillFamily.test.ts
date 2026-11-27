@@ -62,7 +62,14 @@ const PILL_FILES: Record<string, PillFile> = {
     // (violet). Measured on the card with src/lib/wcag.ts, word on fill / fill against the card:
     // amber 5.6360 / 1.2580 light and 5.6471 / 1.9692 dark; violet 5.9744 / 1.4596 and
     // 7.7691 / 1.5107; neutral 7.3453 / 1.4261 and 6.9642 / 1.5231.
-    families: { green: 1, neutral: 3, violet: 3, blue: 3, amber: 4, emerald: 1 },
+    // AMENDED Phase 89.6-30 (N04): 15 -> 6. Owner pick N04 = B moves every tag onto the Pill block
+    // (src/components/ui/Pill.tsx ("export const PILL_BOX")), which owns the pairs. Gone from this
+    // file in the plan's first step, nine: the RSVP map's three (green, amber, neutral), No reply
+    // (neutral), and the See-all row's Friend (emerald), You (blue), Owner (violet), Admin (blue) and
+    // Guest (amber). Left until the plan's second step, six: the strip chip's Owner (violet), Admin
+    // (blue) and Guest (amber), and the session chip's Guest (amber), New Player (neutral) and the
+    // faction (violet).
+    families: { neutral: 1, violet: 2, blue: 1, amber: 2 },
     // AMENDED Phase 88.9-65 (X47): the two raw palette strings 88.9-63 left on the past-session
     // chip by name (its orange Guest and its purple faction) are gone with that chip's rebuild, so
     // nothing is exempt here: any raw palette fill or ink in this file is a failure.
@@ -75,6 +82,13 @@ const PILL_FILES: Record<string, PillFile> = {
     families: { emerald: 1, blue: 1 },
     exemptLiterals: {},
     why: 'the member-name popover: the Friend pill and the You pill',
+  },
+  'components/ui/Pill.tsx': {
+    // Phase 89.6-30 (owner pick N04 = B): the one block every tag beside a name renders through.
+    // It holds each family's pair once, as a whole literal, fill class then ink class.
+    families: { green: 1, neutral: 1, violet: 1, blue: 1, amber: 1, emerald: 1 },
+    exemptLiterals: {},
+    why: 'the shared tag block: one fill-and-ink pair per tone',
   },
   'app/components/GuestPill.tsx': {
     // The one Guest pill the Calendar rows, the upcoming card and the sheet render. The guest
@@ -202,20 +216,17 @@ describe('Phase 88.9-63 (X16 / X17a): one pill family, sentence case, names 600'
 
     // Owner ruling Q1 A1 (2026-11-14): the game page's Maybe pill is the amber pair, exactly, and
     // has no token of its own. Putting it back on the warning family is a decision, not a cleanup.
-    const gamePage = scan('app/gameDetail/page.js', PILL_FILES['app/gameDetail/page.js']);
-    const pillPairChunks = gamePage.chunkTexts.filter((t) => /^bg-surface-pill-[a-z]+ text-content-pill-[a-z]+$/.test(t));
-    expect(
-      pillPairChunks.sort(),
-      'RsvpStatusPill holds three lookup values that are a bare pill pair: Maybe on amber, Going on green, No on neutral',
-    ).toEqual([
-      'bg-surface-pill-amber text-content-pill-amber',
-      'bg-surface-pill-green text-content-pill-green',
-      'bg-surface-pill-neutral text-content-pill-neutral',
-    ]);
+    // AMENDED Phase 89.6-30 (N04): the reply map names a TONE and the Pill block holds the pair, so
+    // the ruling is read in two places: the three tone literals in the page (each exactly once) and
+    // the amber pair behind the amber tone in the block.
     const stripped = withoutComments(fs.readFileSync(path.join(SRC, 'app/gameDetail/page.js'), 'utf8'));
+    for (const literal of ["yes: { label: 'Going', tone: 'green' }", "maybe: { label: 'Maybe', tone: 'amber' }", "no: { label: 'No', tone: 'neutral' }"]) {
+      expect(stripped.split(literal).length - 1, `RsvpStatusPill holds the lookup value ${literal} exactly once: Maybe on amber, Going on green, No on neutral`).toBe(1);
+    }
+    const block = withoutComments(fs.readFileSync(path.join(SRC, 'components/ui/Pill.tsx'), 'utf8'));
     expect(
-      stripped.split("maybe: { label: 'Maybe', cls: 'bg-surface-pill-amber text-content-pill-amber' }").length - 1,
-      'the maybe arm reads the amber pill pair',
+      block.split("amber: 'bg-surface-pill-amber text-content-pill-amber',").length - 1,
+      'the amber tone (the maybe arm, and Guest) reads the amber pill pair',
     ).toBe(1);
   });
 
