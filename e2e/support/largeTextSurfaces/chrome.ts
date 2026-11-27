@@ -1,4 +1,5 @@
 // Surface rows: the phone menu, its dim layer, Notifications, the action menu and the toaster. Owner: plan 89.6-26.
+// The signed-in footer (R02-footer) is plan 89.6-43's.
 // One row per line, each with its census id.
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
@@ -317,10 +318,56 @@ const o08Extras: SurfaceRow['extras'] = async (page, cell) => {
   if (problems.length > 0) throw new Error(`${cell.id}: ${problems.join('; ')}`);
 };
 
+// R02-footer (plan 89.6-43; register UR-03, UR-05, R6-03 footer half): the signed-in footer on /about,
+// read from the contentinfo landmark. The About page is static: it reads nothing that needs an answer.
+const footerOf = (page: Page): Locator => page.getByRole('contentinfo');
+
+const reachFooter: SurfaceRow['reach'] = async (page) => {
+  await page.goto('/about');
+  await footerOf(page).getByRole('button', { name: /^Report bug/ }).waitFor({ state: 'visible', timeout: 15_000 });
+  // The BGG mark sets the width of its link: the footer is read once the picture has loaded.
+  await expect
+    .poll(() => footerOf(page).locator('img').first().evaluate((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0), { timeout: 15_000, message: 'R02-footer: the BGG mark never loaded' })
+    .toBe(true);
+  return { root: footerOf(page) };
+};
+
+// Extras: in every cell (the two page-zoom cells too) every footer link, Report bug and the BGG
+// link is at least 44px tall (0.5px slack), and the BGG mark is drawn at its own proportions (2%):
+// beside the copyright in a row too narrow for both, the mark was squeezed to a third of its width
+// (53 x 48 at 320 with 200% text) until the pair was allowed to stack. A control that is missing
+// fails the cell.
+const footerExtras: SurfaceRow['extras'] = async (page) => {
+  const read = await footerOf(page).evaluate((footer) =>
+    (Array.from(footer.querySelectorAll('a, button')) as HTMLElement[]).map((el) => ({
+      name: (el.getAttribute('aria-label') ?? el.textContent ?? '').trim(),
+      height: el.getBoundingClientRect().height,
+    })),
+  );
+  const problems: string[] = [];
+  for (const name of ['About', 'Privacy', 'Terms', 'Report bug or suggest feature', 'Powered by BoardGameGeek']) {
+    const control = read.find((item) => item.name === name);
+    if (!control) problems.push(`no footer control named ${name}`);
+    else if (control.height < 44 - PX) problems.push(`${name} is ${control.height}px tall, under 44`);
+  }
+  const mark = await footerOf(page).locator('img').first().evaluate((img) => {
+    const r = img.getBoundingClientRect();
+    return { width: r.width, height: r.height, naturalWidth: (img as HTMLImageElement).naturalWidth, naturalHeight: (img as HTMLImageElement).naturalHeight };
+  });
+  if (mark.naturalWidth === 0 || mark.height === 0) problems.push('the BGG mark is not drawn');
+  else {
+    const natural = mark.naturalWidth / mark.naturalHeight;
+    const drawn = mark.width / mark.height;
+    if (Math.abs(drawn - natural) / natural > 0.02) problems.push(`the BGG mark is squeezed: drawn ${mark.width.toFixed(1)} x ${mark.height.toFixed(1)} (${drawn.toFixed(2)} to 1), its own proportions are ${natural.toFixed(2)} to 1`);
+  }
+  if (problems.length > 0) throw new Error(`R02-footer: ${problems.join('; ')}`);
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'O01', census: 'O01', kind: 'overlay', owner: '89.6-26', status: 'enforced', state: 'phone menu open, one pending invite (the dot drawn)', reach: reachMenu, answers: answerInvite, extras: o01Extras },
   { id: 'O02', census: 'O02', kind: 'overlay', owner: '89.6-26', status: 'enforced', state: 'the dim layer behind the open phone menu', reach: reachDim, answers: answerInvite, extras: o02Extras },
   { id: 'O03', census: 'O03', kind: 'overlay', owner: '89.6-26', status: 'enforced', state: 'Notifications opened from the Invites row, one invite named by the 30-letter word', reach: reachNotifications, answers: answerInvite, extras: o03Extras },
   { id: 'O04', census: 'O04', kind: 'overlay', owner: '89.6-26', status: 'enforced', state: 'the first Check-in actions menu open on the planning page', reach: reachCheckInMenu, answers: (url) => expandedRow().answers?.(url), extras: o04Extras },
   { id: 'O08', census: 'O08', kind: 'overlay', owner: '89.6-26', status: 'enforced', state: 'the Customize Group save-failure toast, held', reach: reachToast, answers: answerPromptSettings, extras: o08Extras, clock: 'held' },
+  { id: 'R02-footer', census: 'R02', kind: 'route', owner: '89.6-43', status: 'enforced', state: 'footer', reach: reachFooter, extras: footerExtras },
 ];

@@ -118,3 +118,75 @@ test('G1 + G2 (89.6-43): the brand link and the desktop list links', async ({ pa
 
   expect(problems, `G1 + G2: ${problems.length} read(s) outside the rule`).toEqual([]);
 });
+
+/** The vertical offset of a control's text centre from its box centre, px (positive: the text sits low). */
+const textCentreOffset = (control: Locator): Promise<number> =>
+  control.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const text = range.getBoundingClientRect();
+    return text.top + text.height / 2 - (box.top + box.height / 2);
+  });
+
+const FOOTER_LINKS = ['About', 'Privacy', 'Terms'] as const;
+
+/** One footer in one cell: G1 + G2 at every text control, Report bug centred, the BGG link on the house ring. */
+async function footerProblems(page: Page, signedIn: boolean, at: string): Promise<string[]> {
+  const footer = page.getByRole('contentinfo');
+  const who = signedIn ? 'signed in' : 'signed out';
+  const problems: string[] = [];
+  for (const name of FOOTER_LINKS) {
+    const link = footer.getByRole('link', { name, exact: true });
+    await expect(link, `${name} (${who}, ${at}): no such footer link`).toBeVisible({ timeout: 15_000 });
+    problems.push(...(await ringProblems(page, link, `${name} (${who}, ${at})`)));
+  }
+  // The BGG link wears the house ring: the reader throws on the browser's own outline.
+  const bgg = footer.getByRole('link', { name: 'Powered by BoardGameGeek' });
+  // The mark is the link's only ink: read it once the picture has loaded.
+  await expect
+    .poll(() => bgg.locator('img').evaluate((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0), { timeout: 15_000, message: `BGG link (${who}, ${at}): the mark never loaded` })
+    .toBe(true);
+  try {
+    const room = await readRingRoom(page, bgg, `BGG link (${who}, ${at})`);
+    if (room.radius < MIN_RADIUS) problems.push(`BGG link (${who}, ${at}): G1 the ring corner is ${room.radius}px, under ${MIN_RADIUS}`);
+  } catch (error) {
+    problems.push(String(error instanceof Error ? error.message : error).split('\n')[0]);
+  }
+  if (!signedIn) return problems;
+  const report = footer.getByRole('button', { name: /^Report bug/ });
+  await expect(report, `Report bug (${at}): no such footer button`).toBeVisible({ timeout: 15_000 });
+  problems.push(...(await ringProblems(page, report, `Report bug (${at})`)));
+  const offset = await textCentreOffset(report);
+  if (Math.abs(offset) > 1) problems.push(`Report bug (${at}): its text centre is ${offset.toFixed(2)}px off its box centre, over 1`);
+  return problems;
+}
+
+test('G1 + G2 (89.6-43): the footer controls', async ({ page, browser, baseURL }) => {
+  await openSignedIn(page, '/about', 375, 667);
+  const problems: string[] = [];
+  problems.push(...(await footerProblems(page, true, '375 x 667, 100% text')));
+  await page.setViewportSize({ width: 320, height: 568 });
+  await setTextMode(page, '200', 'footer 320 x 568');
+  problems.push(...(await footerProblems(page, true, '320 x 568, 200% text')));
+
+  // Signed out: the public footer (the same three links and the BGG link, no Report bug). A page
+  // with no session sends no API write; the guard goes on it all the same.
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] }, baseURL, viewport: { width: 375, height: 667 }, colorScheme: 'dark' });
+  try {
+    const anon = await context.newPage();
+    const anonHold = await sweepWriteGuard(anon, {});
+    await anon.goto('/about');
+    await anon.evaluate(() => document.fonts.ready.then(() => undefined));
+    problems.push(...(await footerProblems(anon, false, '375 x 667, 100% text')));
+    await anon.setViewportSize({ width: 320, height: 568 });
+    await setTextMode(anon, '200', 'public footer 320 x 568');
+    problems.push(...(await footerProblems(anon, false, '320 x 568, 200% text')));
+    expectNoApiWrites(anonHold);
+    expect(anonHold.writeGets, 'signed out: a GET that writes was held with no answer').toEqual([]);
+  } finally {
+    await context.close();
+  }
+
+  expect(problems, `footer G1 + G2: ${problems.length} read(s) outside the rule`).toEqual([]);
+});

@@ -2962,6 +2962,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       { label: 'Privacy (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'Privacy', exact: true }) },
       { label: 'Terms (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'Terms', exact: true }) },
       { label: 'Report bug (AuthFooter, 375px)', control: footer.getByRole('button', { name: /^Report bug/ }) },
+      // 89.6-43 (UR-03): the BGG link is a footer control too; it was 32px tall and outside this list.
+      { label: 'BGG link (AuthFooter, 375px)', control: footer.getByRole('link', { name: 'Powered by BoardGameGeek' }) },
     ];
     for (const { label, control } of signedIn) {
       await expect(control, `${label}: no such control in the footer — a zero-count locator measures nothing`).toBeVisible({ timeout: 15_000 });
@@ -2988,6 +2990,9 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         await expect(control, `${label}: no such link in the footer — a zero-count locator measures nothing`).toBeVisible({ timeout: 15_000 });
         await expectTouchTarget(control, label, { axes: 'height' });
       }
+      const bgg = publicFooter.getByRole('link', { name: 'Powered by BoardGameGeek' });
+      await expect(bgg, 'BGG link (PublicFooter, signed out, 375px): no such link in the footer').toBeVisible({ timeout: 15_000 });
+      await expectTouchTarget(bgg, 'BGG link (PublicFooter, signed out, 375px)', { axes: 'height' });
     } finally {
       await context.close();
     }
