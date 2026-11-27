@@ -13,6 +13,15 @@
 // three counts. The ballot read is an open ballot with two options, the voted one named with the
 // two-word name. The brings read is one bringer with two games.
 //
+// THE PEOPLE BEHIND THE TAGS (stageNightPeople, plan 89.6-44, orchestrator decision D46). The night
+// rows of this module (R05-event and D27) also answer, after stageNight, so these answers win: the
+// event read with the fourth and fifth participants replaced by two REAL roster members (the
+// group's owner, who is the viewer in CI, and the first other member), the members read with that
+// other member an admin, the accepted-friends read with the sixth participant in it and the
+// sent-requests read with the seventh. So the strip draws Owner and Admin on a chip, and See all
+// draws (You), Owner, Admin, Friend and Pending, and readTagLines reads them. The rows of other
+// modules that open the staged night (the popover, the bring picker) keep stageNight alone.
+//
 // EVERY ANSWER IS IN THE BROWSER. Each staged read is fetched from the real server (or not at all)
 // and rewritten before the page sees it; a staged row exists only in the answer sent to the browser,
 // its id is in no database, and nothing is written (the sweep's guard holds every write).
@@ -172,9 +181,101 @@ export async function stageNight(page: Page): Promise<void> {
   );
 }
 
+const FRIEND = { id: uuid('e6'), username: 'Carol' };
+const REQUESTED = { id: uuid('e7'), username: 'Dan' };
+
+// The roster's owner (the CI login owns the seeded group) and the first member who is not.
+const ownerAndOther = (rows: unknown[]): { owner?: RosterRow; other?: RosterRow } => {
+  const members = (rows as RosterRow[]).filter((m) => typeof m.id === 'string');
+  const owner = members.find((m) => m.UserGroup?.role === 'owner');
+  return { owner, other: members.find((m) => m !== owner) };
+};
+// The members read for the night rows: every member an owner, as stageNight has it (so Invite and
+// Remove render whoever the viewer is), except the first member who is not the real owner: an admin.
+const ownersAndOneAdmin = (rows: unknown[]): unknown[] => {
+  const { other } = ownerAndOther(rows);
+  return rows.map((row) => {
+    const member = row as RosterRow;
+    if (!member.UserGroup) return row;
+    return { ...member, UserGroup: { ...member.UserGroup, role: other && member.id === other.id ? 'admin' : 'owner' } };
+  });
+};
+
+// One set of people routes per page, as for stageNight.
+const peopled = new WeakSet<Page>();
+
+/** Register the people answers of the night rows on the page (once), after stageNight's. */
+async function stageNightPeople(page: Page): Promise<void> {
+  if (peopled.has(page)) return;
+  peopled.add(page);
+  const id = eventId();
+  await routeMemberRoster(page, groupId(), ownersAndOneAdmin);
+  await page.route(
+    (url) => url.pathname === `/api/events/${id}`,
+    (route) =>
+      onGet(route, async (r) => {
+        const response = await scrubbedFetch(r);
+        let body: unknown;
+        try {
+          body = await response.json();
+        } catch {
+          await r.fulfill({ response });
+          return;
+        }
+        const roster = await realJson(r, new URL(`/api/groups/${groupId()}/users`, r.request().url()).toString());
+        const { owner, other } = ownerAndOther(Array.isArray(roster) ? roster : []);
+        // A roster with no owner or no second member keeps the staged short names: the count stays
+        // seven and the extras then name the tags that were not drawn.
+        const member = (at: number, from: RosterRow | undefined) =>
+          from ? { ...NIGHT_PARTICIPANTS[at], user_id: from.id, username: from.username ?? 'Member' } : NIGHT_PARTICIPANTS[at];
+        const participants = [
+          ...NIGHT_PARTICIPANTS.slice(0, 3),
+          member(3, owner),
+          member(4, other),
+          { ...NIGHT_PARTICIPANTS[5], user_id: FRIEND.id, username: FRIEND.username },
+          { ...NIGHT_PARTICIPANTS[6], user_id: REQUESTED.id, username: REQUESTED.username },
+        ];
+        if (body && typeof body === 'object' && !Array.isArray(body)) {
+          Object.assign(body as Record<string, unknown>, { start_date: tomorrowEvening(), status: 'scheduled', EventParticipations: participants });
+        }
+        await r.fulfill({ response, json: body });
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/friendships' && url.searchParams.get('status') === 'accepted',
+    (route) => onGet(route, (r) => r.fulfill({ json: [{ id: uuid('f6'), friend: FRIEND }] })),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/friendships' && url.searchParams.get('status') === 'pending' && url.searchParams.get('direction') === 'sent',
+    (route) => onGet(route, (r) => r.fulfill({ json: [{ id: uuid('f7'), status: 'pending', Addressee: REQUESTED }] })),
+  );
+}
+
+// The staged tags a night row must DRAW (decision D46): each word, where it is looked for, and how
+// many of it. A tag is a leaf span, shown, with exactly that text. Returns one message naming every
+// tag that is missing, or nothing.
+async function stagedTagsMissing(scope: Locator, wanted: Record<string, number>): Promise<string[]> {
+  const found = await scope.evaluate((root, words) => {
+    const counts: Record<string, number> = {};
+    for (const span of Array.from(root.querySelectorAll('span'))) {
+      if (span.childElementCount > 0) continue;
+      const word = (span.textContent ?? '').trim();
+      if (!words.includes(word)) continue;
+      const style = getComputedStyle(span);
+      const box = span.getBoundingClientRect();
+      if (style.display === 'none' || style.visibility !== 'visible' || box.width === 0 || box.height === 0) continue;
+      counts[word] = (counts[word] ?? 0) + 1;
+    }
+    return counts;
+  }, Object.keys(wanted));
+  const missing = Object.entries(wanted).filter(([word, count]) => (found[word] ?? 0) < count).map(([word, count]) => `${word} ${found[word] ?? 0} of ${count}`);
+  return missing.length === 0 ? [] : [`staged tags not drawn: ${missing.join(', ')}`];
+}
+
 /** Open the staged night and wait for every staged section. */
 async function openNight(page: Page): Promise<Locator> {
   await stageNight(page);
+  await stageNightPeople(page);
   await page.goto(eventPath());
   const main = page.getByRole('main');
   await main.getByRole('heading', { level: 1, name: 'Game Night' }).waitFor({ state: 'visible', timeout: 15_000 });
@@ -291,6 +392,8 @@ const nightExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: 
   // Plan 89.6-30 (N04 B): the tags on the Participants card's chips, one box and one weight.
   const card = main.locator('.card', { has: page.getByRole('heading', { name: /^Participants \(/ }) }).last();
   problems.push(...tagSummary(`R05-event ${cell.id} tags`, await readTagLines(card, 3)));
+  // Plan 89.6-44 (D46): the roster member's and the viewer's chips draw Admin and Owner.
+  problems.push(...(await stagedTagsMissing(card, { Owner: 1, Admin: 1 })).map((line) => `R05-event ${cell.id}: ${line}`));
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
@@ -348,6 +451,14 @@ const participantsExtras: NonNullable<SurfaceRow['extras']> = async (page: Page,
   // 375 x 667 (the pick was drawn at normal text), then the cell's size and mode are put back; the
   // sweep sets the next cell's mode itself.
   problems.push(...tagSummary(`${tag} tags`, await readTagLines(dialog, 3)));
+  // Plan 89.6-44 (D46): the dialog draws the viewer's (You) and Owner, the roster member's Admin and
+  // the friend's Friend at every width (below md the name control's inline Friend, from md the row's
+  // own), and the requested person's Pending below md only: from md Pending lives in the name's
+  // popover, not on the row. md is asked of the browser (at 768 wide with text at 200% it matches;
+  // with a 32px default font it does not).
+  const fromMd = await page.evaluate(() => window.matchMedia('(min-width: 48rem)').matches);
+  const wanted: Record<string, number> = { '(You)': 1, Owner: 1, Admin: 1, Friend: 1, ...(fromMd ? {} : { '⏳ Pending': 1 }) };
+  problems.push(...(await stagedTagsMissing(dialog, wanted)).map((line) => `${tag}: ${line}`));
   if (cell.id === '320x568-dark-200') {
     await setTextMode(page, '100', `${tag} tags normal-text pass`);
     for (const size of [{ width: 320, height: 568 }, { width: 375, height: 667 }]) {
