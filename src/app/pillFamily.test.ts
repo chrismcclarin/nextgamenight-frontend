@@ -81,9 +81,11 @@ const PILL_FILES: Record<string, PillFile> = {
   'app/components/ClickableMemberName.js': {
     // The name popover's two informational pills: Friend (one helper, used by the accepted
     // return and by the success region) and You.
-    families: { emerald: 1, blue: 1 },
+    // AMENDED Phase 89.6-30 (N04): 2 -> 0. Friend (the popover's and the phone's) and Pending are
+    // Pills, and the viewer's own popover reads (You) in plain words, so this file writes no pair.
+    families: {},
     exemptLiterals: {},
-    why: 'the member-name popover: the Friend pill and the You pill',
+    why: 'the member-name control: Friend and Pending are Pills and You is plain words, so it writes no pill pair of its own',
   },
   'components/ui/Pill.tsx': {
     // Phase 89.6-30 (owner pick N04 = B): the one block every tag beside a name renders through.
@@ -262,6 +264,35 @@ describe('Phase 88.9-63 (X16 / X17a): one pill family, sentence case, names 600'
       gamePage.chunkTexts.filter((t) => t === 'text-content-primary font-semibold'),
       'the See-all row name is 600',
     ).toHaveLength(1);
+  });
+
+  // 89.6-30 (owner pick N04 = B, 2026-11-22). Every tag beside a name on the game page and in the
+  // member-name control is the Pill block: the box is written once, the block sets regular weight
+  // itself (as its own class, so a wrap tag takes it too), and neither file writes a pill pair or a
+  // tag class string of its own. The counts are the tags each file draws: twelve on the game page
+  // (two in the reply tag, four on the See-all row, three on the strip chip, three on the session
+  // chip) and three in the name control (the popover Friend, the phone Friend, Pending).
+  it('N04 B (89.6-30): one tag block — one box, one weight, and no tag pair outside it', () => {
+    const block = [...stringChunks(withoutComments(fs.readFileSync(path.join(SRC, 'components/ui/Pill.tsx'), 'utf8')))].map((chunk) => chunk.text);
+    expect(
+      block.filter((text) => text === 'inline-flex items-center align-middle px-1.5 py-0.5 rounded-sm text-xs leading-4'),
+      'the block holds the one box, written once',
+    ).toHaveLength(1);
+    expect(block.filter((text) => /(^|\s)font-(medium|semibold|bold)(\s|$)/.test(text)), 'the block carries no heavier weight').toEqual([]);
+    // font-normal is its own class in the block, exactly once: in neither arm of the wrap choice, so
+    // a wrap tag (the faction) and a no-break tag both take it.
+    expect(block.filter((text) => /(^|\s)font-normal(\s|$)/.test(text)), 'regular weight is one class of its own').toEqual(['font-normal']);
+    expect(block.filter((text) => text === 'whitespace-normal max-w-full wrap-break-word'), 'the wrap arm').toHaveLength(1);
+    expect(block.filter((text) => text === 'whitespace-nowrap'), 'the no-break arm').toHaveLength(1);
+
+    for (const [rel, pills] of [
+      ['app/gameDetail/page.js', 12],
+      ['app/components/ClickableMemberName.js', 3],
+    ] as const) {
+      const source = withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8'));
+      expect((source.match(/(?:bg-surface|text-content)-pill-[a-z]+/g) ?? []).length, `${rel}: no pill fill or ink is written outside the block`).toBe(0);
+      expect((source.match(/<Pill\s/g) ?? []).length, `${rel}: the tags it draws, each through the block`).toBe(pills);
+    }
   });
 
   // 88.9-65 (owner fix row 52-X47). The past-session chip was a one-line flex row on the muted

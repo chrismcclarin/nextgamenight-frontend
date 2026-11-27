@@ -96,17 +96,23 @@ describe('ClickableMemberName showInlineIndicator (88.5 D-15 / SPEC Req 5)', () 
     expect(friendIndicator()).toHaveClass('md:hidden');
   });
 
+  // AMENDED Phase 89.6-30 (N04): owner pick N04 = B. The phone Friend tag is the Pill block: the one
+  // box (leading-4) at regular weight (it pinned font-bold), and font-normal is the tag's OWN class,
+  // so a host that draws the name in a bold line (a review, a winner) does not make the tag bold.
+  // The Pending tag (register FL-03) is the same block on the neutral pair, read at the end.
   it('R19 (88.9-52): the phone Friend indicator is the green pill, says Friend once, and has no tick', () => {
     renderName('accepted');
     const pill = friendIndicator()!;
     expect(pill.textContent).toBe('Friend');
+    expect(pill.className.split(/\s+/)).not.toContain('font-bold');
     for (const cls of [
       'md:hidden',
       'inline-flex',
       'items-center',
       'align-middle',
       'text-xs',
-      'font-bold',
+      'leading-4',
+      'font-normal',
       'bg-surface-pill-emerald',
       'text-content-pill-emerald',
       'px-1.5',
@@ -120,6 +126,18 @@ describe('ClickableMemberName showInlineIndicator (88.5 D-15 / SPEC Req 5)', () 
     expect(screen.getAllByText('Friend')).toHaveLength(1);
     expect(pill).not.toHaveAttribute('aria-hidden');
     expect(document.body.textContent).not.toContain('✓');
+
+    // FL-03 (89.6-30): Pending is a tag too, the neutral one, with its words and focus wiring kept.
+    cleanup();
+    renderName('pending_sent');
+    const pending = screen.getByText('⏳ Pending');
+    for (const cls of ['md:hidden', 'ml-1', 'inline-flex', 'items-center', 'align-middle', 'text-xs', 'leading-4', 'font-normal', 'bg-surface-pill-neutral', 'text-content-pill-neutral', 'px-1.5', 'py-0.5', 'rounded-sm']) {
+      expect(pending).toHaveClass(cls);
+    }
+    expect(pending.className.split(/\s+/)).not.toContain('font-bold');
+    expect(pending.tagName).toBe('SPAN');
+    expect(pending).toHaveAttribute('role', 'status');
+    expect(pending).toHaveAttribute('tabindex', '-1');
   });
 
   it('2. DEFAULT (prop omitted), none: the inline + add-friend button is still rendered', () => {

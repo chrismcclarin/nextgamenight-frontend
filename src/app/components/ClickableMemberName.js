@@ -17,6 +17,7 @@ import {
 import { FriendshipContext } from './FriendshipStatusProvider';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
+import Pill from '../../components/ui/Pill';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
 import { cn } from '../../lib/cn';
@@ -37,9 +38,8 @@ function firstRendered(candidates) {
   );
 }
 
-// The green Friend pill's look, shared by the popover pill and the phone indicator (R19, 88.9-52).
-const FRIEND_PILL_CLASSES =
-  'text-xs bg-surface-pill-emerald text-content-pill-emerald px-1.5 py-0.5 rounded-sm font-bold';
+// The green Friend tag's look, shared by the popover tag and the phone indicator (R19, 88.9-52), is
+// the Pill block's emerald tone since Phase 89.6-30 (N04): the class constant that stood here is gone.
 
 /**
  * ClickableMemberName - Wraps a member name with a hover-to-open tooltip
@@ -114,7 +114,9 @@ const FRIEND_PILL_CLASSES =
    hears Friend once. Supersedes the Phase 76 SOCL-06 split (ticked text on phones, a pill after the
    RSVP pill on desktop). The opt-out, its default and the chip rows are untouched: a chip still
    draws no inline Friend. Going back to the ticked text, or moving Friend after the RSVP pill on
-   either width, is a decision, not a cleanup. */
+   either width, is a decision, not a cleanup.
+
+   AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [The phone Friend is the block's emerald tag: the same pair, the one box, 400. Its place right after the name, its key, ref and data attribute are unchanged.] */
 export default function ClickableMemberName({ userId, username, children, showInlineIndicator = true }) {
   const { getStatus, sendRequest } = useContext(FriendshipContext);
   const [isOpen, setIsOpen] = useState(false);
@@ -456,12 +458,8 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // Mobile inline indicators vary per status (handled in renderMobileIndicator).
 
   // The green "Friend" pill, in ONE place: the accepted return and the success region both use it.
-  // R19 (88.9-52): the phone indicator below wears the same FRIEND_PILL_CLASSES.
-  const renderFriendPill = () => (
-    <span className={FRIEND_PILL_CLASSES}>
-      Friend
-    </span>
-  );
+  // R19 (88.9-52): the phone indicator below is the same emerald Pill.
+  const renderFriendPill = () => <Pill tone="emerald">Friend</Pill>;
 
   const renderTooltipContent = () => {
     // DECISION Phase 88.6-34 (D-01 / D-03, UI-SPEC §4.2 + §4.5): both pills below move
@@ -483,14 +481,11 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // fold. Container box model reconstructed from the class values, not from compiled CSS.
     // AMENDED Phase 88.9-47 (owner pick C3b, 88.9-PICKS-B2.json, 2026-11-05): both pills move to tracking-wider, 0.05em, chosen OVER the shipped 0.025em step; that adds 0.3px per letter (about +0.9px for You, +1.8px for Friend) to the widths measured above, and shift({ padding: 8 }) still keeps the popover in view.
     // AMENDED Phase 88.9-63 (X16 + X17a): both pills drop capitals and letter-spacing (12px, 700 kept), so the popover is narrower than measured above (not re-measured); fills are the emerald and blue pill pairs.
+    // AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [The WEIGHT paragraph above names 400 the recorded rejected arm: 400 is now the CHOSEN arm, by the owner, overruling §4.5's pill row for these tags. Friend is the block's emerald tag; the viewer's own popover reads (You) in the muted ink on the card with no fill (the blue You tag is gone).]
     //
-    // Self → blue "You" pill. Informational only, no action.
+    // Self → (You) in plain grey words (it was a blue "You" pill until Phase 89.6-30). Informational only, no action.
     if (status === 'self') {
-      return (
-        <span className="text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">
-          You
-        </span>
-      );
+      return <span className="text-xs font-normal text-content-muted">(You)</span>;
     }
 
     // Accepted → green "Friend" pill. Informational only, no action. When a send from this
@@ -609,6 +604,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // an annotation could render as large as the name it annotates, at nine different call sites
   // with nine different container sizes. 12 is the app's FLOOR, not below it, so nothing here is
   // illegible. Promoting them is a decision, not a cleanup.
+  // AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [Pending is now a tag at the same 12px (the neutral pair), like its Friend twin; the rung this marker keeps is unchanged, and the failure line below is still text.]
   //
   // The mobile "+" add-friend button. Hoisted out of `renderMobileIndicator` (plan 88.6-63) so the
   // send-error branch can render it again for a retry; the decision markers that govern its hit
@@ -666,7 +662,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // Accepted: the md:hidden green Friend pill (R19, 88.9-52: the AMENDED paragraph of DECISION
     // Phase 88.5 (D-15) above; the ticked text before that). Desktop shows the same pill in the
     // hover popover. Measured on the See-all row mock at 375: 48.7 x 20px, word on fill 5.78 light /
-    // 5.89 dark. inline-flex + align-middle centre it on the name's line; ml-1 is the shipped gap.
+    // 5.89 dark. The block is inline-flex and align-middle, which centre it on the name's line; ml-1 is the shipped gap.
     if (status === 'accepted') {
       // DECISION Phase 88.6.1-37 (Req 5, deviation Rule 1): the Friend span and the Pending span
       // below carry DISTINCT keys, chosen OVER leaving them unkeyed. Both are a span in the same
@@ -675,15 +671,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // and the shared hook sees no removal to recover from (measured in jsdom: focus stayed on the
       // reused node; T1i arm 4 is RED without the keys). Dropping either key is a decision, not a cleanup.
       return (
-        <span
-          key="friend-indicator"
-          ref={friendIndicatorRef}
-          onFocus={armStatusRecovery}
-          data-friend-indicator=""
-          className={cn('md:hidden ml-1 inline-flex items-center align-middle', FRIEND_PILL_CLASSES)}
-        >
+        <Pill tone="emerald" key="friend-indicator" ref={friendIndicatorRef} onFocus={armStatusRecovery} data-friend-indicator="" className="md:hidden ml-1">
           Friend
-        </span>
+        </Pill>
       );
     }
     if (inlineSendError && status === 'none') {
@@ -743,17 +733,11 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // position the destroyed button occupied, so focus stays where the
       // user's attention already is. Do not "fix" this back to a bare span:
       // a silent unmount drops focus to <body> (Phase 87.8 D-13 rationale).
+      // DECISION Phase 89.6-30 (FL-03): Pending is the neutral tag OVER the amber of the chip ring (the pick: no amber on these tags) and keeps its words and focus wiring; still a span (R3-M18 holds). Changing this is a decision, not a cleanup.
       return (
-        <span
-          key="pending-indicator"
-          ref={pendingIndicatorRef}
-          tabIndex={-1}
-          role="status"
-          onFocus={armStatusRecovery}
-          className="md:hidden ml-1 text-xs text-content-muted"
-        >
+        <Pill tone="neutral" key="pending-indicator" ref={pendingIndicatorRef} tabIndex={-1} role="status" onFocus={armStatusRecovery} className="md:hidden ml-1">
           ⏳ Pending
-        </span>
+        </Pill>
       );
     }
     // status === 'none' — primary mobile affordance is the "+" button.

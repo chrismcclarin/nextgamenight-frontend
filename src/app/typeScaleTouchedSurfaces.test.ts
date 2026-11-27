@@ -1883,6 +1883,7 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
   // grows 60.83 -> 65.61px for "You" and 75.41 -> 83.02px for "Friend", +1px tall, no overflow at
   // 375 — and the weight step contributes only ~0.2px of that. `EXPECTED_SUB_FLOOR_SITES` drops
   // 9 -> 7 in the same commit. Entry DELETED, not zeroed.
+  // AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [tags are 400 now; this entry's count is unchanged (the roster counts only 500 and 600)]
   // DELETED by plan 88.6-26 task 1 (wave 7, 2026-09-16): 'app/components/EventHeatmapBackground.js'
   // carried sites: 7 (text-[10px]@224, text-[10px]@240, text-[11px]@280, text-[9px]@291,
   // text-[9px]@298, text-[10px]@306, text-[11px]@316) and 'app/components/SchedulerWeekStrip.tsx'
@@ -2280,6 +2281,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     700 was the wrong arm there — a transient confirmation is not a heading.
   // The file's `font-bold` at the mobile "+" glyph button is NOT in this population (700 is
   // on-scale) and is byte-unchanged; that control is marker-protected. Entry DELETED, not zeroed.
+  // AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [tags are 400 now; this entry's count is unchanged (the roster counts only 500 and 600)]
   // DELETED by plan 88.6-30 tasks 2+3 (wave 9, 2026-09-17): `app/components/DangerZoneDeleteAccount.tsx`
   // carried `sites: 5` (4 font-medium, 1 font-semibold) and the count was EXACT. All five
   // resolved to §4.5's EMPHASIS outcome — 400 plus a colour token the site already carried — so
@@ -2812,6 +2814,7 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     // (as heavy as the Owner pill, so the name would not lead) and OVER C (smaller pills). The
     // font loads with no weight list, so 600 renders from it as it does on every .btn. The dead
     // armed-state site and its Phase 92 routing are unchanged; this entry floors at 3 until then.
+    // AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [tags are 400 now; this entry's count is unchanged (the roster counts only 500 and 600)]
     // AMENDED Phase 88.9-65 (X47, 88.9-63 hand-off b): 3 -> 4. The fourth site is the participant
     // NAME on the past-session chip, which takes the same owner-ruled 600 as the two names 63
     // moved (one name weight on this page), chosen OVER leaving it at 400 beside 12px pills.

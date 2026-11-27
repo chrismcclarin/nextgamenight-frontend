@@ -41,7 +41,7 @@ export const gates = [
   { file: 'src/app/decisionMarkers.test.ts', min: 23, why: 'Phase 88 D-36 / D-37 — the decision markers Phase 88 overrode say so, in place' },
   { file: 'src/app/rawColorValues.test.ts', min: 7, why: 'Phase 88 Req 2 — no raw hex or black shadows' },
   { file: 'src/app/tokenContrast.test.ts', min: 108, why: '89.6-24 raised 106 -> 108 (drag-edge; the file counted 107 before it); 89.6-12 raised 105 -> 106 (R8 O-1b); 89.6-12 raised 104 -> 105 (R8 C40 header); 89.6-12 raised 103 -> 104 (R8 C40); 89.6-09 raised 101 -> 103 (R7 U1, dot-token); 89.6-09 raised 100 -> 101 (R7 E1); 88.9-52 round 3 raised 96 -> 100 (R6 admin button, R8c ghost hover, N1b dark Preferred, N1c stripe, W45); 88.9-52 PIX-8 raised 95 -> 96 (active Friends tab ink); 88.9-52 fix batch raised 87 -> 95 (W28 W30 W4+W5 W20 W29 W36 W45 W3); Phase 88.3 Req 1-8 — the token-layer WCAG floors' },
-  { file: 'src/app/pillFamily.test.ts', min: 3, why: 'Phase 88.9-63 X16 / X17a — one pill family, sentence case, names 600' },
+  { file: 'src/app/pillFamily.test.ts', min: 4, why: 'Phase 88.9-63 X16 / X17a — one pill family, sentence case, names 600' },
   { file: 'src/app/miniPicks.test.ts', min: 9, why: '88.9-52 fix batch raised 8 -> 9 (W40 Toaster pin); 88.9 RULING A mini-page picks; 88.9-56 R-C5 rating ink (floor raised to the count); 88.9-56 R-C3b guard scan' },
   { file: 'src/app/strictModeMountFlag.test.tsx', min: 3, why: '88.9-52 W12 / MOUNT — the StrictMode mount-flag guard: detector self-check, source scan, render under StrictMode' },
   { file: 'src/app/surfaceHoverSweep.test.ts', min: 12, why: 'Phase 88.3 Req 1 / D-02 — the hover and sunken sweep' },
