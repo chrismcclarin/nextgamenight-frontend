@@ -1,6 +1,15 @@
 'use client'
 import { useTheme } from 'next-themes'
 import { useState, useEffect } from 'react'
+import { iconTextSize } from '@/components/ui/Icon'
+
+// DECISION Phase 89.6-43 (O-M4-desktop): the icon trigger holds a 44px box at every text size with the icon to 32px through inline min() sizes, chosen OVER the rem padding that doubled the box to 72px and OVER the 36px box of the O07a ruling (owner pick DT-2 = 44, 2026-11-23). Changing this is a decision, not a cleanup.
+// The icon is 20px at ordinary text and stops at 32px; the padding is what is left of 44px around
+// it (12px, then 6px). Inline styles (Tailwind v4 emits no class for an interpolated value); the
+// row variant keeps its rem icon, which plan 89.6-26's label alignment rests on. The bell beside it
+// is built the same way: src/app/components/NotificationBell.js ("const BELL_PAD").
+const THEME_ICON = iconTextSize(20)
+const THEME_PAD = `calc((44px - ${THEME_ICON}) / 2)`
 
 export default function ThemeToggle({ className = '', variant = 'icon', label }) {
   const { setTheme, resolvedTheme } = useTheme()
@@ -13,17 +22,21 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
   // button after hydration and shifted the desktop nav 4px on every load (arithmetic from the
   // class strings, not measured). The row variant mounts inside the closed phone menu, so its
   // placeholder size is not visible. Changing it is a decision, not a cleanup.
-  if (!mounted) return <div className="w-9 h-9" />
+  // AMENDED Phase 89.6-43 (DT-2): the mounted button is now 44px at every text size (owner pick DT-2 = 44, 2026-11-23), so the placeholder is 44px in CSS px (a rem box would swap 88 for 44 at doubled text).
+  if (!mounted) return <div className="w-[44px] h-[44px]" />
 
   const isDark = resolvedTheme === 'dark'
   const ariaLabel = `Switch to ${isDark ? 'light' : 'dark'} mode`
 
+  // The row variant's glyph is rem-sized; the icon variant's follows the text to 32px (inline).
+  const glyphSize = variant === 'row' ? { className: 'w-5 h-5' } : { style: { width: THEME_ICON, height: THEME_ICON } }
+
   const icon = isDark ? (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <svg {...glyphSize} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
     </svg>
   ) : (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+    <svg {...glyphSize} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
     </svg>
   )
@@ -58,7 +71,7 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
   // WHY THE MIGRATION LOSES — geometry, not taste. Shipped this is `p-2` around a `w-5 h-5` icon
   // = 36x36. A `<Button>` renders against `.btn`'s UNLAYERED `padding: .5rem 1rem`
   // (src/app/globals.css ("UNLAYERED with every other declaration it has today")) plus the cva base's `min-h-11` and `icon`'s `min-h-11 min-w-11` = ~52x44.
-  // Its nav sibling src/app/components/NotificationBell.js ("hover:text-amber-400 transition-colors p-1") (`p-1` around the `w-6 h-6` bell, src/app/components/NotificationBell.js ("w-6 h-6")) is
+  // Its nav sibling src/app/components/NotificationBell.js ("DECISION Phase 88.9-37 O07a") (then `p-1` around the `w-6 h-6` bell, src/app/components/NotificationBell.js ("const BELL_ICON")) is
   // 32x32, wears no `btn`, and NO plan migrates it — so migrating this one alone would widen a
   // 4px sibling difference into ~20px and CREATE a header inconsistency rather than close one.
   // The numbers are ARITHMETIC: this variant lives in src/app/Header.js ("hidden md:flex gap-x-6 items-center") list,
@@ -83,6 +96,7 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
   // and is stronger: migrating this control alone would now open a 0px match into a ~16px
   // mismatch. The hover-overlay colour finding above is not ruled by O07a (sizes only) and is
   // handed to plan 88.9-51.
+  // AMENDED Phase 89.6-43 (DT-2): both boxes are 44 by 44 now (owner pick DT-2 = 44, 2026-11-23, 'DT-2 fine at 44.'); the bell and this toggle still match, at 44.
   //
   // AMENDED Phase 88.9-57 (owner pick N03 B, chat 2026-11-11 10:41 PM Pacific: "icon white →
   // amber-400, NO wash"): the translucent white hover overlay is GONE and this toggle now hovers
@@ -106,7 +120,8 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
       // warm-800 header. It now carries the same treatment as the row variant, and inherits
       // the amber-400 `--ring` override scoped to the header subtree at `Header.js`'s
       // container. See the DECISION marker at `NotificationBell.js`'s row label.
-      className={`p-2 rounded-lg transition-colors text-white hover:text-amber-400 focus:outline-hidden focus-visible:focus-ring-inset ${className}`}
+      className={`rounded-lg transition-colors text-white hover:text-amber-400 focus:outline-hidden focus-visible:focus-ring-inset ${className}`}
+      style={{ padding: THEME_PAD }}
       aria-label={ariaLabel}
       title={ariaLabel}
     >

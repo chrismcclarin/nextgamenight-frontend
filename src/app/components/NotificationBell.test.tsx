@@ -1469,6 +1469,13 @@ describe('CR-2 / A-33 — the pending count is the triggers\' description', () =
     // The visible badge is hidden from assistive tech, so nothing reads 9+.
     const badge = within(trigger).getByText('9+');
     expect(badge).toHaveAttribute('aria-hidden', 'true');
+    // 89.6-43 (badge-cap): the desktop badge is sized and placed from the bell's capped icon size
+    // (inline values, read in a browser by the e2e), so the rem size, the rem digit and the
+    // button-corner offsets are gone; the fill and ink tokens stay (miniPicks test 1 reads them).
+    expect(badge).toHaveClass('absolute', 'bg-badge-count', 'text-white', 'rounded-full');
+    for (const gone of ['h-5', 'w-5', '-top-1', '-right-1', 'text-xs']) {
+      expect(badge.classList.contains(gone), `the desktop badge still carries ${gone}`).toBe(false);
+    }
   });
 
   it('nothing pending: both variants are described "None pending"', () => {
@@ -1539,17 +1546,31 @@ describe('Phase 88.9-CR d2 — the invite row reads the flat backend shape', () 
 // Site: src/app/components/NotificationBell.js ("DECISION Phase 88.9-37 O07a").
 // The 36 box is arithmetic in jsdom (padding token + icon size); it was measured at 1280 on
 // page 8a with the same 6px padding (bellBox 36x36, toggleBox 36x36, both themes).
+// AMENDED Phase 89.6-43 (owner pick DT-2 = 44, 2026-11-23, 'DT-2 fine at 44.'; SPEC A9 item 3,
+// O-M4 Fixed+): both boxes are 44 x 44 at every text size now and the bell follows the text to
+// 32px. The padding and the icon size are inline min() / calc() values, which this repo's jsdom
+// cannot read (it drops a min() width and mangles the calc() padding), so this pins the class
+// tokens only: the rem padding class and the rem icon classes are gone, the ring corners are
+// rounded like the toggle's. The sizes are read in a browser by
+// e2e/chrome-ring-geometry.spec.ts ("O-M4 + DT-2 (89.6-43): the desktop bell and Theme hold 44px").
 describe('O07a (88.9) — the desktop bell trigger matches the theme toggle', () => {
-  it('O07a bell 36: the desktop icon trigger pads p-1.5 around its 24px bell (6 + 24 + 6 = 36, the theme toggle size); the ring treatment is unchanged', () => {
-    renderBell();
+  it('O07a / DT-2 bell 44: the desktop icon trigger carries no rem padding class and no rem icon size (its 44px box and capped icon are inline), its ring corners are rounded-lg like the theme toggle; the row bell keeps w-5 h-5; the ring treatment is unchanged', () => {
+    const { unmount } = renderBell();
     const trigger = screen.getByRole('button', { name: 'Notifications' });
-    expect(trigger).toHaveClass('p-1.5');
+    expect(trigger).not.toHaveClass('p-1.5');
     expect(trigger).not.toHaveClass('p-1');
+    expect(trigger).toHaveClass('rounded-lg');
     const bell = trigger.querySelector('svg');
     expect(bell).not.toBeNull();
-    expect(bell).toHaveClass('w-6', 'h-6');
+    expect(bell).not.toHaveClass('w-6');
+    expect(bell).not.toHaveClass('h-6');
     expect(trigger).toHaveClass('focus:outline-hidden');
     expectFocusRingInset(trigger, 'the bell trigger');
+    unmount();
+    // The row arm (the phone menu) keeps the Theme icon's size (89.6-26, O-5).
+    render(<NotificationBell user={{ sub: 'auth0|me' }} variant="row" label="Invites" />);
+    const rowBell = screen.getByRole('button', { name: 'Invites notifications' }).querySelector('svg');
+    expect(rowBell).toHaveClass('w-5', 'h-5');
   });
 });
 

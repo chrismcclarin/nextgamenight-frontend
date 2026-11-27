@@ -12,6 +12,7 @@ import path from 'node:path';
 
 import * as React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { contrastRatio } from '../../lib/wcag';
@@ -87,6 +88,16 @@ describe('ThemeToggle — 52-X15 header hover (88.9-57)', () => {
     expect(tokens).not.toContain('hover:bg-white/10');
     // The glyph carries no colour of its own, so it takes the button's ink at rest and on hover.
     expect(colourTokens(glyphOf(button))).toEqual([]);
+    // 89.6-43 (owner pick DT-2 = 44, 2026-11-23; SPEC A9 item 3, O-M4 Fixed+): the icon toggle
+    // holds a 44px box at every text size and its icon follows the text to 32px, through inline
+    // min() / calc() values this repo's jsdom cannot read. So the class pin is what is GONE: the
+    // rem padding class and the rem icon size; the sizes are read in a browser by
+    // e2e/chrome-ring-geometry.spec.ts ("O-M4 + DT-2 (89.6-43): the desktop bell and Theme hold 44px").
+    expect(tokens).not.toContain('p-2');
+    expect(tokensOf(glyphOf(button))).not.toContain('w-5');
+    expect(tokensOf(glyphOf(button))).not.toContain('h-5');
+    // Before mount (no effect has run in a server render) the placeholder is the same 44px, in CSS px.
+    expect(renderToStaticMarkup(<ThemeToggle />)).toContain('class="w-[44px] h-[44px]"');
   });
 
   it("X15 (88.9-57): the desktop icon toggle takes the bell's ink, no wash (light moon)", () => {
@@ -108,6 +119,8 @@ describe('ThemeToggle — 52-X15 header hover (88.9-57)', () => {
       const glyph = glyphOf(row);
       expect(tokensOf(glyph)).not.toContain('text-amber-400');
       expect(colourTokens(glyph)).toEqual([]);
+      // 89.6-43: the row glyph keeps its rem size (plan 89.6-26's label alignment rests on it).
+      expect(tokensOf(glyph)).toEqual(expect.arrayContaining(['w-5', 'h-5']));
       // The row's ink is white at rest and it gains no hover ink (the row hovers by its ground).
       expect(colourTokens(row)).toEqual(['text-white']);
       // The row layout is unchanged.

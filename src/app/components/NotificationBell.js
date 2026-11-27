@@ -11,6 +11,23 @@ import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { useUnreadNotificationCount } from './UnreadNotificationProvider';
+import { iconTextSize } from '@/components/ui/Icon';
+
+// DECISION Phase 89.6-43 (O-M4-desktop): the icon trigger holds a 44px box at every text size with the icon to 32px through inline min() sizes, chosen OVER the rem padding that doubled the box to 72px and OVER the 36px box of the O07a ruling (owner pick DT-2 = 44, 2026-11-23). Changing this is a decision, not a cleanup.
+// The bell is 24px at ordinary text and stops at 32px (src/components/ui/Icon.tsx ("export function iconTextSize")); the
+// padding is what is left of 44px around it (10px, then 6px). Inline styles, because Tailwind v4
+// emits no class for an interpolated value; jsdom cannot read them, so the computed sizes are read
+// in a browser by e2e/chrome-ring-geometry.spec.ts ("O-M4 + DT-2 (89.6-43): the desktop bell and Theme hold 44px").
+const BELL_ICON = iconTextSize(24);
+const BELL_PAD = `calc((44px - ${BELL_ICON}) / 2)`;
+// DECISION Phase 89.6-43 (badge-cap): the desktop count badge is sized and placed from the same capped icon size as the bell (5/6 of the icon, centred on its top-right corner, digit at half the icon), chosen OVER letting the badge keep scaling with the text (rem h-5 w-5 and text-xs: at 200% a 40px badge covered about two thirds of the 32px-capped bell) and OVER pinning the badge to the button corner (the corner moved when the box changed size, so the badge drifted off the icon). Normal text is unchanged: 20 by 20, 12px digit, centred on the icon's corner. Plan 89.6-26 scales the phone hamburger dot the same way. Changing this is a decision, not a cleanup.
+// The size is 20px at ordinary text and about 26.7px at the cap; the inset is the padding less half
+// the badge (0 at ordinary text, about -7.3px at the cap), which puts the badge's centre on the
+// icon's top-right corner at every text size; the digit is 12px, then 16px, never under 12 because
+// the icon never drops under 24. Read by e2e/chrome-ring-geometry.spec.ts ("badge (89.6-43): the count badge follows the bell's cap").
+const BADGE_SIZE = `calc(${BELL_ICON} * 5 / 6)`;
+const BADGE_INSET = `calc(${BELL_PAD} - ${BADGE_SIZE} / 2)`;
+const BADGE_FONT = `calc(${BELL_ICON} / 2)`;
 
 // Copy row N1 (D-30, owner-ratified 2026-10-04; 88.6.1-COPY-TABLE.html:100) — heard, not seen.
 const LOADING_NOTIFICATIONS = 'Loading notifications';
@@ -580,9 +597,12 @@ function NotificationBell({ user, variant = 'icon', label }) {
   // start at one x and the rows are one height (the O-5 card told the owner 'the plan makes the icons
   // one size'), chosen OVER the larger row bell (a 4px step and a 48px row). The desktop bell keeps its
   // size. Changing this is a decision, not a cleanup.
+  // 89.6-43: the desktop bell's size is now inline (24px at ordinary text, to 32px with the text);
+  // the constants and their marker are at the top of this file.
   const bellIcon = (
     <svg
-      className={variant === 'row' ? 'w-5 h-5' : 'w-6 h-6'}
+      className={variant === 'row' ? 'w-5 h-5' : undefined}
+      style={variant === 'row' ? undefined : { width: BELL_ICON, height: BELL_ICON }}
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
@@ -688,7 +708,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
           {countBadge}
         </button>
       ) : (
-        // Icon-only trigger — desktop nav. Visual unchanged from pre-Plan-68-01 except the O07a padding (marker below).
+        // Icon-only trigger — desktop nav. Its box is a held 44px since 89.6-43 (markers below and at the top of this file).
         <button
           ref={triggerRef}
           onClick={() => setIsOpen(!isOpen)}
@@ -704,7 +724,12 @@ function NotificationBell({ user, variant = 'icon', label }) {
           // padding (32x32, a 4px mismatch between two adjacent icon controls). Desktop only: this
           // trigger lives in the header list hidden below md; the phone row variant is untouched. The
           // count badge stays positioned on the button corner. Changing it is a decision, not a cleanup.
-          className="relative text-white hover:text-amber-400 transition-colors p-1.5 focus:outline-hidden focus-visible:focus-ring-inset"
+          // AMENDED Phase 89.6-43 (DT-2), owner pick DT-2 = 44, 2026-11-23 ('DT-2 fine at 44.'): this trigger is now 44 by 44 at every text size, chosen OVER the 36 by 36 this ruling picked. The reason recorded above for 36, that 44 grows the header row, measured false on 2026-11-23: at 1280 with normal text the header stays 64px tall and the whole right-hand group moves 16px left (8px per box). The bell follows the text to 32px (owner pick O-M4 = Fixed+, 2026-11-22; SPEC A9 item 3); at ordinary text it stays 24px, now with 10px padding.
+          // The ring corners are rounded like the Theme toggle's beside it (rule 10 G1: its inset
+          // ring was square); corners only, no fill. The count badge is no longer on the button
+          // corner: it is placed from the icon (the badge-cap marker at the top of this file).
+          className="relative text-white hover:text-amber-400 transition-colors rounded-lg focus:outline-hidden focus-visible:focus-ring-inset"
+          style={{ padding: BELL_PAD }}
           aria-label="Notifications"
           aria-describedby={countDescriptionId}
           // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
@@ -716,7 +741,11 @@ function NotificationBell({ user, variant = 'icon', label }) {
 
           {/* Red badge with count — absolute-positioned over the bell */}
           {totalCount > 0 && (
-            <span aria-hidden="true" className="absolute -top-1 -right-1 bg-badge-count text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+            <span
+              aria-hidden="true"
+              className="absolute bg-badge-count text-white font-bold leading-none rounded-full flex items-center justify-center"
+              style={{ top: BADGE_INSET, right: BADGE_INSET, width: BADGE_SIZE, height: BADGE_SIZE, fontSize: BADGE_FONT }}
+            >
               {totalCount > 9 ? '9+' : totalCount}
             </span>
           )}
