@@ -1,4 +1,5 @@
-// Surface rows: the group page, one row per part of the page (census R07). Owner: plan 89.6-17.
+// Surface rows: the group page, one row per part of the page (census R07). Owner: plan 89.6-17;
+// the Library rows and the check-in cards (R08-checkins, on the planning page) are plan 89.6-42's.
 // One row per line, each with its census id.
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
@@ -14,8 +15,10 @@ import { expect, type Page } from '@playwright/test';
 import { compositeGround, contrastRatio, probeElement } from '../contrast';
 import { GROUP_ICON_EMOJI, GROUP_ICON_PICTURE, routeGroupRead, type GroupRow } from '../groupRead';
 import { settleAnimations } from '../inFlight';
+import { PLANNING_CREATOR_A_ID, PLANNING_CREATOR_B_ID, PLANNING_POLL_A_ID, PLANNING_POLL_B_ID, routePlanningPolls, syntheticPlanningPoll } from '../planningPolls';
 import { THIRTY_LETTER_WORD, TWO_WORD_NAME } from '../wordLines';
 import type { SurfaceRow, SweepCell } from './index';
+import { emptySettingsAnswers } from './planning';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
 // owns. No fallback id, as in e2e/support/largeTextSurfaces/members.ts ("No fallback id").
@@ -263,12 +266,122 @@ const headerExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
   await stripExtras(page, cell);
 };
 
+// R08-CHECKINS (census R08; owner pick S3 = Rules, 2026-11-22). The check-in cards mount only on the
+// planning page (src/app/components/PromptScheduleSection.js ("<OpenPollsList")), so the row that
+// plan 89.6-17 left here as R07-checkins is census R08: renamed, never doubled. Three open polls
+// are staged through the one planning helper (e2e/support/planningPolls.ts ("export async function routePlanningPolls(")),
+// and the group read gains their two games (the card's title is the poll's game name):
+//   - poll A, the active one (so its card is the SELECTED card): the two-word title;
+//   - poll B: no game, so the generic title Availability check-in;
+//   - poll C: a game named with the 30-letter word.
+// Each carries can_close, so every card draws its three dots. Nothing is pressed (End check-in is a
+// write); the Check-ins panel is left expanded, the page default. The root is the list of cards.
+const S3_GAME_SHORT = '89642000-0000-4000-8000-0000000000e1';
+const S3_GAME_LONG = '89642000-0000-4000-8000-0000000000e2';
+const S3_POLL_C_ID = '89642000-0000-4000-8000-0000000000a3';
+const GENERIC_TITLE = 'Availability check-in';
+const S3_POLLS = [
+  { ...syntheticPlanningPoll(PLANNING_POLL_A_ID, 'E2E Ana', PLANNING_CREATOR_A_ID), game_id: S3_GAME_SHORT, can_close: true },
+  { ...syntheticPlanningPoll(PLANNING_POLL_B_ID, 'E2E Ben', PLANNING_CREATOR_B_ID), can_close: true },
+  { ...syntheticPlanningPoll(S3_POLL_C_ID, 'E2E Cleo', PLANNING_CREATOR_A_ID), game_id: S3_GAME_LONG, can_close: true },
+];
+const withCheckInGames: Transform = (group) => ({
+  ...group,
+  games: [...(Array.isArray(group.games) ? group.games : []), { id: S3_GAME_SHORT, name: TWO_WORD_NAME }, { id: S3_GAME_LONG, name: THIRTY_LETTER_WORD }],
+});
+const checkInTriggers = (page: Page) => page.getByRole('button', { name: 'Check-in actions', exact: true });
+const planningRouted = new WeakSet<Page>();
+export const reachCheckIns: NonNullable<SurfaceRow['reach']> = async (page) => {
+  if (!planningRouted.has(page)) {
+    planningRouted.add(page);
+    await routeGroupRead(page, groupId(), withCheckInGames);
+    await routePlanningPolls(page, { groupId: groupId(), polls: S3_POLLS, activeId: PLANNING_POLL_A_ID, respondents: [] });
+  }
+  await page.goto(`/groupPlanning?group_id=${groupId()}`);
+  await expect(checkInTriggers(page)).toHaveCount(3, { timeout: 15_000 });
+  await page.getByText(TWO_WORD_NAME, { exact: true }).first().waitFor({ state: 'visible', timeout: 15_000 });
+  const root = checkInTriggers(page).first().locator('xpath=ancestor::ul[1]');
+  await settleAnimations(root);
+  return { root };
+};
+
+// R08-checkins extras (S3 = Rules: 'the dots stay beside the title wherever they fit; where they do
+// not fit, they drop under the words at the right with no empty band'). In every cell, every card:
+//   - BESIDE: the three-dot trigger starts at or after the body's right edge and above the bottom of
+//     the title; or
+//   - WRAPPED: the trigger's top is within 1px of the bottom of the body's last line (no band) and
+//     its right edge sits 13px inside the card (1px border + the 12px card edge, or 2px + 11px on
+//     the selected card), within 0.5px. The 13 is written HERE, never read from a class.
+//   - the trigger's box is 44 x 44 within 0.5px (O-M4 Fixed+, plan 89.6-26: the premise of the pick).
+// With 200% text at 320 and 375 wide the two-word title's card is BESIDE. The word Availability is
+// on one line wherever the card's body has room for it (it alone wider than the body is the read's
+// own wide case, never a squeeze). One joined line is thrown, so a failure fails the cell; every
+// cell prints its reading on one line, since a green CI run uploads nothing.
+const TRIGGER_INSET = 13;
+const checkInsExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
+  const cards = await checkInTriggers(page).evaluateAll((triggers) =>
+    triggers.map((trigger) => {
+      const li = trigger.closest('li');
+      const body = li?.firstElementChild ?? null;
+      const title = body ? (Array.from(body.children).find((child) => child.getAttribute('aria-hidden') !== 'true') ?? null) : null;
+      const last = body?.lastElementChild ?? null;
+      if (!li || !body || !title || !last) return null;
+      const t = trigger.getBoundingClientRect();
+      const b = body.getBoundingClientRect();
+      const text = title.firstChild;
+      const words: { word: string; lines: number; width: number }[] = [];
+      if (text && text.nodeType === Node.TEXT_NODE) {
+        for (const match of (text.textContent ?? '').matchAll(/\S+/g)) {
+          const range = document.createRange();
+          range.setStart(text, match.index ?? 0);
+          range.setEnd(text, (match.index ?? 0) + match[0].length);
+          const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0);
+          words.push({ word: match[0], lines: new Set(rects.map((rect) => Math.round(rect.top))).size, width: rects.reduce((sum, rect) => sum + rect.width, 0) });
+        }
+      }
+      const bodyStyle = getComputedStyle(body);
+      return {
+        title: (title.textContent ?? '').trim(),
+        beside: t.left >= b.right - 1 && t.top < title.getBoundingClientRect().bottom,
+        band: t.top - last.getBoundingClientRect().bottom,
+        inset: li.getBoundingClientRect().right - t.right,
+        width: t.width,
+        height: t.height,
+        room: b.width - parseFloat(bodyStyle.paddingLeft) - parseFloat(bodyStyle.paddingRight),
+        words,
+      };
+    }),
+  );
+  const problems: string[] = [];
+  const said: string[] = [];
+  if (cards.length !== 3) problems.push(`${cards.length} check-in cards, not 3`);
+  for (const card of cards) {
+    if (card === null) {
+      problems.push('a three-dot trigger sits in no card with a body and a title');
+      continue;
+    }
+    const name = card.title === THIRTY_LETTER_WORD ? '30-letter' : card.title;
+    said.push(`"${name}" ${card.beside ? 'beside' : `wrapped, band ${card.band.toFixed(1)}, inset ${card.inset.toFixed(1)}`}, dots ${card.width.toFixed(1)} x ${card.height.toFixed(1)}`);
+    if (Math.abs(card.width - 44) > 0.5 || Math.abs(card.height - 44) > 0.5) problems.push(`"${name}": the three-dot box is ${card.width.toFixed(1)} x ${card.height.toFixed(1)}, not 44 x 44`);
+    if (!card.beside) {
+      if (Math.abs(card.band) > 1) problems.push(`"${name}": the dots sit under the words with a ${card.band.toFixed(1)}px band (S3: no empty band)`);
+      if (Math.abs(card.inset - TRIGGER_INSET) > 0.5) problems.push(`"${name}": the wrapped dots end ${card.inset.toFixed(1)}px inside the card, not ${TRIGGER_INSET}`);
+    }
+    if (card.title === TWO_WORD_NAME && cell.mode === '200' && cell.width <= 375 && !card.beside) problems.push(`"${name}": the dots are not beside the title in ${cell.id} (S3: beside wherever they fit)`);
+    for (const word of card.words) {
+      if (word.word === 'Availability' && word.lines !== 1 && word.width <= card.room + 0.5) problems.push(`"${name}": Availability is on ${word.lines} lines with ${card.room.toFixed(1)}px of room for its ${word.width.toFixed(1)}px`);
+    }
+  }
+  process.stdout.write(`S3 recorded: R08-checkins ${cell.id}: ${said.join(' | ')}\n`);
+  if (problems.length > 0) throw new Error(`S3: in ${cell.id}: ${problems.join('; ')}`);
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R07-games', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', reach: reachGames, answers: answerNoGames, extras: headerExtras },
   { id: 'R07-emoji', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'emoji icon', reach: reachEmoji, answers: answerNoGames, extras: headerExtras },
   { id: 'R07-long', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'long name', reach: reachLong, answers: answerNoGames, extras: headerExtras },
   { id: 'R07-library', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
-  { id: 'R07-checkins', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
+  { id: 'R08-checkins', census: 'R08', kind: 'route', owner: '89.6-42', status: 'enforced', state: 'three check-in cards: short title beside the dots, generic title, 30-letter title', reach: reachCheckIns, answers: emptySettingsAnswers, extras: checkInsExtras },
   { id: 'R07-history', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', reach: reachHistory, answers: answerThreeGames },
   { id: 'R07-history-error', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'games read failed', reach: reachHistoryError },
   { id: 'R07-history-loading', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'games read loading', reach: reachHistoryLoading },

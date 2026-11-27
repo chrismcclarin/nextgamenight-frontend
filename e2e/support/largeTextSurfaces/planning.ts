@@ -106,7 +106,7 @@ const EMPTY_SETTINGS_BODY = { id: null, schedules: [], games: [], members: [] };
 // Every planning row answers the same read the same way: the admin list mounts inside the Check-ins
 // panel whether it is open or folded, so the read is sent on every planning page (CI run
 // 45767320517: O06 failed on it, held unanswered).
-const emptySettingsAnswers: SurfaceRow['answers'] = (url) => (url.pathname.endsWith(`/groups/${groupId()}/prompt-settings`) ? EMPTY_SETTINGS_BODY : undefined);
+export const emptySettingsAnswers: NonNullable<SurfaceRow['answers']> = (url) => (url.pathname.endsWith(`/groups/${groupId()}/prompt-settings`) ? EMPTY_SETTINGS_BODY : undefined);
 const reachEmpty: SurfaceRow['reach'] = async (page) => {
   await openPlanning(page, NO_POLLS);
   await page.getByText('No active availability poll found. Use the schedule manager above to send one.').waitFor({ state: 'visible', timeout: 15_000 });
@@ -243,8 +243,8 @@ const chipsHold: SurfaceRow['extras'] = async (page) => {
 
 export const rows: SurfaceRow[] = [
   { id: 'R08', census: 'R08', kind: 'route', owner: '89.6-20', status: 'enforced', state: 'two open polls, Check-ins collapsed', reach: reachTwoPolls, answers: emptySettingsAnswers, extras: chipsHold },
-  // pending until 89.6-42: the read covers the check-in cards (plan 42's S3 fix) and their three-dot trigger (plan 26's KebabMenu), both after this plan.
-  { id: 'R08-expanded', census: 'R08', kind: 'route', owner: '89.6-42', status: 'pending', state: 'two open polls, Check-ins expanded: the page holds with the cards present', reach: reachExpanded, answers: emptySettingsAnswers },
+  // enforced by 89.6-42 once the check-in cards (its S3 fix) and their three-dot trigger (plan 26's KebabMenu) hold: the read covers both.
+  { id: 'R08-expanded', census: 'R08', kind: 'route', owner: '89.6-42', status: 'enforced', state: 'two open polls, Check-ins expanded: the page holds with the cards present', reach: reachExpanded, answers: emptySettingsAnswers },
   { id: 'R08-empty', census: 'R08', kind: 'route', owner: '89.6-20', status: 'enforced', state: 'no open poll: check-ins empty state, auto-prompt banner, Recurring Check-ins empty list, no active poll', reach: reachEmpty, answers: emptySettingsAnswers },
   { id: 'O06', census: 'O06', kind: 'overlay', owner: '89.6-20', status: 'enforced', state: 'heatmap tooltip naming the 30-letter word, opened by keyboard focus', reach: reachTooltip, answers: emptySettingsAnswers, extras: tooltipInWindow },
   { id: 'R03-grid', census: 'R03', kind: 'route', owner: '89.6-20', status: 'enforced', state: 'availability grid day headers (CI-01d)', reach: availabilityRow.reach, answers: availabilityRow.answers, extras: headersWhole },
