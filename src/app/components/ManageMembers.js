@@ -22,6 +22,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { SelectControl } from '../../components/ui/Input';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
+import Pill from '@/components/ui/Pill';
 
 // Copy row G1 (Phase 88.6.1 D-30, owner-ratified 2026-10-04): the opener says what its dialog title and its receipt say.
 const RESET_INVITE_LINK_LABEL = 'Reset invite link';
@@ -687,26 +688,29 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         }
     };
 
+    /* DECISION Phase 89.6-44 (N04, Manage Members): Owner violet, Admin blue, Member and Pending neutral, through the Pill block at regular weight (owner pick N04 = B, 2026-11-22: 'Manage Members on the same colours, no amber'), chosen OVER the accent, muted and status-warning set with edges (Pending was the one amber tag) and OVER 700 (UI-SPEC 88.6 section 4.5, overruled by the pick; contrast holds at 400). The heading count badges stay on status-warning OVER joining the tag: a count beside a heading is not a tag beside a name, the ruling that kept UpcomingCountPill out. Changing this is a decision, not a cleanup. */
+    const ROLE_TONE = { admin: 'blue', member: 'neutral', pending: 'neutral' };
+
     const getRoleBadge = (role) => {
         /* DECISION Phase 88.9-63 (52-X13, N21): no owner entry — both callers exclude the owner,
            who gets the inline Owner badge, so it could never render; chosen OVER keeping a
-           light-only pill. The 700 marker below stands. */
-        const roleStyles = {
-            admin: 'bg-surface-muted text-content-accent border-accent',
-            member: 'bg-surface-muted text-content-secondary border-line',
-            pending: 'bg-status-warning-subtle text-content-status-warning border-status-warning'
-        };
-        
+           light-only pill. The 700 marker below stands.
+           AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, Manage Members on the same colours with no amber, and You is written (You) in plain grey words. Here: the 700 marker
+           below no longer stands; there is still no owner entry (ROLE_TONE above has none). */
+
         /* DECISION Phase 88.6-19 (§4.5, D-03): the role pill keeps a WEIGHT and takes 700, not
            400 + a colour token. 600 is what UI-SPEC §4.5 removes everywhere outside `Button`, and
            of its three outcomes this family is named on the pill-ink row: a 12px label sitting in
            its own fill needs the weight to hold against the fill, and 400 would leave the pill
            distinguished by colour alone — the thing R2 #171 exists to prevent. Dropping this to
-           400 is a decision. */
+           400 is a decision.
+           AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, Manage Members on the same colours with no amber, and You is written (You) in plain grey words. Here: 400 is now the
+           chosen arm, by the owner; the R2 #171 worry is answered by the words: every tag carries its
+           role word, so colour is never the only cue. */
         return (
-            <span className={`px-2 py-1 rounded-sm text-xs font-bold border ${roleStyles[role] || roleStyles.member}`}>
+            <Pill tone={ROLE_TONE[role] ?? 'neutral'}>
                 {role?.charAt(0).toUpperCase() + role?.slice(1) || 'Member'}
-            </span>
+            </Pill>
         );
     };
 
@@ -908,7 +912,10 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     the status-warning family, which has a dark twin, chosen OVER the raw amber palette the
                                     boxes shipped with (no dark twin: name ink 1.02 and halo 1.61 in dark). The pills follow
                                     (research open question 11) so no light pill sits on the dark box; owner glance at plan
-                                    88.9-51. */}
+                                    88.9-51.
+                                    AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, Manage Members on the same colours with no amber, and You is written (You) in plain grey words. Here: the two
+                                    Pending tags (this queue's and the invite rows') are now the neutral tag; the boxes, the
+                                    halo and the two heading count badges stay on status-warning. */}
                                 <div className="space-y-3">
                                     {members.filter(m => m.UserGroup?.role === 'pending').map((member) => (
                                         <div key={member.id} className="flex flex-wrap items-center justify-between gap-y-2 p-edge-page border border-status-warning rounded-lg bg-status-warning-subtle">
@@ -1041,18 +1048,18 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                         <ClickableMemberName userId={member.id} username={member.username || member.email} />
                                                     </p>
                                                     {isCurrentUser && (
-                                                        <span className="text-xs text-content-accent">(You)</span>
+                                                        <span className="text-xs font-normal text-content-muted">(You)</span>
                                                     )}
                                                     {/* Phase 69-02 GROUP-03: explicit Owner badge inline next to the
                                                         owner's name. Visible to ALL viewers (member/admin/owner) so
                                                         the role is always discoverable. Uses design-system tokens
                                                         for theme parity. The existing getRoleBadge() lookup also
                                                         renders the role pill on the right; this inline badge is
-                                                        the canonical "this is the owner" indicator per CONTEXT. */}
+                                                        the canonical "this is the owner" indicator per CONTEXT.
+                                                        AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, Manage Members on the same colours with no amber, and You is written (You) in plain grey words. Here:
+                                                        the Owner badge is the violet tag. */}
                                                     {isOwner ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-surface-accent-subtle text-content-accent border border-line-accent">
-                                                            Owner
-                                                        </span>
+                                                        <Pill tone="violet">Owner</Pill>
                                                     ) : (
                                                         getRoleBadge(memberRole)
                                                     )}
@@ -1286,9 +1293,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <p className="font-bold text-content-status-warning min-w-0 wrap-anywhere">
                                                     {invite.invited_email}
                                                 </p>
-                                                <span className="px-2 py-1 rounded-sm text-xs font-bold border bg-status-warning-subtle text-content-status-warning border-status-warning">
-                                                    Pending
-                                                </span>
+                                                <Pill tone="neutral">Pending</Pill>
                                             </div>
                                             <div className="text-sm text-content-secondary mt-1">
                                                 {invite.invited_by_name && (

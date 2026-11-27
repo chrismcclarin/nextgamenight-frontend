@@ -488,12 +488,12 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
     // (d) THE STANDING NEGATIVE — the ~13-consumer census of the SHARED token is
     // untouched. Plan 14 minted a separate pair precisely so the census rejection
     // recorded at `--color-bg-accent-subtle` in globals.css survives; a later
-    // "consistency" sweep that drags these four onto the -strong pair would
+    // "consistency" sweep that drags these three onto the -strong pair would
     // repaint surfaces nobody asked about.
+    // AMENDED Phase 89.6-44 (N04): ManageMembers.js left this list: its one use was the Owner badge, now the violet tag (src/app/components/ManageMembers.js ("DECISION Phase 89.6-44 (N04, Manage Members)"))
     for (const rel of [
       'app/components/BallotSection.js',
       'app/components/PendingMemberBanner.js',
-      'app/components/ManageMembers.js',
       'app/components/EventScheduler.tsx',
     ]) {
       const src = code(rel);

@@ -2302,14 +2302,59 @@ describe('Phase 88.9-30 — T boxes on the status-warning family', () => {
 
     const countPill = (heading: string) =>
       screen.getByRole('heading', { name: heading }).parentElement!.querySelector('span') as HTMLElement;
-    const pills = [countPill('Pending Members'), countPill('Pending Invites'), ...screen.getAllByText('Pending')];
-    expect(pills).toHaveLength(4);
-    for (const pill of pills) {
-      expect(pill).toHaveClass('text-content-status-warning', 'bg-status-warning-subtle');
+    // AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22). The two heading count badges
+    // keep the status-warning family (a count beside a heading is not a tag beside a name); the two
+    // Pending tags are the neutral tag of the one block now, at regular weight, with no amber.
+    const counts = [countPill('Pending Members'), countPill('Pending Invites')];
+    for (const count of counts) {
+      expect(count).toHaveClass('text-content-status-warning', 'bg-status-warning-subtle');
+    }
+    const tags = screen.getAllByText('Pending');
+    expect(tags).toHaveLength(2);
+    for (const tag of tags) {
+      expect(tag).toHaveClass('bg-surface-pill-neutral', 'text-content-pill-neutral', 'leading-4', 'whitespace-nowrap');
+      expect(tag.className).not.toContain('font-bold');
+      expect(tag.className).not.toContain('bg-status-warning-subtle');
     }
 
     const dialog = screen.getByRole('dialog');
     expect(dialog.querySelectorAll('[class*="amber-"]'), 'no raw amber class left in the dialog').toHaveLength(0);
+  });
+
+  it('N04 B (89.6-44): Owner, Admin and Member are the one tag at regular weight, and (You) is plain grey words', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
+      ...ROSTER,
+      { id: 'admin-uuid', user_id: 'auth0|admin', username: 'Ada', UserGroup: { role: 'admin' } },
+    ]);
+    renderManageMembers();
+    await screen.findByText('Ada');
+
+    // A tag is the span with the exact word that is neither a name (the mocked name sits in the
+    // row's paragraph) nor inside a button (the role menu's own words).
+    const tag = (word: string) => {
+      const found = screen
+        .getAllByText(word)
+        .filter((el) => el.tagName === 'SPAN' && !el.closest('button') && !el.closest('p'));
+      expect(found, `one ${word} tag`).toHaveLength(1);
+      return found[0];
+    };
+    const pairs: Array<[string, string, string]> = [
+      ['Owner', 'bg-surface-pill-violet', 'text-content-pill-violet'],
+      ['Admin', 'bg-surface-pill-blue', 'text-content-pill-blue'],
+      ['Member', 'bg-surface-pill-neutral', 'text-content-pill-neutral'],
+    ];
+    for (const [word, fill, ink] of pairs) {
+      const el = tag(word);
+      expect(el, word).toHaveClass(fill, ink, 'inline-flex', 'align-middle', 'leading-4', 'px-1.5', 'py-0.5', 'rounded-sm');
+      const classes = el.className.split(/\s+/);
+      expect(classes, `${word}: no bold`).not.toContain('font-bold');
+      expect(classes, `${word}: no edge`).not.toContain('border');
+      expect(classes, `${word}: not round`).not.toContain('rounded-full');
+    }
+
+    const you = screen.getByText('(You)');
+    expect(you).toHaveClass('text-content-muted', 'font-normal');
+    expect(you.className).not.toContain('text-content-accent');
   });
 });
 

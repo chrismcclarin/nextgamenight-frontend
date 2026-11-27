@@ -250,8 +250,10 @@ const PAIRED_ELSEWHERE: Record<string, string> = {
   // dead-code gate, so the exemption had to go with them or test 2 (allow-list staleness)
   // would red on a file that no longer exists. That coupling is deliberate and is exactly
   // what test 2 is for — a deletion cannot leave a widening exemption behind.
-  'app/components/ManageMembers.js':
-    'role pill: all three roleStyles entries name a colour, and the `||` guarantees a fallback',
+  // REMOVED by plan 89.6-44 (N04): app/components/ManageMembers.js was exempt here for its role
+  // pill (a bare border in the static chunk, the colour from the roleStyles lookup). Owner pick
+  // N04 = B moved every role tag to the Pill block, which has no edge, so the file holds no bare
+  // border and test 2 (allow-list staleness) requires the exemption to go with it.
   // REMOVED BY 88.9-52 (W38): app/friends/page.js was exempt here for its armed-remove ternary
   // (status-error / transparent). The friend Remove has no border in any state now, so the file
   // holds no bare border and test 2 (allow-list staleness) requires the exemption to go with it.

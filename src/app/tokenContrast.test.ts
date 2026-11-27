@@ -893,7 +893,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // 4.5 floor is a 0.21 margin, and it is the single row that disqualified warm-300 as the
     // card-hover value (4.4440) and forced `--warm-250` to be minted. Live pairings that depend on
     // it: src/app/components/GroupGamesList.js ("'border-line-accent bg-surface-muted text-content-accent hover:bg-surface-elevated'"),
-    // src/app/components/ManageMembers.js ("admin: 'bg-surface-muted text-content-accent border-accent'"),
+    // (the Manage Members admin badge left this list in 89.6-44: it is the blue tag now, owner pick N04 = B)
     // src/app/components/CalendarMonthView.js ("'bg-surface-muted hover:bg-surface-elevated'") (card-hover is the muted
     // ground since 88.6-02).
     expectRatio('light', '--color-accent-text', '--color-bg-card', 4.5, 'Req 4 / §5.11 row 11');
@@ -2061,6 +2061,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       // (the ground is named, not tokenised — there is no `--color-btn-ghost-*` and a
       // `transparent` row would throw in resolve()).
       expectRatio(theme, '--color-text-muted', '--color-bg-card', 4.5, '88.8 HIGH-A / gated ghost label on the card');
+      expectRatio(theme, '--color-text-muted', '--color-bg-hover', 4.5, '89.6-44: (You) on a hovered Manage Members row');
       // Danger (88.6.1-22, D-39): fill AND ink swap, like primary — white ink cannot keep 4.5 on a
       // lighter red. The gated fill must read as a different control from the resting `--color-error`.
       expectRatio(theme, '--color-btn-danger-gated-text', '--color-btn-danger-gated-bg', 4.5, '88.6.1-22 D-39 / gated danger label');

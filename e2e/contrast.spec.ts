@@ -1524,6 +1524,30 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       expectRatio('focus ring vs the today tint (Req 7)', m, NON_TEXT);
     });
 
+    await test.step('surface 6 — Req 4: a migrated accent site on a light CARD', async () => {
+      // The card half of Req 4's acceptance. MOVED here by Phase 89.6-44 (N04): its old site, the
+      // (You) beside the viewer's Manage Members row, is plain grey words since owner pick N04 = B
+      // (this file ("surface 6 — 89.6-44 (N04): the (You) words on a light CARD")). The required
+      // star beside the Date & Time title wears the accent ink
+      // (src/app/components/createEvent.js ("{DATE_TIME_SECTION_TITLE} <span aria-hidden=")) inside
+      // the shared Modal whose content surface is `bg-card`. The star is aria-hidden, so it is found
+      // by its text inside the heading that names it.
+      const star = page.getByRole('heading', { level: 3, name: 'Date & Time (required)', exact: true }).getByText('*', { exact: true });
+      await expect(star).toBeVisible({ timeout: 15_000 });
+      const m = await ratioAgainstGround(star, 'accent on a light CARD (Req 4)');
+      expectRatio('accent on a light CARD (Req 4)', m, AA_TEXT);
+
+      // Prove the ground really is the CARD and not the page: the white card is L* 100 and the
+      // warm-200 page is L* 89.59, so a 97 floor separates them without pinning either.
+      const lightness = await lStarOfGround(star, 'accent on a light CARD (Req 4)');
+      expect(
+        lightness.value,
+        `Req 4 (card half): the accent site resolved to a ground at L* ${lightness.value.toFixed(2)} ` +
+          `(${lightness.ground}). Below ${CARD_LSTAR_FLOOR} means the walk terminated on the PAGE, not a ` +
+          `card — so the card half of Req 4's acceptance would be untested while reading as tested.`
+      ).toBeGreaterThanOrEqual(CARD_LSTAR_FLOOR);
+    });
+
     await test.step('surface 5 — Req 1: a nested block is distinct from its parent card', async () => {
       // The scheduler's Selected Time panel (src/app/components/EventScheduler.tsx ("{SELECTED_TIME_LABEL}</p>"))
       // is a `bg-surface-sunken` block INSIDE the modal's `bg-card` body. It mounts once a slot
@@ -1612,25 +1636,29 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       expectRatio('unset header — control focus ring (Req 7)', m, NON_TEXT);
     });
 
-    await test.step('surface 6 — Req 4: a migrated accent site on a light CARD', async () => {
-      // The card half of Req 4's acceptance. src/app/components/ManageMembers.js ("text-xs text-content-accent") renders "(You)" beside
-      // the viewer's own row, unconditionally for the signed-in member, inside the shared
-      // Modal whose content surface is `bg-card` (src/app/components/Modal.tsx ("rounded-[12px] bg-card p-0")).
+    await test.step('surface 6 — 89.6-44 (N04): the (You) words on a light CARD', async () => {
+      // AMENDED Phase 89.6-44 (N04): until owner pick N04 = B this step was the card half of Req 4:
+      // (You) was drawn in the accent ink. The pick writes (You) in plain grey words
+      // (src/app/components/ManageMembers.js ("text-xs font-normal text-content-muted")), so the
+      // step now holds that muted ink on the card, and the card half of Req 4 moved to an accent
+      // site that still renders on a card (this file ("surface 6 — Req 4: a migrated accent site on a light CARD")).
+      // (You) sits beside the viewer's own row, unconditionally for the signed-in member, inside the
+      // shared Modal whose content surface is `bg-card` (src/app/components/Modal.tsx ("rounded-[12px] bg-card p-0")).
       await page.getByRole('button', { name: 'Manage Members' }).click();
       const you = page.getByText('(You)', { exact: true });
       await expect(you).toBeVisible({ timeout: 15_000 });
-      const m = await ratioAgainstGround(you, 'accent on a light CARD (Req 4)');
-      expectRatio('accent on a light CARD (Req 4)', m, AA_TEXT);
+      const m = await ratioAgainstGround(you, '(You) muted ink on a light CARD (89.6-44 N04)');
+      expectRatio('(You) muted ink on a light CARD (89.6-44 N04)', m, AA_TEXT);
 
       // Prove the ground really is the CARD and not the page: the white card is L* 100 and
       // the warm-200 page is L* 89.59 (AMENDED 88.3-18, ruling 1c — was warm-100 at 95.02), so a
       // 97 floor separates them without pinning either, with more headroom than before.
-      const lightness = await lStarOfGround(you, 'accent on a light CARD (Req 4)');
+      const lightness = await lStarOfGround(you, '(You) muted ink on a light CARD (89.6-44 N04)');
       expect(
         lightness.value,
-        `Req 4 (card half): the accent site resolved to a ground at L* ${lightness.value.toFixed(2)} ` +
+        `89.6-44 (N04): the (You) words resolved to a ground at L* ${lightness.value.toFixed(2)} ` +
           `(${lightness.ground}). Below ${CARD_LSTAR_FLOOR} means the walk terminated on the PAGE, not a ` +
-          `card — so the card half of Req 4's acceptance would be untested while reading as tested.`
+          `card — so the muted ink on the card would be untested while reading as tested.`
       ).toBeGreaterThanOrEqual(CARD_LSTAR_FLOOR);
     });
 
