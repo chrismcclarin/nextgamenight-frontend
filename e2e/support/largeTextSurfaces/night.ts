@@ -23,7 +23,7 @@ import { settleAnimations } from '../inFlight';
 import { EXCEPTION_SELECTORS } from '../largeTextExceptions';
 import { routeMemberRoster } from '../memberRoster';
 import { scrubbedFetch } from '../scrubbedFetch';
-import { TWO_WORD_NAME, expectLargeTextCell, expectPageZoomUsable, readLargeTextCell, readPageZoomCell } from '../wordLines';
+import { TWO_WORD_NAME, expectLargeTextCell, expectPageZoomUsable, readLargeTextCell, readPageZoomCell, setTextMode } from '../wordLines';
 import { toDialogTop } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
 
@@ -192,6 +192,83 @@ const reachNight: SurfaceRow['reach'] = async (page) => ({ root: await openNight
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
 
+// The little tags beside a name (owner pick N04 = B, plan 89.6-30): one box, one weight. Read by
+// their words, so the read does not depend on how a tag is built.
+const TAG_WORDS = ['No reply', 'Going', 'Maybe', 'No', 'Owner', 'Admin', 'Guest', 'Friend', 'New Player', '⏳ Pending'];
+
+// readTagLines: the tag read of plan 89.6-30, used by the night rows here and by the game row
+// (e2e/support/largeTextSurfaces/game.ts imports it; one helper, never a copy).
+// A tag is a leaf span, shown, not inside a button, whose trimmed text is exactly one of TAG_WORDS.
+// Tags are grouped by their nearest .border-line box (the chip or the row). Inside a group two tags
+// are on one line when their vertical ranges overlap by more than half the smaller height.
+// It returns one message for:
+//   each line whose tag heights or tops spread more than 0.5px;
+//   each tag drawn in more than one box (it wrapped inside itself);
+//   each tag taller than its line height plus its vertical padding plus 0.5px (it broke inside itself);
+//   each tag whose computed weight is not 400 (the pick is regular weight everywhere);
+//   fewer than min tags found (a read that found nothing proves nothing).
+// An empty list means every tag on a line is one height at one top, whole, at regular weight.
+export async function readTagLines(scope: Locator, min: number): Promise<string[]> {
+  return scope.evaluate(
+    (root, { words, floor }) => {
+      const round = (n: number): number => Math.round(n * 100) / 100;
+      type Tag = { word: string; top: number; bottom: number; height: number; group: Element | null };
+      const tags: Tag[] = [];
+      const problems: string[] = [];
+      for (const span of Array.from(root.querySelectorAll('span'))) {
+        if (span.childElementCount > 0) continue;
+        const word = (span.textContent ?? '').trim();
+        if (!words.includes(word)) continue;
+        if (span.closest('button')) continue;
+        const style = getComputedStyle(span);
+        const rects = span.getClientRects();
+        if (style.display === 'none' || style.visibility !== 'visible' || rects.length === 0) continue;
+        const box = span.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) continue;
+        tags.push({ word, top: box.top, bottom: box.bottom, height: box.height, group: span.closest('.border-line') });
+        if (rects.length > 1) problems.push(`the tag ${word} is drawn in ${rects.length} boxes (it wrapped inside itself)`);
+        const fontSize = parseFloat(style.fontSize);
+        const lineHeight = Number.isFinite(parseFloat(style.lineHeight)) ? parseFloat(style.lineHeight) : fontSize * 1.5;
+        const whole = lineHeight + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+        if (box.height > whole + 0.5) problems.push(`the tag ${word} is ${round(box.height)}px tall, more than one line of it (${round(whole)}px): it broke inside itself`);
+        if (style.fontWeight !== '400') problems.push(`the tag ${word} has weight ${style.fontWeight}, not 400`);
+      }
+      if (tags.length < floor) problems.push(`${tags.length} tags found, fewer than ${floor}`);
+      const groups = new Map<Element | null, Tag[]>();
+      for (const tag of tags) groups.set(tag.group, [...(groups.get(tag.group) ?? []), tag]);
+      for (const members of groups.values()) {
+        const lines: Tag[][] = [];
+        for (const tag of members.sort((a, b) => a.top - b.top)) {
+          const line = lines.find((other) =>
+            other.some((t) => Math.min(t.bottom, tag.bottom) - Math.max(t.top, tag.top) > Math.min(t.height, tag.height) / 2),
+          );
+          if (line) line.push(tag);
+          else lines.push([tag]);
+        }
+        for (const line of lines) {
+          if (line.length < 2) continue;
+          const heights = line.map((t) => t.height);
+          const tops = line.map((t) => t.top);
+          const heightSpread = Math.max(...heights) - Math.min(...heights);
+          const topSpread = Math.max(...tops) - Math.min(...tops);
+          if (heightSpread > 0.5 || topSpread > 0.5) {
+            problems.push(
+              `tags on one line differ (height spread ${round(heightSpread)}px, top spread ${round(topSpread)}px): ${line.map((t) => `${t.word} ${round(t.height)}px tall at top ${round(t.top)}`).join(', ')}`,
+            );
+          }
+        }
+      }
+      return problems;
+    },
+    { words: TAG_WORDS, floor: min },
+  );
+}
+
+// One short line for a cell's record (the CI log read cuts a line at 400 characters): how many tag
+// problems, and the first of them.
+export const tagSummary = (at: string, messages: string[]): string[] =>
+  messages.length === 0 ? [] : [`${at}: ${messages.length} tag problem${messages.length === 1 ? '' : 's'}, the first: ${messages[0]}`];
+
 // R05-event extras, every cell: the long-name chip's Invite keeps its normal size (its height equals
 // the short-name guest's Invite within 0.5px, never stretched to the chip). At 320 x 568 with 200%
 // text the long-name chip's Invite also sits under the chip (owner pick O-9c = B, the card's read).
@@ -211,6 +288,9 @@ const nightExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: 
       problems.push(`R05-event ${cell.id}: the long-name Invite top ${r2(longInvite.y)} is above the chip bottom ${r2(chip.y + chip.height)} (O-9c at 320 / 200%: Invite under the chip)`);
     }
   }
+  // Plan 89.6-30 (N04 B): the tags on the Participants card's chips, one box and one weight.
+  const card = main.locator('.card', { has: page.getByRole('heading', { name: /^Participants \(/ }) }).last();
+  problems.push(...tagSummary(`R05-event ${cell.id} tags`, await readTagLines(card, 3)));
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
@@ -263,6 +343,24 @@ const participantsExtras: NonNullable<SurfaceRow['extras']> = async (page: Page,
   }
   if ((await armed.count()) !== 0) throw new Error(`${tag}: a button still reads ${ARMED_REMOVE} after the heading press`);
   await toDialogTop(dialog);
+  // Plan 89.6-30 (N04 B): the tags on the dialog's rows, one box and one weight, read with nothing
+  // armed. In the 320 x 568, 200% cell the same read is also taken at normal text at 320 x 568 and at
+  // 375 x 667 (the pick was drawn at normal text), then the cell's size and mode are put back; the
+  // sweep sets the next cell's mode itself.
+  problems.push(...tagSummary(`${tag} tags`, await readTagLines(dialog, 3)));
+  if (cell.id === '320x568-dark-200') {
+    await setTextMode(page, '100', `${tag} tags normal-text pass`);
+    for (const size of [{ width: 320, height: 568 }, { width: 375, height: 667 }]) {
+      await page.setViewportSize(size);
+      await settleAnimations(dialog);
+      await toDialogTop(dialog);
+      problems.push(...tagSummary(`${tag} tags at ${size.width} x ${size.height}, normal text`, await readTagLines(dialog, 3)));
+    }
+    await page.setViewportSize({ width: cell.width, height: cell.height });
+    await setTextMode(page, '200', `${tag} back to 200%`);
+    await settleAnimations(dialog);
+    await toDialogTop(dialog);
+  }
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
