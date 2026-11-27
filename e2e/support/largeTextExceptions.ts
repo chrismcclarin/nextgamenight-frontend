@@ -106,6 +106,19 @@ export const EXCEPTIONS: readonly LargeTextException[] = [
     source: { file: 'src/app/gameDetail/page.js', snippet: 'line-clamp-3 md:line-clamp-none' },
     selector: '#game-description',
     clears: 'cut',
+    // DECISION Phase 89.6-29 (D42, owner ruling 2026-11-26, his words "D42) yes."): A10 is its own
+    // clamp at the page-zoom widths too, the treatment D27 gave the list-row titles (A3-3), chosen
+    // OVER removing the clamp (it is his pick OW-1 = A) and OVER leaving the game page failing or
+    // pending at 215 and 187 wide. It clears ONE thing: the description text when the box that
+    // clips it is the description's own three-line clamp and nothing cuts it further (Show More is
+    // drawn there and one press shows the whole text). It does NOT clear the same text cut by a
+    // parent box; the entry stays cut-only everywhere else. KNOWN LIMIT: a control inside the
+    // clamped lines would be cleared with them, as under A3-3 (the description is plain text, so
+    // the app draws none; recorded for Phase 89.7). The read is otherwise frozen (orchestrator
+    // decision D40): this flag is the whole change. Pinned by
+    // e2e/large-text-sweep.spec.ts ("The description clamp (owner ruling D42"). Removing the flag
+    // is a decision, not a cleanup.
+    ownClamp: true,
   },
 ];
 

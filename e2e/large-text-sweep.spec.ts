@@ -391,6 +391,19 @@ const CLAMP_CONTROL =
   clampTitle('Bravo') +
   `<div role="button" tabindex="0"><div style="height:20px;overflow:hidden"><h5 class="font-bold text-base line-clamp-2" style="margin:0">Charlie Jaws of the Lion with every expansion box</h5></div></div>` +
   '</main></body></html>';
+// The description-clamp control (owner ruling D42, 2026-11-26, "D42) yes."): the game description's
+// three-line clamp (exception A10) at 215 wide, one page per case because the exception names an id.
+// own: the description cut by its OWN three-line clamp. parent: the same text, unclamped, cut by a
+// 20px parent box. control: a link in the clamped description's hidden lines.
+const descriptionClamp = 'display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:0';
+const DESCRIPTION_WORDS = 'is a game of galactic conquest in which three to six players take on the role of one of seventeen factions vying for galactic domination through military might and political maneuvering';
+const DESCRIPTION_CLAMP_CONTROL = (which: 'own' | 'parent' | 'control') =>
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
+  '<body style="margin:0;font:16px/1.4 sans-serif"><main style="width:200px">' +
+  (which === 'own' ? `<p id="game-description" style="${descriptionClamp}">Delta ${DESCRIPTION_WORDS}</p>` : '') +
+  (which === 'parent' ? `<div style="height:20px;overflow:hidden"><p id="game-description" style="margin:0">Echo ${DESCRIPTION_WORDS}</p></div>` : '') +
+  (which === 'control' ? `<p id="game-description" style="${descriptionClamp}">Foxtrot ${DESCRIPTION_WORDS} <a href="#rules">Rulebook</a></p>` : '') +
+  '</main></body></html>';
 const SPILL_CONTROL = (body: string) =>
   '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
   `<body style="margin:0;font:16px/1.4 sans-serif"><main style="width:300px">${body}</main></body></html>`;
@@ -449,7 +462,10 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
   }
 
   // R16: only the entry that names clamped texts may clear a page-zoom clip, never a container.
-  expect(EXCEPTIONS.filter((entry) => entry.ownClamp === true).map((entry) => entry.id), 'only the list-row titles (A3-3) name clamped texts; the month grid and the tutorial are containers').toEqual(['A3-3']);
+  expect(
+    EXCEPTIONS.filter((entry) => entry.ownClamp === true).map((entry) => entry.id),
+    'only the list-row titles (A3-3) and the game description (A10, owner ruling D42 of 2026-11-26: "D42) yes.") name clamped texts; the month grid and the tutorial are containers',
+  ).toEqual(['A3-3', 'A10']);
   expect(EXCEPTIONS.filter((entry) => entry.clears === 'cut').map((entry) => entry.id), 'the cut-only exceptions, each excused its own clamp and never a sideways cut').toEqual(['A3-1', 'A10']);
 
   // The excepted list of the sideways-box check (R16): exactly these, each with the standard's reason and bound to its source.
@@ -512,6 +528,31 @@ test('sweep rows (89.6-08): every surface row is declared once, with a census id
   expect(titled(zoomed.read.lost, 'Bravo'), 'the same clamp outside the exception selector is still lost').toContainEqual(expect.stringContaining('is clipped by its h5'));
   expect(titled(zoomed.read.lost, 'Charlie'), 'an A3-3 title clipped by a parent box is still lost').toContainEqual(expect.stringContaining('is clipped by its div'));
   expect(titled(zoomed.cleared, 'Bravo').concat(titled(zoomed.cleared, 'Charlie')), 'nothing but the own clamp is cleared').toEqual([]);
+
+  // The description clamp (owner ruling D42, "D42) yes."): exception A10 is its own clamp at the
+  // page-zoom widths too. Cleared: the description cut by its own three-line clamp. Still lost: the
+  // same text cut by a parent box.
+  // KNOWN LIMIT, measured and pinned here so it cannot pass unseen (not a ruling): a CONTROL in the
+  // clamped lines is cleared with the clamp, exactly as under the list-row titles' entry (the own
+  // clamp check asks only whether the clipper is the excepted element, for text and controls alike).
+  // The ruling asked for it to stay lost; that needs a change to the read's logic, which the same
+  // ruling and decision D40 forbid, so it is recorded for Phase 89.7 instead. The app cannot draw
+  // one today: the description is plain text (src/app/gameDetail/page.js ("{game.description}")).
+  const described = (entries: readonly string[], word: string) => entries.filter((entry) => entry.includes(`p "${word} `));
+  await page.setContent(DESCRIPTION_CLAMP_CONTROL('own'));
+  const ownClamp = await readPageZoomCellUnderExceptions(control);
+  expect(described(ownClamp.read.lost, 'Delta'), 'the A10 description clipped by its own clamp at a page-zoom width is lost (owner ruling D42: it is the kept clamp, one tap from the whole text)').toEqual([]);
+  expect(described(ownClamp.cleared, 'Delta'), 'the A10 description clipped by its own clamp is not written down as cleared').toEqual([expect.stringContaining('is clipped by its p')]);
+  await page.setContent(DESCRIPTION_CLAMP_CONTROL('parent'));
+  const parentClip = await readPageZoomCellUnderExceptions(control);
+  expect(described(parentClip.read.lost, 'Echo'), 'the A10 description clipped by a parent box is still lost').toContainEqual(expect.stringContaining('is clipped by its div'));
+  expect(parentClip.cleared, 'a description clipped by a parent box clears nothing').toEqual([]);
+  await page.setContent(DESCRIPTION_CLAMP_CONTROL('control'));
+  const controlInside = await readPageZoomCellUnderExceptions(control);
+  expect(
+    { lost: controlInside.read.lost.filter((entry) => entry.includes('Rulebook')).length, cleared: controlInside.cleared.filter((entry) => entry.includes('Rulebook')).length },
+    'KNOWN LIMIT (for Phase 89.7): a control in the clamped lines of the A10 description is cleared with the clamp. If this reads lost 1, cleared 0 the read was fixed: update this pin and the note above it',
+  ).toEqual({ lost: 0, cleared: 1 });
   await page.setViewportSize({ width: 320, height: 568 });
 
   // The cell sizing (R15, the DECISION above sizeForCell), on a page of this test's own: the 375 and
