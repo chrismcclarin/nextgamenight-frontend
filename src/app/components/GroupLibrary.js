@@ -218,17 +218,24 @@ export default function GroupLibrary({ groupId }) {
       </div>
 
       {/* Sort dropdown + game count */}
-      <div className="mb-3 flex items-center justify-between">
-        <label className="flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <label className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-content-secondary">Sort:</span>
           {/* `w-auto`: inline beside its "Sort:" span on a toolbar row — same shape as
-              GroupGamesList's sort select. See the marker there. */}
+              GroupGamesList's sort select. See the marker there.
+              AMENDED Phase 89.6-42 (O-M3): owner pick O-M3 = A+, 2026-11-22 ("Keep the drop-downs.
+              When one does not fit beside its label it drops to its own row"): w-auto is the
+              select's natural width up to max-w-full; the label and the row wrap only when the
+              select or the count does not fit, as GroupGamesList's sort row does after plan
+              89.6-17. Nothing is squeezed (no item may shrink below its words), and at normal
+              text nothing moves: the row's gap only sets a minimum between two items that sit
+              far apart. */}
           <SelectControl
             id="group-library-sort"
             name="group-library-sort"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="w-auto"
+            className="w-auto max-w-full"
           >
             <option value="name">Name (A-Z)</option>
             <option value="players">Player Count</option>
@@ -271,7 +278,14 @@ export default function GroupLibrary({ groupId }) {
           leaving the row unnamed (the pressed state said WHO was picked, nothing said WHAT the
           chips do) and over a visible label above the chips (a look change no ruling made). The
           Days row's `aria-labelledby` form was not copied because this bar has no visible text to
-          point at. Changing any of this is a decision, not a cleanup. */}
+          point at. Changing any of this is a decision, not a cleanup.
+          AMENDED Phase 89.6-42 (chip-cap): each member chip is capped at the bar's window
+          (max-w-full) and its name may break inside it (wrap-break-word). Chosen OVER a chip
+          wider than the window (measured at 320 wide with 200% text: a 30-letter username made
+          one chip 529px in a 304px window, so that name could not be read without scrolling
+          sideways inside the bar) and OVER cutting the name (P1: text is never cut to fit). A
+          chip that fits its window is unchanged at every size, the bar still scrolls sideways
+          between chips, and the All chip needs no cap. */}
       <div role="group" aria-label={OWNER_FILTER_LABEL} className="mb-4 -mt-1 pt-1 overflow-x-auto flex gap-2 pb-1 -mx-1 px-1">
         <button
           aria-pressed={selectedOwner === null}
@@ -289,7 +303,7 @@ export default function GroupLibrary({ groupId }) {
             key={member.user_id}
             aria-pressed={selectedOwner === member.user_id}
             onClick={() => setSelectedOwner(member.user_id === selectedOwner ? null : member.user_id)}
-            className={`shrink-0 px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring ${
+            className={`shrink-0 max-w-full wrap-break-word px-3 py-1 min-h-11 md:min-h-0 min-w-11 md:min-w-0 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring ${
               selectedOwner === member.user_id
                 ? 'bg-btn-primary text-btn-primary-text'
                 : 'bg-surface-muted text-content-secondary hover:text-content-primary'
@@ -366,6 +380,8 @@ export default function GroupLibrary({ groupId }) {
                   is a decision, not a cleanup. */}
               <button
                 onClick={() => setExpandedId(isExpanded ? null : game.id)}
+                aria-expanded={isExpanded}
+                aria-controls={`library-row-${game.id}`}
                 className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 p-edge-card hover:bg-surface-hover active:opacity-75 transition-colors text-left focus:outline-hidden focus-visible:focus-ring-inset"
                 style={{ minHeight: '56px' }}
               >
@@ -414,13 +430,38 @@ export default function GroupLibrary({ groupId }) {
                 </span>
               </button>
 
-              {/* Expanded section */}
+              {/* Expanded section.
+                  DECISION Phase 89.6-42 (library-open): P1 ("MUST NOT cap, shrink or cut text"): the
+                  open row reveals by grid rows (0fr to 1fr) instead of a fixed 10rem max-height,
+                  which cut a long owner list at 200% text, and each owner button is capped to the
+                  row so a name wider than the row breaks inside it instead of being cut; chosen
+                  OVER a larger fixed height (still a cap) and OVER dropping the open and close
+                  motion (where the browser interpolates grid rows the 200ms ease is kept; elsewhere
+                  it opens at once). Normal text: the open and closed states are unchanged.
+                  The row button carries aria-expanded and aria-controls, since a closed row's
+                  content is no longer in the accessibility tree. A closed row is inert (removed
+                  from the Tab order and the accessibility tree while it stays mounted for the
+                  motion), the house form of the R3-D phone menu in Header.js; a focusable invisible
+                  control fails focus-visible. Chosen OVER the hidden attribute (it would cut the
+                  close motion) and OVER a conditional mount (the same, and it resets the owner
+                  list's show-all state).
+                  Closed, the content is also visibility hidden (the invisible class): it draws
+                  nothing, which keeps it out of the Tab order and the accessibility tree in a
+                  browser without inert too, and it is how the large-text read tells text that is
+                  not shown from text that is cut (measured 2026-11-26: with inert alone the read
+                  listed every closed row's owners and its game link as cut, in every cell).
+                  Visibility is part of the 200ms transition, so it switches at the END of the
+                  close and at the START of the open: the motion is kept. Changing this is a
+                  decision, not a cleanup. */}
               <div
-                className={`overflow-hidden transition-all duration-200 ease-in-out ${
-                  isExpanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
+                id={`library-row-${game.id}`}
+                inert={isExpanded ? undefined : ''}
+                className={`grid transition-all duration-200 ease-in-out ${
+                  isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 invisible'
                 }`}
               >
-                <div className="px-3 pb-3 pt-2 border-t border-line bg-surface-page">
+                <div className="overflow-hidden">
+                <div className="px-edge-card pb-3 pt-2 border-t border-line bg-surface-page">
                   <OwnerList
                     owners={game.owners || []}
                     showAll={showAllOwners && expandedId === game.id}
@@ -436,6 +477,7 @@ export default function GroupLibrary({ groupId }) {
                   >
                     View game
                   </button>
+                </div>
                 </div>
               </div>
             </div>
@@ -455,7 +497,7 @@ function OwnerList({ owners, showAll, onToggleShowAll, onSelectOwner }) {
   const remaining = owners.length - VISIBLE_LIMIT;
 
   return (
-    <p className="text-sm text-content-secondary">
+    <p className="text-sm text-content-secondary wrap-break-word">
       <span className="text-content-muted">Owned by </span>
       {visibleOwners.map((owner, i) => (
         <span key={owner.user_id}>
@@ -465,7 +507,7 @@ function OwnerList({ owners, showAll, onToggleShowAll, onSelectOwner }) {
               e.stopPropagation();
               onSelectOwner(owner.user_id);
             }}
-            className="text-content-link hover:text-content-link-hover hover:underline active:opacity-75 focus:outline-hidden focus-visible:focus-ring"
+            className="max-w-full text-content-link hover:text-content-link-hover hover:underline active:opacity-75 focus:outline-hidden focus-visible:focus-ring"
           >
             {owner.username}
           </button>
@@ -477,7 +519,7 @@ function OwnerList({ owners, showAll, onToggleShowAll, onSelectOwner }) {
             e.stopPropagation();
             onToggleShowAll();
           }}
-          className="text-content-link hover:text-content-link-hover hover:underline active:opacity-75 ml-1 focus:outline-hidden focus-visible:focus-ring"
+          className="max-w-full text-content-link hover:text-content-link-hover hover:underline active:opacity-75 ml-1 focus:outline-hidden focus-visible:focus-ring"
         >
           and {remaining} more
         </button>
