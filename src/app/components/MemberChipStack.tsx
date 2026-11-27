@@ -172,7 +172,11 @@ const TINTED_INK =
 
 const NEUTRAL_FILL = 'bg-surface-muted';
 
-/** The `+N` chip's pair (owner pick D2b — marker in MemberChip): the Owner badge's accent pair. */
+/**
+ * The `+N` chip's pair (owner pick D2b — marker in MemberChip): the Owner badge's accent pair.
+ * AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, Manage Members on the same colours with no amber, and You is written (You) in plain grey words. Here: the Owner badge is
+ * violet now; +N keeps the accent pair it took from it, so the words above name where the pair came from.
+ */
 const OVERFLOW_PAIR = 'bg-surface-accent-subtle text-content-accent';
 
 /*
@@ -267,6 +271,9 @@ export function MemberChip({
    * AMENDED Phase 88.9-30 (owner pick D2b, 88.9-PICKS-B3.json, 2026-11-06): the fork re-opens by
    * owner ruling — +N wears the Owner badge's accent pair (6.37 light / 7.51 dark), chosen OVER
    * sharing the initials' ink; its heard text stays a count (K11(a)).
+   * AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, Manage Members on the same colours with no amber, and You is written (You) in plain grey words. Here: the Owner badge
+   * is the violet tag now; +N keeps the accent pair it took from that badge, so these words name
+   * where the pair came from, not a badge that still wears it.
    */
   const neutralInk = 'text-content-secondary';
   const fill = isOverflow

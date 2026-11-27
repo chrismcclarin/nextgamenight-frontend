@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useId, useRef } from 'react';
 import { Input } from '@/components/ui/Input';
+import Pill from '@/components/ui/Pill';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 
 export default function ParticipantRow({ participant, index, groupMembers, onParticipantChange, onToggleParticipant, duplicateOfName = null, requestNameFocus = false, onNameFocusHandled = undefined }) {
@@ -187,10 +188,11 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               /* §4.5's pill/chip-ink row: 600/500 -> 700, with 400 REJECTED because a FILLED
                  chip's fill/ink pairing needs the weight to hold its shape. 12px stays — badge
                  labels are an enumerated Caption role. Same call as `ScheduleList`'s status chips
-                 (plan 32) and `PromptScheduleSection`'s header chips (plan 15). */
-              <span className="ml-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800 align-middle">
-                Guest
-              </span>
+                 (plan 32) and `PromptScheduleSection`'s header chips (plan 15).
+                 AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, Manage Members on the same colours with no amber, and You is written (You) in plain grey words. Here: 400 is the arm
+                 chosen by the owner, and the tag takes the amber pair from the tag family.
+                 DECISION Phase 89.6-44 (N04, participant rows): the Guest tag is the amber Pill at regular weight (owner pick N04 = B, 2026-11-22), chosen OVER the light-only raw orange pair it carried (no dark twin; X17a gives every Guest tag the amber pair) and OVER 700 (overruled by the pick). Changing this is a decision, not a cleanup. */
+              <Pill tone="amber" className="ml-1.5">Guest</Pill>
             )}
           </div>
         ) : (
@@ -235,10 +237,10 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             />
             {participant.is_guest && (
               /* The custom-row twin of the Guest chip above; same §4.5 pill/chip outcome, applied
-                 in the same pass so the two branches cannot diverge. */
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800 shrink-0">
-                Guest
-              </span>
+                 in the same pass so the two branches cannot diverge.
+                 AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, Manage Members on the same colours with no amber, and You is written (You) in plain grey words. Here: 400 is the arm
+                 chosen by the owner, and the tag takes the amber pair from the tag family (the marker at the first tag). */
+              <Pill tone="amber" className="shrink-0">Guest</Pill>
             )}
           </div>
         )}

@@ -187,25 +187,30 @@ describe('Phase 88.6-29 — the type/weight sweep outcomes', () => {
     expect(container.className).not.toContain('text-sm');
   });
 
-  it('the Guest chip carries the 700 pill/chip ink on BOTH branches, at Caption 12', () => {
+  // AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22). The Guest tag is the amber tag of
+  // the one block at regular weight; this test pinned 700 (88.6-29, UI-SPEC 88.6 section 4.5's
+  // pill/chip row) until the pick overruled it. 12px stays: badge labels are a Caption role.
+  it('N04 B (89.6-44; was 88.6-29): the Guest tag is the one amber tag at regular weight on BOTH branches, at Caption 12', () => {
+    const expectAmberTag = (tag: HTMLElement) => {
+      expect(tag).toHaveClass('text-xs', 'leading-4', 'whitespace-nowrap', 'bg-surface-pill-amber', 'text-content-pill-amber');
+      const classes = tag.className.split(/\s+/);
+      expect(classes).not.toContain('font-bold');
+      expect(classes).not.toContain('font-medium');
+      expect(classes).not.toContain('rounded-full');
+      expect(tag.className, 'no raw orange class').not.toContain('orange');
+    };
     renderRow({
       participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true, is_guest: true },
     });
-    const memberPill = screen.getByText('Guest');
-    // §4.5's pill/chip row: 400 is REJECTED for a filled chip (the fill/ink pairing needs the
-    // weight); 12px stays, because badge labels are an enumerated Caption role.
-    expect(memberPill.className).toContain('font-bold');
-    expect(memberPill.className).not.toContain('font-medium');
-    expect(memberPill.className).toContain('text-xs');
+    expectAmberTag(screen.getByText('Guest'));
     cleanup();
 
     renderRow({
       participant: { user_id: '', username: 'Casey', isFromGroup: false, is_guest: true },
     });
-    const customPill = screen.getByText('Guest');
-    expect(customPill.className).toContain('font-bold');
-    expect(customPill.className).not.toContain('font-medium');
-    expect(customPill.className).toContain('text-xs');
+    const typedTag = screen.getByText('Guest');
+    expectAmberTag(typedTag);
+    expect(typedTag).toHaveClass('shrink-0');
   });
 });
 
