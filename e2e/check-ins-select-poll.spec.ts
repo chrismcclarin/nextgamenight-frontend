@@ -3,7 +3,7 @@ import { test, expect, type Locator, type Page, type Route } from '@playwright/t
 import { expectNoApiWrites, holdWrites, type WriteHold } from './support/inFlight';
 import { scrubbedFetch } from './support/scrubbedFetch';
 import { expectTouchTarget } from './support/touchTarget';
-import { expectHeldInside, expectNeighbourWhole, expectWholeWords, readWordLines, setNarrowLargeText, TWO_WORD_NAME } from './support/wordLines';
+import { expectHeldInside, expectNeighbourWhole, expectWholeWords, readWordLines, setNarrowLargeText, THIRTY_LETTER_WORD, TWO_WORD_NAME } from './support/wordLines';
 
 // quick-261026-pi6 (owner R1-R5, 2026-10-26): selecting a poll on the group planning page, in a
 // real browser at 375 x 667 (the phone project only).
@@ -365,11 +365,22 @@ test('S5: a shared link opens its poll; an unknown poll id falls back to the act
 // suffix, and every word of it must be whole inside a chip that is whole inside the row, at least
 // 44px. The page's own sideways scroll at this size is recorded in the log: the rest of the
 // planning page at 320 / 200% is not this test's subject.
+// AMENDED Phase 89.6-42 (S3): owner pick S3 = Rules, 2026-11-22: the dots stay beside the title wherever they fit; with the thin card edge and the held 44px dots box a two-word title keeps them beside it at 320 / 200%, so this test now asserts beside there; where they do not fit they drop with no empty band (the sweep row R08-checkins reads that case).
+// The test ends with a look record, not a second proof: a third card titled with one 30-letter
+// word is listed, its dots drop under the words at 320 / 200%, and its body takes keyboard focus.
+// The focus ring ends at the last line of text, at the top of the dropped dots (the body reaches
+// up only: src/app/components/OpenPollsList.js ("DECISION Phase 89.6-42 (S3): owner pick"),
+// provisional on the owner's look). The ring crossing the dots' upper band by 12px exists only
+// under the rejected bottom reach, so that picture cannot be taken here; this one is taken in its
+// place, the measured line printed (a green CI run uploads no attachment).
 const D2_GAME_ID = '26102600-0000-4000-8000-0000000000d2';
+const D2_LONG_GAME_ID = '26102600-0000-4000-8000-0000000000d3';
 
-test('R4 D2 (88.9-52): at 320 wide with 200% text a check-in card and a Switch poll chip keep each word of a two-word name whole; the kebab drops under the card body', async ({ page, isMobile }) => {
+test('R4 D2 (88.9-52), S3 (89.6-42): at 320 wide with 200% text a check-in card and a Switch poll chip keep each word of a two-word name whole; the three dots stay beside the card\'s title', async ({ page, isMobile }, testInfo) => {
   test.skip(!isMobile, 'the 320px large-text proof is phone-only');
   await mockPolls(page);
+  // Set only for the look record at the end: lists the third card, titled with the 30-letter word.
+  let withLongTitle = false;
   // Registered after mockPolls, so these two answer first.
   await page.route('**/api/groups/*/prompts/open', async (route: Route) => {
     if (route.request().method() !== 'GET') {
@@ -377,10 +388,9 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a check-in card and a Switch p
       return;
     }
     routeState.openGets += 1;
-    await route.fulfill({
-      status: 200,
-      json: { prompts: [{ ...POLLS[POLL_A_ID], game_id: D2_GAME_ID }, { ...POLLS[POLL_B_ID], game_id: D2_GAME_ID }] },
-    });
+    const prompts: (ReturnType<typeof syntheticPoll> & { game_id: string })[] = [{ ...POLLS[POLL_A_ID], game_id: D2_GAME_ID }, { ...POLLS[POLL_B_ID], game_id: D2_GAME_ID }];
+    if (withLongTitle) prompts.push({ ...POLLS[POLL_LONG_ID], game_id: D2_LONG_GAME_ID });
+    await route.fulfill({ status: 200, json: { prompts } });
   });
   await page.route(
     (url) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}`),
@@ -400,7 +410,7 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a check-in card and a Switch p
       if (body && typeof body === 'object' && !Array.isArray(body)) {
         const group = body as { games?: unknown };
         const games = Array.isArray(group.games) ? group.games : [];
-        group.games = [...games, { id: D2_GAME_ID, name: TWO_WORD_NAME }];
+        group.games = [...games, { id: D2_GAME_ID, name: TWO_WORD_NAME }, { id: D2_LONG_GAME_ID, name: THIRTY_LETTER_WORD }];
       }
       await route.fulfill({ response, json: body });
     },
@@ -428,6 +438,17 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a check-in card and a Switch p
       `R4 D2 card ${i}: at ordinary text the kebab no longer sits beside the card body (${JSON.stringify(beside)})`,
     ).toBe(true);
     expectWholeWords(await readWordLines(titleOf(row), row), ['Weekend', 'Warriors'], `R4 D2 card ${i} at ordinary text`, { pageSideways: false });
+    // The geometry S3 must not move at ordinary text: the title's left and the dots' top each sit
+    // 13px inside the card on BOTH cards (1px border + the 12px card edge unselected, 2px border +
+    // 11px selected). The 13 is written here, never read from a class.
+    const inset = await row.evaluate((el) => {
+      const li = el.getBoundingClientRect();
+      const title = el.querySelector('span.font-bold') as HTMLElement;
+      const dots = el.querySelector('button[aria-label="Check-in actions"]') as HTMLElement;
+      return { titleLeft: title.getBoundingClientRect().left - li.left, dotsTop: dots.getBoundingClientRect().top - li.top };
+    });
+    expect(Math.abs(inset.titleLeft - 13), `S3 card ${i}: at ordinary text the title no longer starts 13px inside the card (${JSON.stringify(inset)})`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(inset.dotsTop - 13), `S3 card ${i}: at ordinary text the three dots no longer start 13px under the card's top (${JSON.stringify(inset)})`).toBeLessThanOrEqual(0.5);
   }
 
   await setNarrowLargeText(page, 'R4 D2 check-in card');
@@ -439,6 +460,19 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a check-in card and a Switch p
     expectWholeWords(read, ['Weekend', 'Warriors'], `R4 D2 card ${i} at 320 / 200%`, { pageSideways: false });
     await expectHeldInside(row, `R4 D2 card ${i}`);
     await expectNeighbourWhole(kebabOf(row), `R4 D2 card ${i}: the kebab`, { button: true });
+    // S3: a two-word title keeps its dots BESIDE it at 320 / 200% (they start at or after the body's
+    // right edge and above the bottom of the title), in a box held at 44 x 44.
+    const s3 = await row.evaluate((el) => {
+      const body = (el.firstElementChild as HTMLElement).getBoundingClientRect();
+      const title = (el.querySelector('span.font-bold') as HTMLElement).getBoundingClientRect();
+      const dots = (el.querySelector('button[aria-label="Check-in actions"]') as HTMLElement).getBoundingClientRect();
+      return { bodyRight: body.right, titleBottom: title.bottom, dotsLeft: dots.left, dotsTop: dots.top, dotsWidth: dots.width, dotsHeight: dots.height };
+    });
+    // eslint-disable-next-line no-console -- the measured card is recorded from the CI log
+    console.log(`[89.6-42 S3 check-in card ${i}] 320 / 200%: ${JSON.stringify(s3)}`);
+    expect(s3.dotsLeft >= s3.bodyRight - 1 && s3.dotsTop < s3.titleBottom, `S3 card ${i}: at 320 / 200% the three dots are not beside the title (${JSON.stringify(s3)})`).toBe(true);
+    expect(Math.abs(s3.dotsWidth - 44), `S3 card ${i}: the three-dot box is not 44px wide (${JSON.stringify(s3)})`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(s3.dotsHeight - 44), `S3 card ${i}: the three-dot box is not 44px tall (${JSON.stringify(s3)})`).toBeLessThanOrEqual(0.5);
   }
 
   // The Switch poll chips: each label holds the answered name, uncut, and each chip is whole.
@@ -457,4 +491,35 @@ test('R4 D2 (88.9-52): at 320 wide with 200% text a check-in card and a Switch p
     await expectNeighbourWhole(chip, `R4 D2 chip ${i}`, { button: true });
   }
   await expectHeldInside(chipRow, 'R4 D2 Switch poll row');
+
+  // The look record (see the comment block above): the third card, its dots dropped, its body
+  // focused from the keyboard. Nothing is pressed but Tab.
+  withLongTitle = true;
+  await openPlanning(page);
+  await page.setViewportSize({ width: 320, height: 568 });
+  await setNarrowLargeText(page, 'S3 look record');
+  const longRow = cardRow(page, LONG_STARTER);
+  await expect(longRow.locator('span.font-bold', { hasText: THIRTY_LETTER_WORD }), 'S3 look record: the third card is not titled with the 30-letter word').toHaveCount(1, { timeout: 15_000 });
+  const longBody = longRow.getByRole('button', { name: /Started by/ });
+  await kebabOf(cardRow(page, 'E2E Ben')).focus();
+  await page.keyboard.press('Tab');
+  await expect(longBody, 'S3 look record: Tab from the card before it does not land on the third card body').toBeFocused();
+  const look = await longRow.evaluate((el) => {
+    const li = el.getBoundingClientRect();
+    const body = el.firstElementChild as HTMLElement;
+    const b = body.getBoundingClientRect();
+    const dots = (el.querySelector('button[aria-label="Check-in actions"]') as HTMLElement).getBoundingClientRect();
+    return {
+      focusVisible: body.matches(':focus-visible'),
+      dotsUnderTheWords: dots.top >= b.bottom - 1,
+      ringTopToCardTop: b.top - li.top,
+      ringBottomToDotsTop: dots.top - b.bottom,
+      dotsBottomToCardBottom: li.bottom - dots.bottom,
+    };
+  });
+  // eslint-disable-next-line no-console -- the look record is read from the CI log
+  console.log(`[89.6-42 S3 look record] 320 x 568 / 200%, the wrapped card focused: ${JSON.stringify(look)}`);
+  // Centred first, so a fixed corner control of the page does not sit over the dots in the picture.
+  await longRow.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await testInfo.attach('89.6-42-S3-wrapped-card-focused-320x568-200', { body: await longRow.screenshot(), contentType: 'image/png' });
 });
