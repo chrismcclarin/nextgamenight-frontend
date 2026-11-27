@@ -6000,21 +6000,66 @@ describe("gameDetail Bringing control — the viewer's RSVP reaches the section,
 describe('gameDetail strip chip pills share one box (W27, 88.9-52)', () => {
   it.each(['owner', 'admin'] as const)(
     'W27 (88.9-52): the %s pill and the Guest pill in the strip chip take px-1.5 py-0.5',
+    // AMENDED Phase 89.6-30 (N04): owner pick N04 = B. The role tag and the Guest tag are the Pill
+    // block (the one box, regular weight: it pinned font-bold on the role tag), and the reply tag
+    // FOLLOWS them on the chip (it came first). The clock is pinned before the night so the reply
+    // tag draws (W26: no No reply once the night has started).
     async (role) => {
-      renderEventDetail({
-        role,
-        participants: [
-          participantRow({ user_id: SELF_UUID, username: 'Me' }),
-          participantRow({ user_id: 'guest-uuid', username: 'Visiting Pat', is_guest: true }),
-        ],
-      });
-      await screen.findByRole('heading', { name: 'Participants (2)' });
-      const rolePill = await screen.findByText(role === 'owner' ? 'Owner' : 'Admin', { selector: 'span' });
-      expect(rolePill).toHaveClass('text-xs', 'px-1.5', 'py-0.5', 'rounded-sm', 'font-bold');
-      expect(rolePill).not.toHaveClass('px-1');
-      const guestPill = screen.getByText('Guest', { selector: 'span[title]' });
-      expect(guestPill).toHaveClass('text-xs', 'px-1.5', 'py-0.5', 'rounded-sm');
-      expect(guestPill).not.toHaveClass('px-1');
+      pinClockBeforeTheNight();
+      try {
+        renderEventDetail({
+          role,
+          participants: [
+            participantRow({ user_id: SELF_UUID, username: 'Me' }),
+            participantRow({ user_id: 'guest-uuid', username: 'Visiting Pat', is_guest: true }),
+          ],
+        });
+        await screen.findByRole('heading', { name: 'Participants (2)' });
+        const rolePill = await screen.findByText(role === 'owner' ? 'Owner' : 'Admin', { selector: 'span' });
+        const guestPill = screen.getByText('Guest', { selector: 'span[title]' });
+        for (const pill of [rolePill, guestPill]) {
+          expect(pill).toHaveClass('inline-flex', 'items-center', 'align-middle', 'text-xs', 'leading-4', 'px-1.5', 'py-0.5', 'rounded-sm', 'font-normal');
+          expect(pill.className.split(/\s+/)).not.toContain('font-bold');
+          expect(pill).not.toHaveClass('px-1');
+          const chip = pill.parentElement as HTMLElement;
+          const reply = await within(chip).findByText('No reply');
+          expect(pill.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        }
+      } finally {
+        vi.useRealTimers();
+      }
     }
   );
+
+  // The phone Friend tag inside a review's bold name line is the name control's own (stubbed in this
+  // file): its weight is pinned in
+  // src/app/components/ClickableMemberName.indicator.test.tsx ("says Friend once, and has no tick").
+  it('N04 B (89.6-30): the session chip tags and the own review read in the one style', async () => {
+    renderGameDetail({
+      role: 'member',
+      events: [
+        {
+          ...SESSION,
+          EventParticipations: [{ user_id: 'p-sol', username: 'Sol Player', is_guest: true, is_new_player: true, faction: 'Federation of Sol' }],
+        },
+      ],
+      reviews: [SAVED_REVIEW],
+    });
+    const sessions = await sessionsSection();
+    const guest = await within(sessions).findByText('Guest');
+    const newPlayer = within(sessions).getByText('New Player');
+    for (const tag of [guest, newPlayer]) {
+      expect(tag).toHaveClass('leading-4', 'whitespace-nowrap', 'font-normal');
+      expect(tag.className.split(/\s+/)).not.toContain('font-bold');
+    }
+    // The faction is free text: the same box, and it may wrap by whole words inside its chip.
+    const faction = within(sessions).getByText('Federation of Sol');
+    expect(faction).toHaveClass('leading-4', 'font-normal', 'whitespace-normal', 'max-w-full', 'wrap-break-word');
+    expect(faction.className.split(/\s+/)).not.toContain('whitespace-nowrap');
+
+    // The viewer's own review: (You) in plain grey words, regular weight inside the bold name line.
+    const you = within(await reviewsSection()).getByText('(You)');
+    expect(you).toHaveClass('text-xs', 'font-normal', 'text-content-muted');
+    expect(you.className.split(/\s+/)).not.toContain('text-content-link');
+  });
 });

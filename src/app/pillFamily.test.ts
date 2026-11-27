@@ -69,12 +69,14 @@ const PILL_FILES: Record<string, PillFile> = {
     // Guest (amber). Left until the plan's second step, six: the strip chip's Owner (violet), Admin
     // (blue) and Guest (amber), and the session chip's Guest (amber), New Player (neutral) and the
     // faction (violet).
-    families: { neutral: 1, violet: 2, blue: 1, amber: 2 },
+    // AMENDED Phase 89.6-30 (N04), the plan's second step: 6 -> 0. The strip chip's and the session
+    // chip's tags are Pills too, so this file writes no pair of its own: every tag is a Pill.
+    families: {},
     // AMENDED Phase 88.9-65 (X47): the two raw palette strings 88.9-63 left on the past-session
     // chip by name (its orange Guest and its purple faction) are gone with that chip's rebuild, so
     // nothing is exempt here: any raw palette fill or ink in this file is a failure.
     exemptLiterals: {},
-    why: 'the game page: RSVP, role, You, Friend and Guest pills on the Participants chip and the See-all row, and the Guest, New Player and faction pills on the past-session chip',
+    why: 'the game page: every tag on the Participants chip, the See-all row and the past-session chip is a Pill, so the page writes no pill pair of its own',
   },
   'app/components/ClickableMemberName.js': {
     // The name popover's two informational pills: Friend (one helper, used by the accepted
@@ -292,8 +294,12 @@ describe('Phase 88.9-63 (X16 / X17a): one pill family, sentence case, names 600'
 
     // New Player is the neutral pill and keeps its no-break; the chip name is 600 and may wrap.
     // (No reply on the Participants chip is a neutral no-break pill too, so this one is read whole.)
-    const NEW_PLAYER = 'text-xs whitespace-nowrap bg-surface-pill-neutral text-content-pill-neutral px-1.5 py-0.5 rounded-sm font-bold';
-    expect(chunks.filter((text) => text === NEW_PLAYER), 'New Player is one neutral pill that never breaks').toHaveLength(1);
+    // AMENDED Phase 89.6-30 (N04): New Player was a class string pinned whole here (bold, with its own
+    // no-break). It is the Pill block's neutral tone now, with no wrap prop, so the no-break is the
+    // block's (src/components/ui/Pill.tsx ("export const PILL_BOX")) and the weight is 400.
+    expect(stripped.split('<Pill tone="neutral">New Player</Pill>').length - 1, 'New Player is one neutral Pill, with no wrap (it never breaks)').toBe(1);
+    const block = withoutComments(fs.readFileSync(path.join(SRC, 'components/ui/Pill.tsx'), 'utf8'));
+    expect(block.split("wrap ? 'whitespace-normal max-w-full wrap-break-word' : 'whitespace-nowrap'").length - 1, 'a Pill without wrap never breaks').toBe(1);
     // Phase 89.6-29: the name piece also wraps its own items, holds each to the chip and gives the name a 0px basis
     // (src/app/gameDetail/page.js ("AMENDED Phase 89.6-29 (game-rows): the name piece is a small house row")).
     expect(

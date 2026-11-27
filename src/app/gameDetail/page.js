@@ -172,22 +172,19 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
             </span>
             {/* 88.6.1-74 (owner ruling D8-r2, E17): no pill while the RSVP list never loaded, so no
                 chip says "No reply" for a list that failed. */}
-            {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} nightStarted={nightStarted} />}
-            {/* 88.9-52 (W27, height half): every pill in this chip takes the See-all row's box, px-1.5 py-0.5. Owner and Admin had no vertical padding and measured 16px beside the 20px No reply and Maybe pills; Guest takes the same sides so the chip has one pill box (orchestrator decision). The Friend indicator is not part of this. */}
+            {/* 88.9-52 (W27, height half): every pill in this chip takes the See-all row's box, px-1.5 py-0.5. Owner and Admin had no vertical padding and measured 16px beside the 20px No reply and Maybe pills; Guest takes the same sides so the chip has one pill box (orchestrator decision). The Friend indicator is not part of this.
+                AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [The one box is now the block's, not a class string repeated here, and Owner and Admin are 400.] */}
             {role === 'owner' && (
-                <span className="text-xs bg-surface-pill-violet text-content-pill-violet px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
+                <Pill tone="violet">Owner</Pill>
             )}
             {role === 'admin' && (
-                <span className="text-xs bg-surface-pill-blue text-content-pill-blue px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
+                <Pill tone="blue">Admin</Pill>
             )}
             {participant.is_guest && viewerScope === 'group-member' && (
-                <span
-                    className="text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber px-1.5 py-0.5"
-                    title="Joined via game-invite QR (not a group member)"
-                >
-                    Guest
-                </span>
+                <Pill tone="amber" title="Joined via game-invite QR (not a group member)">Guest</Pill>
             )}
+            {/* The reply tag is the last tag and the die stays after it, as on the See-all row, where the reply-last marker of Phase 89.6-30 records the choice. */}
+            {!rsvpUnavailable && <RsvpStatusPill status={rsvpStatus} nightStarted={nightStarted} />}
             {isBringing && (
                 <span role="img" title="Bringing a game" aria-label="Bringing a game">🎲</span>
             )}
@@ -2528,25 +2525,20 @@ export default function GameDetailPage() {
                                                             )}
                                                         </span>
                                                         {participation.is_guest && (
-                                                            <span className="text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber px-1.5 py-0.5">
-                                                                Guest
-                                                            </span>
+                                                            <Pill tone="amber">Guest</Pill>
                                                         )}
                                                         {/* D-16 (88.6-18): `text-content-link` on `bg-surface-muted`
                                                             measures 3.9909, below AA. As a BADGE the "New Player" chip
                                                             below takes `text-content-accent` (4.7121) rather than
                                                             `text-content-secondary` — D-16 distinguishes the two badges
                                                             from its four other sites on exactly that basis.
-                                                            AMENDED Phase 88.9-65 (X47 + 63 hand-off b): on the card ground New Player takes the neutral pill pair; the accent ink was priced on the muted ground, where the X17a family melts. */}
+                                                            AMENDED Phase 88.9-65 (X47 + 63 hand-off b): on the card ground New Player takes the neutral pill pair; the accent ink was priced on the muted ground, where the X17a family melts.
+                                                            AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [New Player is the neutral tag at 400 and its no-break is the block's; the faction is free text, so it is the block's wrap form: whole words, held to the chip.] */}
                                                         {participation.is_new_player && (
-                                                            <span className="text-xs whitespace-nowrap bg-surface-pill-neutral text-content-pill-neutral px-1.5 py-0.5 rounded-sm font-bold">
-                                                                New Player
-                                                            </span>
+                                                            <Pill tone="neutral">New Player</Pill>
                                                         )}
                                                         {participation.faction && (
-                                                            <span className="text-xs bg-surface-pill-violet text-content-pill-violet px-1.5 py-0.5 rounded-sm">
-                                                                {participation.faction}
-                                                            </span>
+                                                            <Pill tone="violet" wrap>{participation.faction}</Pill>
                                                         )}
                                                         {/* 88.9-65 (X50): one formatter prints the score (57, not 57.00), and a
                                                             participant with no score shows no Score piece (an absent score
@@ -4504,7 +4496,7 @@ export default function GameDetailPage() {
                                         <ClickableMemberName userId={userReview.User.id} username={userReview.User.username || 'You'} />
                                     ) : (
                                         userReview.User?.username || 'You'
-                                    )} <span className="text-xs text-content-link ml-1">(You)</span>
+                                    )} <span className="text-xs font-normal text-content-muted">(You)</span>
                                 </p>
                                 <p className="text-sm text-content-secondary">
                                     {formatDate(userReview.createdAt, timezone)}
@@ -4569,9 +4561,7 @@ export default function GameDetailPage() {
                                                         )}
                                                     </p>
                                                     {isUserReview && (
-                                                        <span className="text-xs bg-surface-muted text-content-accent px-2 py-1 rounded-sm">
-                                                            You
-                                                        </span>
+                                                        <span className="text-xs font-normal text-content-muted">(You)</span>
                                                     )}
                                                 </div>
                                                 <p className="text-sm text-content-secondary">
