@@ -20,7 +20,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { axe } from 'vitest-axe';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
-import { expectFocusRingInset } from '@/test-utils/focusRingAssert';
+import { expectFocusRing, expectFocusRingInset } from '@/test-utils/focusRingAssert';
 
 afterEach(cleanup);
 
@@ -189,6 +189,17 @@ describe('Tabs', () => {
     expect(listRef.current).toHaveClass('overflow-x-auto');
     expect(triggerRef.current).toHaveClass('px-6');
     expect(contentRef.current).toHaveClass('pt-2');
+  });
+
+  // Phase 89.6-31, census row E-17 (outline rule 10, G1): the panel takes keyboard focus and paints
+  // no fill, so its corner shows only as the corner of its ring. The rendered ring is read on the
+  // Profile availability panel by e2e/focus-ring-geometry.spec.ts ("the Schedules tab panel").
+  it('89.6-31 E-17: the panel carries the outset house ring and one radius class', () => {
+    renderTabs();
+    const panel = screen.getByRole('tabpanel');
+    expectFocusRing(panel, 'the tab panel');
+    const tokens = (panel.getAttribute('class') ?? '').split(/\s+/);
+    expect(tokens.filter((token) => /^rounded(-|$)/.test(token))).toEqual(['rounded-sm']);
   });
 
   it('passes an axe audit with no violations', async () => {

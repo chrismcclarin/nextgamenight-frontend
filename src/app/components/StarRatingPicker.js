@@ -127,18 +127,20 @@ export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rat
               />
             )}
             {/* Hit zones — absolutely-positioned buttons spanning each half of the star */}
+            {/* DECISION Phase 89.6-31 (edge-E-05): G1 rounded-sm on the left half OVER a square ring: its right corners were 0px (it carried a radius on its left side only), measured radius 0 and ring corner 4px at 320 x 568 / 200%, 375 x 667 / 100% and 1280 x 800, both themes (owner pick O-1 B, 2026-11-22; rule 10). The hit zone paints nothing, so only its keyboard ring shows the corner; no container cuts the ring. Changing this is a decision, not a cleanup. */}
             <button
               type="button"
-              className="absolute left-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-hidden focus-visible:focus-ring rounded-l"
+              className="absolute left-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-hidden focus-visible:focus-ring rounded-sm"
               onMouseEnter={() => handleHalfHover(starIndex, 'left')}
               onClick={() => handleHalfClick(starIndex, 'left')}
               aria-label={`${starIndex - 0.5} stars`}
               role="radio"
               aria-checked={committedValue === starIndex - 0.5}
             />
+            {/* DECISION Phase 89.6-31 (edge-E-06): G1 rounded-sm on the right half OVER a square ring: its left corners were 0px (a radius on its right side only), measured radius 0 and ring corner 4px in the same cells (owner pick O-1 B, 2026-11-22; rule 10). Changing this is a decision, not a cleanup. */}
             <button
               type="button"
-              className="absolute right-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-hidden focus-visible:focus-ring rounded-r"
+              className="absolute right-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-hidden focus-visible:focus-ring rounded-sm"
               onMouseEnter={() => handleHalfHover(starIndex, 'right')}
               onClick={() => handleHalfClick(starIndex, 'right')}
               aria-label={`${starIndex} stars`}

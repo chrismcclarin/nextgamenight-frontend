@@ -102,8 +102,9 @@ const TabsContent = React.forwardRef<
     // Radix gives the panel `tabIndex={0}` so keyboard users can reach content that
     // holds no focusable child — which means it can receive focus and therefore needs
     // a ring of its own.
+    // DECISION Phase 89.6-31 (edge-E-17): G1 rounded-sm on the panel OVER a square ring: measured radius 0 and ring corner 4px on the Profile availability panel at 320 x 568 / 200%, 375 x 667 / 100% and 1280 x 800, both themes (owner pick O-1 B, 2026-11-22; rule 10). It is set here, on the primitive, OVER the two call sites in src/app/userProfile/page.js: the ring is drawn here, so its corner belongs beside it, and those two panels are the only consumers (both measured). The ring utility itself is not changed. The panel paints no fill and no border, so only its keyboard ring shows the corner. Changing this is a decision, not a cleanup.
     className={cn(
-      'focus:outline-hidden focus-visible:focus-ring',
+      'rounded-sm focus:outline-hidden focus-visible:focus-ring',
       className
     )}
     {...props}

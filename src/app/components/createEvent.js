@@ -1867,14 +1867,16 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
             {removedParticipant && (
               <div className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-line bg-surface-page px-2 py-1.5 text-sm text-content-secondary">
                 <span>{removedParticipant.name} removed</span>
+                {/* DECISION Phase 89.6-31 (edge-E-07): G1 rounded-sm on Undo OVER a square ring: measured radius 0 and ring corner 4px at 320 x 568 / 200%, 375 x 667 / 100% and 1280 x 800, both themes (owner pick O-1 B, 2026-11-22; rule 10). Undo paints no fill and no border, so only its keyboard ring shows the corner; its side room (10px at normal text) and its box are unchanged. Changing this is a decision, not a cleanup. */}
                 <button
                   type="button"
                   ref={undoButtonRef}
                   onClick={undoRemoveParticipant}
-                  className="min-h-11 px-2 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:focus-ring"
+                  className="min-h-11 rounded-sm px-2 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:focus-ring"
                 >
                   Undo
                 </button>
+                {/* DECISION Phase 89.6-31 (edge-E-08): G1 rounded-sm on Dismiss OVER a square ring: measured radius 0 and ring corner 4px in the same cells (owner pick O-1 B, 2026-11-22; rule 10). Changing this is a decision, not a cleanup. */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1883,7 +1885,7 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                     // Add Participant button instead of dropping it to body.
                     addParticipantButtonRef.current?.focus();
                   }}
-                  className="min-h-11 px-2 text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:focus-ring"
+                  className="min-h-11 rounded-sm px-2 text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:focus-ring"
                   aria-label={`Dismiss undo for ${removedParticipant.name}`}
                 >
                   Dismiss
