@@ -2195,7 +2195,24 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     expect(retry).toHaveTextContent(/^Retry/);
     expect(retry.firstChild?.textContent).toBe('Retry');
   });
-});
+
+  // S4w = S4-c (plan 89.6-36): while its Spinner shows, a busy Button hides its ELEMENT children
+  // (they go transparent); a bare text node is not an element and would stay drawn under the
+  // Spinner. The guest invite rendered its visible word as bare text inside a fragment, the one
+  // busy Button in the app that did. The white-space word break between the word and the sr-only
+  // span is a text node on purpose (X63) and is allowed.
+  it('S4w (89.6-36): the busy guest invite hides its word: no direct text node of the button holds non-whitespace', async () => {
+    const user = userEvent.setup();
+    deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: 'Invite Visiting Pat to the group' });
+    await user.click(invite);
+    await waitFor(() => expect(invite.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1));
+    const bareWords = Array.from(invite.childNodes).filter((n) => n.nodeType === 3 && (n.textContent ?? '').trim());
+    expect(bareWords.map((n) => n.textContent), 'a word drawn as bare text stays visible under the Spinner').toHaveLength(0);
+    // The name is untouched by the wrap: the word, the rest of the name, then the busy suffix.
+    expect(invite).toHaveAccessibleName('Invite Visiting Pat to the group, sending');
+  });});
 
 // UI-SPEC §9.3 E10-long-text / SPEC AC-5 — the quote-bearing-name backstop.
 // The two-tap Remove interpolates a user-supplied display name into its

@@ -456,11 +456,12 @@ function GuestInviteButton({ groupId, userId, guestName }) {
                 appends the sending suffix after these children. The word break is written twice on
                 purpose, once as the button's own text and once inside the span: a name computed
                 without layout (the unit tests' library) trims an inline child's text, a browser
-                does not, and both must hear two words. */}
+                does not, and both must hear two words.
+                AMENDED Phase 89.6-36: the visible word sits in its own span so the held look (S4w) can hide it; the two word breaks are unchanged. */}
             {shownWord === 'Retry' ? (
-                <>Retry{' '}<span className="sr-only"> inviting {who} to the group</span></>
+                <><span>Retry</span>{' '}<span className="sr-only"> inviting {who} to the group</span></>
             ) : (
-                <>Invite{' '}<span className="sr-only"> {who} to the group</span></>
+                <><span>Invite</span>{' '}<span className="sr-only"> {who} to the group</span></>
             )}
         </Button>
         </>
