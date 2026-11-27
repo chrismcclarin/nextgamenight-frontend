@@ -376,11 +376,96 @@ const checkInsExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => 
   if (problems.length > 0) throw new Error(`S3: in ${cell.id}: ${problems.join('; ')}`);
 };
 
+// THE LIBRARY ROWS (census R07; UI-SPEC E4, the Library half; owner first look 2026-11-22: S2 = Drop).
+// The Library tab's own read (src/lib/api.ts ("getGroupLibrary: (group_id: string) =>"): GET
+// /groups/<group id>/library) is answered in the browser with three made-up games and four members:
+//   - the two-word name, no picture, its facts line, four owners, one named with the 30-letter word;
+//   - a game named with the 30-letter word, with a picture, one owner;
+//   - Azul, two owners.
+// The play-history read is answered empty (its rows are R07-history's). The only thing pressed is the
+// Library tab (a tab: no write). The root is the page's main.
+const isLibraryRead = (url: URL): boolean => url.pathname.endsWith(`/groups/${groupId()}/library`);
+const LIBRARY_OWNER = (n: number, username: string) => ({ user_id: `89642000-0000-4000-8000-0000000000b${n}`, username });
+const LIBRARY_OWNERS = [LIBRARY_OWNER(1, 'E2E Owner'), LIBRARY_OWNER(2, THIRTY_LETTER_WORD), LIBRARY_OWNER(3, 'E2E Ben'), LIBRARY_OWNER(4, 'E2E Cleo')];
+const LIBRARY_GAME = (n: number, name: string, extra: Record<string, unknown>) => ({
+  id: `89642000-0000-4000-8000-0000000000c${n}`,
+  name,
+  thumbnail_url: null,
+  image_url: null,
+  min_players: null,
+  max_players: null,
+  playing_time: null,
+  weight: null,
+  ...extra,
+});
+const LIBRARY = {
+  games: [
+    LIBRARY_GAME(1, TWO_WORD_NAME, { min_players: 3, max_players: 4, playing_time: 60, weight: 2.3, owners: LIBRARY_OWNERS }),
+    LIBRARY_GAME(2, THIRTY_LETTER_WORD, { thumbnail_url: '/logo.svg', owners: [LIBRARY_OWNERS[0]] }),
+    LIBRARY_GAME(3, 'Azul', { owners: [LIBRARY_OWNERS[2], LIBRARY_OWNERS[3]] }),
+  ],
+  members: LIBRARY_OWNERS,
+};
+const answerLibrary = (url: URL): unknown => (isLibraryRead(url) ? LIBRARY : answerNoGames(url));
+const answerEmptyLibrary = (url: URL): unknown => (isLibraryRead(url) ? { games: [], members: [] } : answerNoGames(url));
+
+/** Open the group page, press the Library tab, and wait for what the tab shows. */
+async function openLibrary(page: Page, shown: (root: ReturnType<Page['locator']>) => ReturnType<Page['locator']>): Promise<{ root: ReturnType<Page['locator']> }> {
+  const { root } = await openGroup(page, withIcon(GROUP_ICON_PICTURE));
+  await root.getByRole('button', { name: 'Library', exact: true }).click();
+  await shown(root).first().waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(root);
+  return { root };
+}
+// A Library row is the button that holds a game's name line (the tabs and the owner chips hold none).
+const libraryRows = (page: Page) => page.locator('main').locator('button:has(> div > p)');
+const reachLibrary: SurfaceRow['reach'] = (page) => openLibrary(page, (root) => root.getByText(TWO_WORD_NAME, { exact: true }));
+// R07-library-empty (EMPTY_STATES: This library is empty): the same read answered with no games; the
+// Add games link is never pressed.
+const reachLibraryEmpty: SurfaceRow['reach'] = (page) => openLibrary(page, (root) => root.getByText('This library is empty', { exact: true }));
+
+// R07-library extras (S2 = Drop: at large text the Library row's picture is not drawn; the game name
+// beside it is its text twin). The product's own threshold, written HERE and never read from a class:
+// the picture is drawn only while the row's inside is over 13.25rem (picture 2.5rem + gap 0.75rem +
+// a 10rem words column), rem being the root's own text size (a container query). So it is NOT drawn
+// with 200% text at 320 and 375 wide and at the two page-zoom widths, and it IS drawn at 768 wide
+// (200% and default font 32) and at 320 with normal text. Every cell prints its reading on one line,
+// since a green CI run uploads nothing; one joined line is thrown, so a failure fails the cell.
+const PICTURE_DROPS_AT_REM = 13.25;
+const pictureDrawnIn = (cell: SweepCell): boolean => cell.width >= 768 || (cell.mode === '100' && !cell.zoom);
+const libraryExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
+  const read = await libraryRows(page).evaluateAll((buttons) =>
+    buttons.map((button) => {
+      const style = getComputedStyle(button);
+      const picture = button.firstElementChild;
+      return {
+        name: (button.querySelector('p')?.textContent ?? '').trim(),
+        drawn: picture !== null && picture.getClientRects().length > 0,
+        inside: button.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+        rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+      };
+    }),
+  );
+  const problems: string[] = [];
+  const said: string[] = [];
+  if (read.length !== 3) problems.push(`${read.length} Library rows, not 3`);
+  for (const row of read) {
+    const name = row.name === THIRTY_LETTER_WORD ? '30-letter' : row.name;
+    const threshold = PICTURE_DROPS_AT_REM * row.rem;
+    said.push(`"${name}" picture ${row.drawn ? 'drawn' : 'not drawn'}, inside ${row.inside.toFixed(1)} of ${threshold.toFixed(1)}`);
+    if (row.drawn !== pictureDrawnIn(cell)) problems.push(`"${name}": the picture is ${row.drawn ? 'drawn' : 'not drawn'} in ${cell.id} (S2: drawn only at 768 wide and at 320 with normal text)`);
+    if (row.inside > threshold !== pictureDrawnIn(cell)) problems.push(`"${name}": the row's inside is ${row.inside.toFixed(1)}px against ${threshold.toFixed(1)}px (${PICTURE_DROPS_AT_REM}rem at ${row.rem}px), so this cell does not prove the drop it is listed for`);
+  }
+  process.stdout.write(`S2 recorded: R07-library ${cell.id}: ${said.join(' | ')}\n`);
+  if (problems.length > 0) throw new Error(`S2: in ${cell.id}: ${problems.join('; ')}`);
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R07-games', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', reach: reachGames, answers: answerNoGames, extras: headerExtras },
   { id: 'R07-emoji', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'emoji icon', reach: reachEmoji, answers: answerNoGames, extras: headerExtras },
   { id: 'R07-long', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'long name', reach: reachLong, answers: answerNoGames, extras: headerExtras },
-  { id: 'R07-library', census: 'R07', kind: 'route', owner: '89.6-17', status: 'pending' },
+  { id: 'R07-library', census: 'R07', kind: 'route', owner: '89.6-42', status: 'enforced', state: 'the Library tab: three games, a 30-letter game name, a 30-letter member name', reach: reachLibrary, answers: answerLibrary, extras: libraryExtras },
+  { id: 'R07-library-empty', census: 'R07', kind: 'route', owner: '89.6-42', status: 'enforced', state: 'empty library', reach: reachLibraryEmpty, answers: answerEmptyLibrary },
   { id: 'R08-checkins', census: 'R08', kind: 'route', owner: '89.6-42', status: 'enforced', state: 'three check-in cards: short title beside the dots, generic title, 30-letter title', reach: reachCheckIns, answers: emptySettingsAnswers, extras: checkInsExtras },
   { id: 'R07-history', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', reach: reachHistory, answers: answerThreeGames },
   { id: 'R07-history-error', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'games read failed', reach: reachHistoryError },
