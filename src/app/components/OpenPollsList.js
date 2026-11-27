@@ -453,7 +453,9 @@ export function pollChipLabels(prompts, group) {
    2px border in the link colour plus a Viewing tag above the title, OVER a left accent rail and
    OVER a tinted background (both rejected at the mockup); both cells pad one pixel less when
    selected so the border does not grow the card; the tag is aria-hidden because aria-pressed
-   already says selected. Changing this is a decision, not a cleanup. */
+   already says selected. Changing this is a decision, not a cleanup.
+   AMENDED Phase 89.6-42 (S3): the selected card's 11px vertical edge is now on the li and its 11px
+   side edges on the cells; the one-pixel rule is unchanged. */
 /* AMENDED Phase 88.9-52 (R4 D2, owner 2026-11-18): the card row may WRAP and its body keeps its
    longest word, the Friends-row form (src/app/friends/page.js ("AMENDED Phase 88.9-52 (R4 B1, the round-4 re-shoot")).
    The body is flex-1 with the automatic minimum (its longest word plus its padding), capped at the
@@ -465,22 +467,56 @@ export function pollChipLabels(prompts, group) {
    REJECTED: keeping min-w-0 and only removing the cut (the title falls to two or three letters
    per line, the owner's We/eke/nd W/arr/iors); a fixed rem floor on the body (it would drop the
    kebab at ordinary text for a short title); shrinking the kebab (44px is its floor). At ordinary
-   text the cell needs 56px and a word of 16px bold rarely passes 150, so nothing moves. */
+   text the cell needs 56px and a word of 16px bold rarely passes 150, so nothing moves.
+   AMENDED Phase 89.6-42 (S3): the owner's 2026-11-22 Rules pick confirms this wrap and removes its
+   empty band (see the Phase 89.6-42 S3 decision below); with the thin card edge (O-M1 D) and the held
+   44px dots box (O-M4 Fixed+) the sum at 320 / 200% is about 262px of card against 179 + 56, so a
+   two-word title keeps the dots beside it. */
 /* DECISION Phase 89.6-15 (O-M1-sites): the check-in card's own padding is the card edge token (owner
    pick S3 = Rules, 2026-11-22: 'No special treatment'; HR-9 reaches every card, SPEC A9), chosen OVER
    its 12px rem body and right cell, which grew to 24 + 24 + 24px at 200% text and took the title's
    room. The row's wrap is plan 89.6-17's. Pixel-identical at normal text. The selected cells keep
    their 11px (px already, one pixel under the token so the 2px border does not grow the card).
-   Changing this is a decision, not a cleanup. */
+   Changing this is a decision, not a cleanup.
+   AMENDED Phase 89.6-42 (S3): the row's wrap is plan 89.6-42's (the group block was split); the
+   vertical edge moved to the li. */
 const CARD_ROW_CLASS = 'bg-surface-card border border-line rounded-card flex flex-wrap items-start';
 const CARD_ROW_SELECTED_CLASS = 'bg-surface-card border-2 border-content-link rounded-card flex flex-wrap items-start';
+/* DECISION Phase 89.6-42 (S3): owner pick S3 = Rules, 2026-11-22 ('No special treatment: the dots
+   stay beside the title wherever they fit; where they do not fit, they drop under the words at the
+   right with no empty band'; first look: 'Lets double check this in our research.'). The card's
+   vertical edge is on the li; the dots cell keeps only its side edge, so dots that drop start at
+   the words' last line: wrapped, the band is 0 (it was 12 + 12px); beside the title nothing moves.
+   The body button reaches UP only: its top padding is cancelled by an equal negative top margin,
+   so its hover fill and inset ring reach the card's top edge, and it has NO bottom padding, so
+   they end at the last line of text: beside the dots that is 12px above the card's border (11px
+   on the selected card), at every text size, and above dropped dots it is the dots' own top (the
+   card's bottom edge stays on the li). Chosen OVER a bottom reach as well (py plus -my, the plan
+   as written): a body that reaches the card's bottom lies 12px over the top of the dropped dots,
+   44 x 12px of two controls crossing, which the large-text read counts as a lost control at the
+   two page-zoom cells and which only an exception in that read (frozen, decision D40) would
+   clear; and OVER keeping a 12px band between the words and the dots (the pick: no empty band).
+   PROVISIONAL on the owner's look (orchestrator decision D44, 2026-11-26; he has the rendered
+   pair): if he picks the bottom reach, the body's padding becomes py / -my again and the read
+   needs his word to open. Also chosen OVER a fixed rem or container threshold (it drops the dots
+   while they still fit, which the Rules pick rejects), OVER each cell keeping its own vertical
+   padding (the empty band the owner held), and OVER always stacking (the research's option B).
+   leading-none on the dots cell: KebabMenu's trigger is an inline-flex box in its wrapper's line
+   box, and at 200% text that line box (32px text at the inherited 1.5 line height) is taller than
+   the 44px trigger and sits it 2px below the cell's top, which showed as a 2px band; with it the
+   band reads 0.0 in every cell and nothing moves at normal text. Chosen OVER editing
+   KebabMenu.js (shared: every three-dot trigger would move). The row-shape strings above stay
+   byte-identical (one is quoted whole from src/app/components/KebabMenu.js ("min-h-11 min-w-11"));
+   the edge is its own constant. Changing this is a decision, not a cleanup. */
+const CARD_ROW_EDGE_CLASS = 'py-edge-card';
+const CARD_ROW_SELECTED_EDGE_CLASS = 'py-[11px]';
 const CARD_BODY_BUTTON_CLASS =
-  'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset p-edge-card';
+  'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset px-edge-card pt-edge-card -mt-edge-card';
 const CARD_BODY_BUTTON_SELECTED_CLASS =
-  'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset p-[11px]';
-const CARD_BODY_STATIC_CLASS = 'max-w-full flex-1 p-edge-card';
-const CARD_KEBAB_CELL_CLASS = 'ml-auto shrink-0 py-edge-card pr-edge-card';
-const CARD_KEBAB_CELL_SELECTED_CLASS = 'ml-auto shrink-0 py-[11px] pr-[11px]';
+  'max-w-full flex-1 min-h-11 text-left rounded-card hover:bg-surface-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:focus-ring-inset px-[11px] pt-[11px] -mt-[11px]';
+const CARD_BODY_STATIC_CLASS = 'max-w-full flex-1 px-edge-card';
+const CARD_KEBAB_CELL_CLASS = 'ml-auto shrink-0 pr-edge-card leading-none';
+const CARD_KEBAB_CELL_SELECTED_CLASS = 'ml-auto shrink-0 pr-[11px] leading-none';
 const VIEWING_TAG = 'Viewing';
 const VIEWING_TAG_CLASS = 'block text-xs font-bold uppercase tracking-wider text-content-link mb-0.5';
 
@@ -555,7 +591,9 @@ function OpenPollCard({ prompt, group, closing, onClose, selected = false, onSel
           text is the setting a cut defeats. wrap-break-word breaks inside a word only when that
           one word is wider than the whole card, and the room the title keeps comes from the
           row (the marker at CARD_ROW_CLASS). REJECTED: a line clamp (still a cut) and
-          wrap-anywhere (it lets the title shrink to one letter per line). */}
+          wrap-anywhere (it lets the title shrink to one letter per line).
+          AMENDED Phase 89.6-42 (S3): the title's room beside the dots now comes from the thin card
+          edge and the held dots box; the wrap rule is unchanged. */}
       <span className="block font-bold text-content-primary wrap-break-word">{title}</span>
       <span className="block text-xs text-content-muted mt-0.5 wrap-anywhere">{sourceLabel}</span>
       {deadlineDisplay && (
@@ -585,7 +623,7 @@ function OpenPollCard({ prompt, group, closing, onClose, selected = false, onSel
   );
 
   return (
-    <li className={selected ? CARD_ROW_SELECTED_CLASS : CARD_ROW_CLASS}>
+    <li className={selected ? `${CARD_ROW_SELECTED_CLASS} ${CARD_ROW_SELECTED_EDGE_CLASS}` : `${CARD_ROW_CLASS} ${CARD_ROW_EDGE_CLASS}`}>
       {/* DECISION quick-261026-pi6 (owner R1, 2026-10-26): the whole card body is ONE native
           button that selects the poll, OVER a title-only link (one truncated line is a small
           target, and the schedule name and deadline would be dead to the touch) and OVER a

@@ -746,14 +746,50 @@ describe('OpenPollsList: the card body selects the poll (quick-261026-pi6, owner
     await screen.findByText('Started by Ben');
     const anaBody = cardBody(/Started by Ana/);
     const benBody = cardBody(/Started by Ben/);
-    expect(anaBody).toHaveClass('min-h-11', 'text-left', 'p-edge-card'); // AMENDED Phase 89.6-15 (O-M1-sites): the body pads on the card edge token
+    // AMENDED Phase 89.6-15 (O-M1-sites): the body pads on the card edge token.
+    // AMENDED Phase 89.6-42 (S3): its side edge and its top reach are separate classes; the top
+    // padding is cancelled by an equal negative top margin (the card's vertical edge is on the li).
+    expect(anaBody).toHaveClass('min-h-11', 'text-left', 'px-edge-card', 'pt-edge-card', '-mt-edge-card');
     expectFocusRingInset(anaBody, 'the Ana card body');
     // One pixel less padding when selected, so the 2px border does not grow the card.
-    expect(benBody).toHaveClass('p-[11px]');
+    expect(benBody).toHaveClass('px-[11px]', 'pt-[11px]', '-mt-[11px]');
     expect(benBody.closest('li')).toHaveClass('border-2', 'border-content-link');
     const anaRow = anaBody.closest('li') as HTMLElement;
     expect(anaRow).toHaveClass('border', 'border-line');
     expect(anaRow).not.toHaveClass('border-2');
+  });
+
+  // Owner pick S3 = Rules (2026-11-22): the dots stay beside the title where they fit and drop under
+  // the words with no empty band where they do not. jsdom lays nothing out, so this holds the classes
+  // that make the band zero; the rendered band is the sweep row R08-checkins
+  // (e2e/support/largeTextSurfaces/group.ts ("id: 'R08-checkins'")). The marker is at
+  // src/app/components/OpenPollsList.js ("DECISION Phase 89.6-42 (S3): owner pick").
+  // The body reaches UP only (top padding and its negative margin): a bottom reach would lay the
+  // body over the top of the dropped dots, so any bottom padding or bottom margin on it is a red here.
+  it('S3 (89.6-42): the card\'s vertical edge is on the li, the body reaches up through it only, the dots cell keeps only its side edge', async () => {
+    vi.mocked(promptAPI.getOpenPrompts).mockResolvedValue({ prompts: [ROW_A, ROW_B] } as never);
+    renderList(undefined, { onSelectPoll: vi.fn(), selectedPollId: 'pb' });
+    await screen.findByText('Started by Ben');
+    const CELL_VERTICAL_PADDING = /(^|\s)(p|py|pt|pb)-\S+/;
+    const BODY_BOTTOM_REACH = /(^|\s)-?(p|py|pb|my|mb)-\S+/;
+    const anaBody = cardBody(/Started by Ana/);
+    const anaRow = anaBody.closest('li') as HTMLElement;
+    const anaCell = anaRow.lastElementChild as HTMLElement;
+    expect(anaRow).toHaveClass('py-edge-card', 'flex', 'flex-wrap', 'items-start');
+    expect(anaBody).toHaveClass('px-edge-card', 'pt-edge-card', '-mt-edge-card');
+    expect(anaBody.className).not.toMatch(BODY_BOTTOM_REACH);
+    expect(anaCell).not.toBe(anaBody);
+    expect(anaCell).toHaveClass('pr-edge-card', 'leading-none');
+    expect(anaCell.className).not.toMatch(CELL_VERTICAL_PADDING);
+    const benBody = cardBody(/Started by Ben/);
+    const benRow = benBody.closest('li') as HTMLElement;
+    const benCell = benRow.lastElementChild as HTMLElement;
+    expect(benRow).toHaveClass('py-[11px]', 'flex', 'flex-wrap', 'items-start');
+    expect(benBody).toHaveClass('px-[11px]', 'pt-[11px]', '-mt-[11px]');
+    expect(benBody.className).not.toMatch(BODY_BOTTOM_REACH);
+    expect(benCell).not.toBe(benBody);
+    expect(benCell).toHaveClass('pr-[11px]', 'leading-none');
+    expect(benCell.className).not.toMatch(CELL_VERTICAL_PADDING);
   });
 
   it('SEL-6. a body button holds phrasing content only (no paragraph, no div)', async () => {
