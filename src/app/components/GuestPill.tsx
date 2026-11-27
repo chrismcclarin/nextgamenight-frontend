@@ -5,6 +5,7 @@
    the word are byte-for-byte the pill UpcomingEventsCard shipped (Phase 71.1 GAMP-09, size 12 since
    88.6-28 D-01, tracking-wider since 88.9-47 K7); the edge string is the one the card's guest row painted inline. A VISUAL cue only
    (isGuestEvent decides it; no route, request or permission reads either export).
+   AMENDED Phase 89.6-44 (N04): the classes now come from the Pill block (the DECISION at the component).
    AMENDED Phase 88.9-63 (X16 + X17a): sentence case on the amber pill pair, no edge, chosen OVER
    the shipped capitals and light-only amber. The pair is opaque in both themes on purpose: on a
    guest's picture row (no wash since 88.9-60 X23a) this fill is all that sits between the word
@@ -36,6 +37,7 @@
    the upcoming card are not picture rows and are untouched. */
 import * as React from 'react';
 
+import Pill from '@/components/ui/Pill';
 import { cn } from '@/lib/cn';
 
 /**
@@ -117,17 +119,12 @@ export interface GuestPillProps {
   className?: string;
 }
 
+/* DECISION Phase 89.6-44 (N04, GuestPill): the calendar Guest tag renders through the Pill block with align-baseline restored, chosen OVER the block's align-middle (the ruling: join only if pixel-identical at normal text, and vertical-align is the one computed difference) and OVER leaving a second hand-written amber tag. Identical by construction: the same box spacing, the amber pair and ml-2 as before; leading-4 equals text-xs's own 16px line (globals.css overrides neither the text-xs line height nor the spacing); nowrap on one word changes nothing. Changing this is a decision, not a cleanup. */
 /** The 12px sentence-case Guest pill, rendered after the time text of a guest row. */
 export default function GuestPill({ className }: GuestPillProps) {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center px-1.5 py-0.5 ml-2 text-xs rounded-sm bg-surface-pill-amber text-content-pill-amber',
-        className,
-      )}
-      title="You joined this event as a guest (not a group member)"
-    >
+    <Pill tone="amber" className={cn('ml-2 align-baseline', className)} title="You joined this event as a guest (not a group member)">
       Guest
-    </span>
+    </Pill>
   );
 }

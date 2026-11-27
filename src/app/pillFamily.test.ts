@@ -97,9 +97,21 @@ const PILL_FILES: Record<string, PillFile> = {
   'app/components/GuestPill.tsx': {
     // The one Guest pill the Calendar rows, the upcoming card and the sheet render. The guest
     // EDGE in the same file is a border, which this scan does not count.
-    families: { amber: 1 },
+    // AMENDED Phase 89.6-44 (N04): 1 -> 0. The calendar Guest tag renders through the Pill block,
+    // which owns the amber pair, so this file writes no pair of its own.
+    families: {},
     exemptLiterals: {},
-    why: 'the shared Guest pill',
+    why: 'the shared Guest pill: a Pill (N04 B, 89.6-44), so it writes no pill pair of its own',
+  },
+  'app/components/ManageMembers.js': {
+    families: {},
+    exemptLiterals: {},
+    why: 'Manage Members: Owner, Admin, Member and Pending are Pills (N04 B, 89.6-44); the two heading count badges are counts, not tags',
+  },
+  'app/components/ParticipantRow.js': {
+    families: {},
+    exemptLiterals: {},
+    why: 'the participant rows: both Guest tags are Pills (N04 B, 89.6-44)',
   },
 };
 
@@ -285,14 +297,35 @@ describe('Phase 88.9-63 (X16 / X17a): one pill family, sentence case, names 600'
     expect(block.filter((text) => text === 'whitespace-normal max-w-full wrap-break-word'), 'the wrap arm').toHaveLength(1);
     expect(block.filter((text) => text === 'whitespace-nowrap'), 'the no-break arm').toHaveLength(1);
 
+    // AMENDED Phase 89.6-44 (N04): the rest of the app's tags joined the block. Manage Members draws
+    // three (the role tag, Owner, the invite's Pending), the participant rows two (the Guest tag of
+    // the read-only row and of the typed row) and the calendar Guest tag one.
     for (const [rel, pills] of [
       ['app/gameDetail/page.js', 12],
       ['app/components/ClickableMemberName.js', 3],
+      ['app/components/ManageMembers.js', 3],
+      ['app/components/ParticipantRow.js', 2],
+      ['app/components/GuestPill.tsx', 1],
     ] as const) {
       const source = withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8'));
       expect((source.match(/(?:bg-surface|text-content)-pill-[a-z]+/g) ?? []).length, `${rel}: no pill fill or ink is written outside the block`).toBe(0);
       expect((source.match(/<Pill\s/g) ?? []).length, `${rel}: the tags it draws, each through the block`).toBe(pills);
     }
+
+    // AMENDED Phase 89.6-44 (N04): in Manage Members the only bold 12px class strings left are the
+    // two heading count badges (a count beside a heading is not a tag beside a name), written alike.
+    const tokensOf = (text: string) => text.split(/\s+/).filter((token) => token.length > 0);
+    const members = [...stringChunks(withoutComments(fs.readFileSync(path.join(SRC, 'app/components/ManageMembers.js'), 'utf8')))].map((chunk) => chunk.text);
+    expect(
+      members.filter((text) => tokensOf(text).includes('text-xs') && tokensOf(text).includes('font-bold')),
+      'Manage Members: the two heading count badges are the only bold 12px class strings',
+    ).toEqual(Array(2).fill('px-2 py-0.5 rounded-full text-xs font-bold bg-status-warning-subtle text-content-status-warning border border-status-warning'));
+
+    // AMENDED Phase 89.6-44 (N04): the calendar Guest tag keeps its 8px gap and its baseline: the
+    // block's align-middle is the one computed difference from the tag it replaced, so the caller
+    // puts align-baseline back (className comes last in the block, so it wins).
+    const guest = [...stringChunks(withoutComments(fs.readFileSync(path.join(SRC, 'app/components/GuestPill.tsx'), 'utf8')))].map((chunk) => chunk.text);
+    expect(guest.filter((text) => text === 'ml-2 align-baseline'), 'the calendar Guest tag passes its gap and its baseline to the block').toHaveLength(1);
   });
 
   // 88.9-65 (owner fix row 52-X47). The past-session chip was a one-line flex row on the muted
