@@ -463,7 +463,8 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: No
           through this one shared row.
           AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22: the halo this marker chose is
           retired; the ring is the focus-ring utility. Its rounding reason (consistency) is now given by
-          ring geometry G1; plan 89.6-31 measures it. */}
+          ring geometry G1; plan 89.6-31 measures it.
+          AMENDED Phase 89.6-43 (banner-ring): the rejected rounded variant is now chosen: its reason was consistency with link-buttons that carried no rounding, and owner pick O-1 B (2026-11-22) makes every ring rounded and concentric (rule 10 G1), so consistency now points the other way; each control also gets 4px side room paid back by a negative margin (G2; his words 'too close to the y'). The three strings still differ on purpose (88.9-14 T3). */}
       <button
         type="button"
         onClick={handleRetry}
@@ -471,7 +472,7 @@ function NoticeRow({ text, retrying, handleRetry, watchFocus, spokenPrefix }: No
         aria-disabled={retrying || undefined}
         aria-describedby={textId}
         className={cn(
-          'inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:focus-ring'
+          'inline-flex min-h-11 md:min-h-0 items-center gap-1 rounded-sm px-1 -mx-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:focus-ring'
         )}
         /* DECISION Phase 89.6-38 (host-ground): the host-ground halo (the hostGround.ts module and every hostGround prop) is deleted OVER kept as an ignored prop, under the one exception CONTEXT D-08 allows: brief disposition 8 names this file for retirement with the ring work. Nothing renders differently: the two-tone ring carries its own inner band. Changing this is a decision, not a cleanup. */
       >
@@ -781,7 +782,7 @@ export function FetchErrorBanner({
           ref={signInRef}
           href={buildSignInUrl()}
           onFocus={watchFocus}
-          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:focus-ring"
+          className="inline-flex min-h-11 min-w-11 items-center gap-1 rounded-sm px-1 -mx-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:focus-ring"
         >
           Sign in
         </a>
@@ -792,7 +793,7 @@ export function FetchErrorBanner({
           onClick={handleRetry}
           onFocus={watchFocus}
           aria-disabled={retrying || undefined}
-          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:focus-ring"
+          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 rounded-sm px-1 -mx-1 text-content-link underline hover:no-underline aria-disabled:text-content-muted focus:outline-hidden focus-visible:focus-ring"
         >
           {/* Same in-flight shape as the shared row's Retry — see the rule 1 B37/B38 marker there. */}
           <RetrySlot retrying={retrying} />
@@ -829,7 +830,7 @@ export function FetchErrorBanner({
           type="button"
           onClick={handleReportPress}
           onFocus={watchReportFocus}
-          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:focus-ring"
+          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 rounded-sm px-1 -mx-1 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:focus-ring"
         >
           <Icon name="Flag" size={14} />
           Report this
