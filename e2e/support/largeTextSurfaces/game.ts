@@ -29,7 +29,7 @@ import { routeMemberRoster } from '../memberRoster';
 import { TWO_WORD_NAME } from '../wordLines';
 import { toDialogTop } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
-import { LONG_NAME, SHORT_GUEST, everyMemberAnOwner, groupId, onGet, uuid } from './night';
+import { LONG_NAME, SHORT_GUEST, everyMemberAnOwner, groupId, onGet, readTagLines, tagSummary, uuid } from './night';
 
 export const GAME_NAME = 'Twilight Imperium: Fourth Edition';
 const gamePath = (): string => `/gameDetail?game_id=${E2E_FAKE_GAME_ID}&group_id=${groupId()}`;
@@ -84,7 +84,9 @@ const SESSIONS = () => [
     duration_minutes: 45,
     Winner: { id: null, username: TWO_WORD_NAME, is_custom: true },
     EventParticipations: [
-      { id: uuid('b5'), user_id: null, username: TWO_WORD_NAME, is_guest: true, is_custom: true },
+      // Plan 89.6-30: the guest winner is also a new player, so one chip carries two fixed-word tags
+      // (Guest and New Player) for the tag read below to lay side by side.
+      { id: uuid('b5'), user_id: null, username: TWO_WORD_NAME, is_guest: true, is_custom: true, is_new_player: true },
       { id: uuid('b6'), user_id: uuid('e3'), username: SHORT_GUEST, is_guest: true, is_custom: false },
     ],
   }),
@@ -313,22 +315,46 @@ async function showMoreProblems(page: Page): Promise<string[]> {
   return problems;
 }
 
+// Plan 89.6-30 (owner pick N04 = B): the viewer is written (You) in plain grey words. Every element
+// in main whose own text is exactly (You): regular weight, no fill, no padding on its left. At
+// least one must be found (the staged view holds the viewer's own review).
+async function youProblems(main: Locator): Promise<string[]> {
+  return main.evaluate((root) => {
+    const out: string[] = [];
+    const found = Array.from(root.querySelectorAll('span')).filter((span) => span.childElementCount === 0 && (span.textContent ?? '').trim() === '(You)' && span.getClientRects().length > 0);
+    if (found.length === 0) out.push('no (You) is drawn in main');
+    for (const span of found) {
+      const style = getComputedStyle(span);
+      if (style.fontWeight !== '400') out.push(`(You) has weight ${style.fontWeight}, not 400`);
+      if (style.backgroundColor !== 'rgba(0, 0, 0, 0)' && style.backgroundColor !== 'transparent') out.push(`(You) has a fill (${style.backgroundColor})`);
+      if (style.paddingLeft !== '0px') out.push(`(You) has ${style.paddingLeft} of padding on its left`);
+    }
+    return out;
+  });
+}
+
 // R05-game extras. In the 320 normal-text cell the page is also sized to 375 x 667, 768 x 1024 and
 // 1280 x 800 (normal text) and the row boxes are printed as ZZ29 lines: recording only, so the
 // boxes of one commit can be laid beside the next one's (normal text must not move). In every
-// cell: the Show More check above.
+// cell: the Show More check above, then (plan 89.6-30) the tag read on the Game Sessions card (one
+// box, one weight; e2e/support/largeTextSurfaces/night.ts ("export async function readTagLines"))
+// and the (You) read.
 const gameExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
-  const problems = (await showMoreProblems(page)).map((line) => `${cell.id}: ${line}`);
+  const problems = (await showMoreProblems(page)).map((line) => `${cell.id}: Show More (OW-1 = A): ${line}`);
   if (cell.id === '320x568-dark-100') {
     // The same check at 375 wide, normal text (the lane has no such cell).
     await page.setViewportSize({ width: 375, height: 667 });
     await twoFrames(page);
-    problems.push(...(await showMoreProblems(page)).map((line) => `375x667 normal text: ${line}`));
+    problems.push(...(await showMoreProblems(page)).map((line) => `375x667 normal text: Show More (OW-1 = A): ${line}`));
     await page.setViewportSize({ width: cell.width, height: cell.height });
     await twoFrames(page);
   }
   // A soft failure would leave the cell marked passed, so the problems are thrown as one line.
-  if (problems.length > 0) throw new Error(`R05-game Show More (OW-1 = A): ${problems.join(' | ')}`);
+  const main = page.getByRole('main');
+  const sessionsCard = main.locator('.card', { has: page.getByRole('heading', { name: /^Game Sessions \(/ }) }).last();
+  problems.push(...tagSummary(`${cell.id} tags`, await readTagLines(sessionsCard, 2)));
+  problems.push(...(await youProblems(main)).map((line) => `${cell.id}: ${line}`));
+  if (problems.length > 0) throw new Error(`R05-game: ${problems.join(' | ')}`);
   if (cell.id !== '320x568-dark-100') return;
   for (const size of [
     { width: 375, height: 667 },
