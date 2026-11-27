@@ -194,9 +194,12 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
 
   it('Modal: ModalAction emits Button, i.e. cn(buttonVariants({variant,size}), className)', () => {
     // RE-SEEDED Phase 88.6-37 (R6). The modelled emitter moved with plan 08's swap: it is now
-    // src/components/ui/Button.tsx ("cn(buttonVariants({ variant, size }), className)"), with cva defaults
+    // src/components/ui/Button.tsx ("className={cn(buttonVariants({ variant, size }),"), with cva defaults
     // `variant: 'primary'`, `size: 'default'` (src/components/ui/Button.tsx ("defaultVariants: { variant: 'primary', size: 'default' }"); the
     // `default` size rung is the empty string, src/components/ui/Button.tsx ("default: '',")). The caller half is unchanged from the seeded shape.
+    // AMENDED Phase 89.6-36 (S4w): the cite above was re-pointed (its old snippet ended with the caller's className). Between the
+    // variants and the caller's className the emitter now passes the busy hold's classes, only while a busy Button's Spinner shows;
+    // at rest that argument is undefined, so the string modelled here is still what a resting Button emits.
     //   PRE  (emitter `cn('btn', ACTION_CLASS.primary, className)`, retired by plan 08):
     //     btn btn-primary btn-secondary w-full
     //   POST (emitter `cn(buttonVariants({variant,size}), className)`):

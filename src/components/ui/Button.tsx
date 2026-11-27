@@ -62,7 +62,8 @@ import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '@/lib/cn';
 
-import { DelayedSpinner } from './DelayedSpinner';
+import { Spinner } from './Spinner';
+import { useDelayedSpinner } from './useDelayedSpinner';
 
 /* DECISION Phase 88-02 (D-01/D-02): Button COMPOSES the legacy `.btn` class rather than
    re-emitting its properties as Tailwind utilities. Chosen OVER a pure-utility base
@@ -336,6 +337,12 @@ const buttonVariants = cva(
   }
 );
 
+// The busy hold's two class strings (the S4w marker in the component body below says why). Exported
+// so plan 89.6-27 and any raw spinner host adopt these strings and never type a copy.
+// btn-busy-spinner has no CSS rule: it is the hook the held variant's selector leaves out.
+export const BUSY_HELD_CLASSES = 'relative [&>:not(.btn-busy-spinner)]:opacity-0';
+export const BUSY_SPINNER_CLASSES = 'btn-busy-spinner absolute inset-0 m-auto';
+
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
@@ -346,8 +353,10 @@ export interface ButtonProps
    * house Spinner plus an sr-only suffix. Never swallows the press — the site's own latch
    * is the refusal. Ignored for rendering under `asChild` (only `aria-disabled` is set).
    * The Spinner is delayed and held (R-C3b, 88.9-54): it appears after 200 ms of busy and
-   * stays 500 ms from its appearance; the refusal and the suffix are immediate. Passing
-   * `busy` (true or false) mounts the delayed element; leaving it undefined mounts nothing.
+   * stays 500 ms from its appearance; the refusal and the suffix are immediate. While the
+   * Spinner shows, the button keeps its resting width and height: its children stay in flow
+   * but transparent and the Spinner is centred over them (S4w, plan 89.6-36); at rest nothing
+   * changes.
    */
   busy?: boolean;
   /**
@@ -408,10 +417,31 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const busy = busyProp ?? false;
-    // Only a caller that passes busy (true OR false) mounts the delayed Spinner element, so
-    // the resting majority of Buttons pays no hook subscription; a false after a true keeps
-    // the element mounted, which is what lets the hold outlive the busy.
-    const tracksBusy = busyProp !== undefined;
+    // DECISION Phase 89.6-36 (S4w, owner 2026-11-23: S4-c; his words: I'll stay with S4-c then; the
+    // card: Same width, spinner only: the resting look is unchanged; while busy the words give way to
+    // a centred spinner (screen readers still hear the name and 'saving')): while the Spinner shows,
+    // a busy Button keeps its resting width and height: its children stay in flow but transparent
+    // (opacity 0 keeps them in the accessibility tree, so the name still reads '<label>, saving'),
+    // the Spinner sits absolutely centred over them, and the button is positioned only for that time
+    // (a caller's fixed, absolute or sticky class still wins in cn). At rest the class string and
+    // children are exactly as before. Chosen OVER S4-a as built (the Spinner beside the label grew
+    // the button 24px, 48px at 320 / 200%, and moved the Cancel beside it), OVER S4-b a reserved slot
+    // (about 41 busy-capable buttons 24px wider at rest for good, which R-C3b rejected) and OVER S4-d
+    // a held width with the words kept (always cut: 'Save Cha...'). Also OVER a CSS has-rule centring
+    // the Spinner with no positioned button (an absolute box in an unpositioned scroller does not
+    // travel with its button: src/app/components/Modal.tsx ("the Body is POSITIONED"))
+    // or with the button positioned at rest (a resting change), and OVER a Button-internal busy
+    // wrapper (it remounts the button, losing focus, if a site switches busy between undefined and a
+    // boolean). Button reads the delay hook itself because it must know when the Spinner shows; at
+    // rest the hook holds one boolean and starts no timer. Changing this is a decision, not a cleanup.
+    // DECISION Phase 89.6-36 (S4c-window, owner 2026-11-23: 'accept', planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/89.6-PICKS-READ.md ("Two rulings from the plan review"), review M039):
+    // the Spinner's 500 ms hold outlasts busy, so a request that settles between
+    // 200 ms and 700 ms after the press leaves the button pressable again while it still shows only
+    // the Spinner, for up to half a second. Accepted as it is, chosen OVER bringing the word back
+    // under the Spinner, OVER ending the 500 ms hold early when busy drops, and OVER refusing presses
+    // through the hold: each changes something he picked (S4-c, or the R-C3b hold). Changing this is
+    // a decision, not a cleanup.
+    const shown = useDelayedSpinner(busy);
     const Comp = asChild ? Slot : 'button';
 
     /* DECISION Phase 88.9-24 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; save-feedback rule 1):
@@ -426,7 +456,17 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
        chosen over a central click guard that would preventDefault a submit and double up with the
        latches. Not applied under asChild (Slot takes one child). Changing any of this is a decision,
        not a cleanup.
-       AMENDED Phase 88.9-54 (owner ruling R-C3b, 88.9-RULINGS.md, 2026-11-10): the Spinner now renders through DelayedSpinner (useDelayedSpinner: 200 ms appear delay, 500 ms minimum hold — the numbers and their measured basis live on that hook's marker), mounted only when a caller passes busy (41 of 207 Button mounts at 35d5348), so a resting Button pays nothing; aria-disabled and the sr-only suffix stay immediate so the refusal and the heard name never wait. The Spinner is MOUNTED on show, chosen OVER a reserved invisible slot (a sub-200 ms write would twitch the control's width by the spinner's 16 px plus the btn gap, the very jump rule 1 ends). ConfirmDialog's confirm and Modal.Action inherit this through Button; asChild is still untouched (no Spinner there). Every raw-host Spinner site outside Button takes the same element in plan 88.9-56. */
+       AMENDED Phase 88.9-54 (owner ruling R-C3b, 88.9-RULINGS.md, 2026-11-10): the Spinner now renders through DelayedSpinner (useDelayedSpinner: 200 ms appear delay, 500 ms minimum hold — the numbers and their measured basis live on that hook's marker), mounted only when a caller passes busy (41 of 207 Button mounts at 35d5348), so a resting Button pays nothing; aria-disabled and the sr-only suffix stay immediate so the refusal and the heard name never wait. The Spinner is MOUNTED on show, chosen OVER a reserved invisible slot (a sub-200 ms write would twitch the control's width by the spinner's 16 px plus the btn gap, the very jump rule 1 ends). ConfirmDialog's confirm and Modal.Action inherit this through Button; asChild is still untouched (no Spinner there). Every raw-host Spinner site outside Button takes the same element in plan 88.9-56.
+       AMENDED Phase 89.6-36 (S4w, owner 2026-11-23: S4-c, I'll stay with S4-c then): this marker's
+       choice stands: the Spinner is still mounted only when shown and nothing is reserved at rest.
+       What changes is the busy look: while the Spinner shows, the button holds its resting size with
+       its words transparent and the Spinner centred (the S4w marker below). The phrase a resting
+       Button pays nothing now reads: a resting Button mounts no Spinner and starts no timer; it
+       calls the delay hook on every render (hooks cannot be called conditionally), so every Button
+       holds one state slot and three refs and runs one effect on mount that does nothing while busy
+       is false, with no re-render at rest; chosen OVER keeping the hook behind a busy-only inner
+       component (switching component type when busy goes from undefined to a boolean would remount
+       the button and drop its focus). */
     /* DECISION Phase 89.6-06 (bb-label): text children render inside a .bb-label span, chosen OVER
        bare text (an anonymous flex item that cannot shrink below its longest word, so 'Member'
        spilled 4px out of Invite Member at 320 / 200%, research M F4) and OVER a whitespace or width
@@ -442,7 +482,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         // `type` is meaningless (and invalid) on a slotted <a>/<Link>.
         {...(asChild ? {} : { type })}
-        className={cn(buttonVariants({ variant, size }), className)}
+        className={cn(buttonVariants({ variant, size }), shown && !asChild ? BUSY_HELD_CLASSES : undefined, className)}
         {...props}
         {...(busy ? { 'aria-disabled': true } : {})}
       >
@@ -451,7 +491,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ) : (
           <>
             {withLabelSpans(children)}
-            {tracksBusy ? <DelayedSpinner busy={busy} /> : null}
+            {shown ? <Spinner className={BUSY_SPINNER_CLASSES} /> : null}
             {busy ? <span className="sr-only">{busySuffix}</span> : null}
           </>
         )}

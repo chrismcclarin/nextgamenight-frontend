@@ -16,7 +16,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Modal } from '@/app/components/Modal';
-import { Button } from './Button';
+import { BUSY_HELD_CLASSES, BUSY_SPINNER_CLASSES, Button } from './Button';
 import { DelayedSpinner } from './DelayedSpinner';
 import { Spinner } from './Spinner';
 import { SPINNER_DELAY_MS, SPINNER_MIN_MS } from './useDelayedSpinner';
@@ -174,5 +174,104 @@ describe('Button busy is delayed and held (88.9-54, R-C3b)', () => {
     expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1); // 600 ms
     act(() => vi.advanceTimersByTime(100));
     expect(container.querySelectorAll('[data-slot="spinner"]')).toHaveLength(0); // 700 ms
+  });
+});
+
+// S4w = S4-c (plan 89.6-36, owner pick 2026-11-23: Same width, spinner only). At rest a Button is
+// exactly as before; while its Spinner shows it holds its resting size: the children stay in flow
+// but transparent, the Spinner sits centred over them, and the name still says the label and the
+// suffix. The held look lasts exactly as long as the Spinner (its 500 ms hold included).
+describe('S4w (89.6-36): a busy Button keeps its resting size; the words give way to a centred spinner', () => {
+  const tokens = (el: Element): string[] => el.className.split(/\s+/).filter(Boolean);
+  const spinnersIn = (root: ParentNode): HTMLElement[] =>
+    Array.from(root.querySelectorAll<HTMLElement>('[data-slot="spinner"]'));
+
+  it("S4w (89.6-36): at rest a busy-capable Button carries a plain Button's class string", () => {
+    const plain = render(<Button>Save</Button>);
+    const plainButton = plain.container.querySelector('button') as HTMLButtonElement;
+    const plainClass = plainButton.className;
+    const plainHtml = plainButton.innerHTML;
+    plain.unmount();
+
+    const resting = render(<Button busy={false}>Save</Button>);
+    const restingButton = resting.container.querySelector('button') as HTMLButtonElement;
+    expect(restingButton.className).toBe(plainClass);
+    expect(restingButton.innerHTML).toBe(plainHtml);
+    resting.unmount();
+
+    // Busy, but the Spinner has not shown yet: the look is still the resting one.
+    const early = render(<Button busy>Save</Button>);
+    const earlyButton = early.container.querySelector('button') as HTMLButtonElement;
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS - 1));
+    expect(earlyButton.className).toBe(plainClass);
+    expect(spinnersIn(early.container)).toHaveLength(0);
+  });
+
+  it('S4w (89.6-36): once the spinner shows the button holds its look and keeps its name', () => {
+    const { container } = render(<Button busy>Save</Button>);
+    const button = container.querySelector('button') as HTMLButtonElement;
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS));
+
+    const held = tokens(button);
+    for (const token of BUSY_HELD_CLASSES.split(' ')) expect(held, `the held button carries ${token}`).toContain(token);
+
+    const spinners = spinnersIn(container);
+    expect(spinners).toHaveLength(1);
+    const spinnerTokens = tokens(spinners[0]);
+    for (const token of HOUSE_TOKENS) expect(spinnerTokens, `the spinner keeps the house token ${token}`).toContain(token);
+    for (const token of BUSY_SPINNER_CLASSES.split(' ')) expect(spinnerTokens, `the spinner carries ${token}`).toContain(token);
+
+    // The words are hidden from the eye only: the name and the text are still there.
+    expect(screen.getByRole('button', { name: 'Save, saving' })).toBe(button);
+    expect(button.textContent).toContain('Save');
+    const hidden = Array.from(button.querySelectorAll('[aria-hidden="true"]'));
+    expect(hidden).toEqual(spinners);
+  });
+
+  it('S4w (89.6-36): the held look ends with the spinner', () => {
+    const plain = render(<Button>Save</Button>);
+    const plainClass = (plain.container.querySelector('button') as HTMLButtonElement).className;
+    plain.unmount();
+
+    const { container, rerender } = render(<Button busy>Save</Button>);
+    const button = container.querySelector('button') as HTMLButtonElement;
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS));
+    rerender(<Button busy={false}>Save</Button>);
+    // Busy has dropped, the Spinner is inside its hold: the look is still held.
+    expect(spinnersIn(container)).toHaveLength(1);
+    for (const token of BUSY_HELD_CLASSES.split(' ')) expect(tokens(button), `still held: ${token}`).toContain(token);
+
+    act(() => vi.advanceTimersByTime(SPINNER_MIN_MS));
+    expect(spinnersIn(container)).toHaveLength(0);
+    expect(button.className).toBe(plainClass);
+  });
+
+  it("S4w (89.6-36): a caller's fixed class wins and asChild holds nothing", () => {
+    const placed = render(
+      <Button busy className="fixed bottom-4 right-4">
+        Save
+      </Button>
+    );
+    const placedButton = placed.container.querySelector('button') as HTMLButtonElement;
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS));
+    expect(spinnersIn(placed.container)).toHaveLength(1);
+    expect(tokens(placedButton)).toContain('fixed');
+    expect(tokens(placedButton)).not.toContain('relative');
+    placed.unmount();
+
+    const slotted = render(
+      <Button asChild busy>
+        <a href="/x">Go</a>
+      </Button>
+    );
+    const link = slotted.container.querySelector('a') as HTMLAnchorElement;
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS + 1));
+    for (const token of BUSY_HELD_CLASSES.split(' ')) expect(tokens(link), `asChild holds no ${token}`).not.toContain(token);
+    expect(spinnersIn(slotted.container)).toHaveLength(0);
+  });
+
+  it('S4w (89.6-36): the two class strings, pinned', () => {
+    expect(BUSY_HELD_CLASSES).toBe('relative [&>:not(.btn-busy-spinner)]:opacity-0');
+    expect(BUSY_SPINNER_CLASSES).toBe('btn-busy-spinner absolute inset-0 m-auto');
   });
 });

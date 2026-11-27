@@ -35,6 +35,8 @@ export const floors = [
   { spec: 'e2e/availability-grid-touch.spec.ts', project: 'phone', floor: 8, why: '8 of 8 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/ballot-pick-in-flight.spec.ts', project: 'phone', floor: 5, why: '5 of 5 listed run in phone; the other project is skipped by an isMobile predicate' },
   { spec: 'e2e/browse-games-modal.spec.ts', project: 'phone', floor: 6, why: '6 of 6 listed run in phone; the other project is skipped by an isMobile predicate (raised 4 to 5 by 88.9-52 R4 C2, the stepper size proof; 5 to 6 when its 320 / 200% read became its own expected-fail test owned by Phase 89.6)' },
+  { spec: 'e2e/busy-button-width.spec.ts', project: 'journeys', floor: 2, why: '2 of 2 listed run in journeys; no conditional skip (Phase 89.6-36, S4w: a busy Save Changes keeps its width at 375 / 100% and 320 / 200%; the rows exist so a green run names this spec)' },
+  { spec: 'e2e/busy-button-width.spec.ts', project: 'phone', floor: 2, why: '2 of 2 listed run in phone; no conditional skip (Phase 89.6-36, S4w: a busy Save Changes keeps its width at 375 / 100% and 320 / 200%; the rows exist so a green run names this spec)' },
   { spec: 'e2e/calendar-list-sections.spec.ts', project: 'journeys', floor: 1, why: '1 of 3 listed run in journeys; 2 skipped here by an isMobile predicate' },
   { spec: 'e2e/calendar-list-sections.spec.ts', project: 'phone', floor: 2, why: '2 of 3 listed run in phone; 1 skipped here by an isMobile predicate' },
   { spec: 'e2e/calendar-sheet-large-text.spec.ts', project: 'journeys', floor: 4, why: '4 of 4 listed run in journeys; no conditional skip (Phase 89.6-40, the phone Calendar sheet invariants and FL-05 reads: the rows exist so a green run names this spec)' },

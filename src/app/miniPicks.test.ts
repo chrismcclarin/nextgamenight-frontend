@@ -399,6 +399,7 @@ describe('88.9 RULING A mini-page picks', () => {
     // identifier the mount itself passes as busy; the guarded body runs from the operator to the
     // brace that closes the expression holding it. Button's own tracksBusy opt-in renders the
     // element or null and is exempt by name.
+    // AMENDED Phase 89.6-36 (S4w): Button no longer mounts the element (it reads the delay hook itself to hold its look while the Spinner shows), so the exemption by name is gone.
     // AMENDED Phase 88.9-52 (A-44): shape 2 is new. Shape 1 alone saw only a fragment, so the title
     // claimed more than it checked. Shape 2 keys on the mount's OWN busy identifier, chosen OVER
     // BUSY_TEST for the wide shape: a list drawn in the else arm of a page-level loading ternary
@@ -482,10 +483,9 @@ describe('88.9 RULING A mini-page picks', () => {
       const src = withoutComments(fs.readFileSync(file, 'utf8'));
       if (!src.includes(MOUNT)) continue;
       mounts += src.split(MOUNT).length - 1;
-      if (path.basename(file) === 'Button.tsx') continue;
       expect(guardedMounts(src), path.relative(path.join(__dirname, '..'), file) + ' DelayedSpinner mounts inside a busy guard (want none)').toEqual([]);
     }
-    expect(mounts, 'DelayedSpinner mounts in src (want at least 9: Button 1, AvailabilityForm 2, KebabMenu 1, NextGameNightCard 1, ResponseDashboard 1, RsvpSection 2, friends 1)').toBeGreaterThanOrEqual(9);
+    expect(mounts, 'DelayedSpinner mounts in src (want at least 9: AvailabilityForm 2, KebabMenu 1, NextGameNightCard 1, ResponseDashboard 1, RsvpSection 2, friends 1; Button left this count in 89.6-36)').toBeGreaterThanOrEqual(9);
   });
 
   it('8. 88.9-52 W40 + 89.6-03 O-9e — the one Toaster starts below the header strip on a phone and on a desktop, in rem, so a toast never lies over the header at any text size', () => {
