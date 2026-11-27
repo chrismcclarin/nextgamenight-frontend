@@ -1608,7 +1608,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     });
   });
 
-  test('groupHomePage (UNSET group): header controls, title, ring — and a card-ground accent site', async ({ page }) => {
+  test('groupHomePage (UNSET group): header controls, title, ring — and the (You) words on the card', async ({ page }) => {
     // The param is `id`, not `groupId` (e2e/padding-budget.spec.ts ("groupHomePage calendar body: padding chain stays within budget")).
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertTheme(page, 'light');
