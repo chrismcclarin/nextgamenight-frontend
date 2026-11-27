@@ -2,12 +2,13 @@ import { writeFile } from 'node:fs/promises';
 
 import { test, expect, type Locator, type Page, type Route, type TestInfo } from '@playwright/test';
 
-import { assertTheme, C40_BAND, describeRing, focusByKeyboard, focusRingMeasurement, forceLightMode, type RingMeasurement } from './support/contrast';
+import { assertTheme, C40_BAND, describeRing, focusByKeyboard, focusRingMeasurement, forceLightMode, settleFocusTransitions, type RingMeasurement } from './support/contrast';
 import { E2E_FAKE_GAME_ID, E2E_GAME_PATH, routeFakeGameSuccess } from './support/fakeGame';
 import { openGroupSettings } from './support/groupSettings';
 import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 import { answerPromptSettings } from './support/largeTextSurfaces/dialogs';
 import { ALL_ROWS, sweepWriteGuard, type SweepHold } from './support/largeTextSurfaces/index';
+import { reachRecurring } from './support/largeTextSurfaces/profileA';
 import { readRingClip, readRingRoom, type RingClip, type SideRoom } from './support/ringGeometry';
 import { scrubbedFetch } from './support/scrubbedFetch';
 import { setTextMode, type TextMode } from './support/wordLines';
@@ -52,6 +53,7 @@ import { setTextMode, type TextMode } from './support/wordLines';
 // rows are made-up rows answered in the browser; no test presses a control that writes. Selecting
 // a group in the Invite to Group select sends one read. Focus is given by keyboard modality plus a
 // programmatic focus, which presses nothing.
+// AMENDED Phase 89.6-31 (E10): one test presses a control that writes (the made-up request's Accept), and its request is answered in the browser by route.fulfill before it can leave; expectNoApiWrites still ends every test.
 //
 // CI ONLY: both projects need the signed-in storage state, which does not exist locally.
 //
@@ -387,10 +389,23 @@ async function publish(testInfo: TestInfo, records: RingRecord[], census: Census
     // eslint-disable-next-line no-console -- the measured ring numbers are this spec's product; plan 88.9-66's table reads them out of the CI log
     console.log(`[88.9-66 X61 ring] ${JSON.stringify(line)}`);
   }
-  // The census rows (Phase 89.6-31): one line per record, the row id first.
+  // The census rows (Phase 89.6-31): one line per record, the row id first and the numbers a
+  // reader needs next (the CI log reader keeps only the start of a long line); the whole record is
+  // in the attachment.
   for (const c of census) {
+    const cellText = `${c.project} ${c.theme} ${c.viewport.width}x${c.viewport.height}/${c.textMode}`;
+    let numbers: string;
+    if (c.kind === 'checkbox') numbers = `browser ring: outline-style ${c.outlineStyle}, outline ${c.outlineColour}, box-shadow ${c.boxShadow}`;
+    else if (c.notHouse) numbers = `NOT THE HOUSE RING: ${c.notHouse.slice(0, 120)}`;
+    else {
+      const i = c.inkToRing;
+      numbers =
+        `${c.ringKind} radius ${c.radius} ringRadius ${c.ringRadius} outline ${c.outlineWidth}@${c.outlineOffset} band ${c.bandWidth} reach ${c.reach} ` +
+        `bandRatio ${c.bandRatio} ratio ${c.ratio} inkToRing L${i?.left} R${i?.right} T${i?.top} B${i?.bottom} ` +
+        `clippedBy ${c.clippedBy ? `${c.clippedBy.by.slice(0, 60)} ${JSON.stringify(c.clippedBy.over)}` : 'null'}`;
+    }
     // eslint-disable-next-line no-console -- the census numbers are this spec's product; a green CI run prints nothing else per row
-    console.log(`[89.6-31 census] ${c.row} ${JSON.stringify(c)}`);
+    console.log(`[89.6-31 census] ${c.row} | ${cellText} | ${numbers} | ${c.what}`);
   }
 }
 
@@ -437,6 +452,26 @@ const EDGE_ROWS: readonly CensusRow[] = [
   { id: 'E-17', kind: 'house', note: 'the shared tab panel (TabsContent), read on the Profile availability tabs' },
 ];
 
+// The rows no earlier census reached (B030, B056, B066 and B067 are the 88.9 census's own ids), the
+// checkbox exception, one confirmation and the two held-out Button cases. Written in the record's
+// vocabulary (row), and turned into a census row by heldOutRow.
+const HELD_OUT_ROWS: readonly (Omit<CensusRow, 'id'> & { row: string })[] = [
+  { row: 'B030', kind: 'house', note: 'Add friend, on the found-person prompt of Invite Members' },
+  { row: 'B056', kind: 'house', note: 'removal-owned, shot for the shared Button' },
+  { row: 'B066', kind: 'house', note: 'Confirm Delete, in the schedule delete confirm box' },
+  { row: 'B067', kind: 'house', note: 'Cancel, beside Confirm Delete' },
+  { row: 'C-01', kind: 'checkbox', note: 'a friend checkbox in Invite Members: the browser ring, a written exception (owner pick O-1b c)' },
+  { row: 'R6-05', kind: 'house', note: 'the Home removed-notice Dismiss' },
+  { row: 'E10-loading', kind: 'house', note: 'a busy Button: Accept while its write is held in the browser' },
+  { row: 'E10-two-line', kind: 'house', note: 'a Button whose label takes two lines' },
+];
+
+function heldOutRow(row: string): CensusRow {
+  const found = HELD_OUT_ROWS.find((candidate) => candidate.row === row);
+  if (!found) throw new Error(`no held-out row ${row}`);
+  return { ...found, id: found.row };
+}
+
 // The Profile row staging (E-11, E-14, E-15). A phone number in the range reserved for fiction
 // (555-0100 to 555-0199): no person has it. Eight made-up games, so the collection overflows at
 // every width (three cards show on a phone, six from md). All of it exists only in the browser.
@@ -455,7 +490,7 @@ const isSelfRead = (url: URL): boolean => /\/users\/[^/]+$/.test(url.pathname);
 // back to the write hold. The real answer is fetched without the self read's timezone parameter (so
 // the backend's time zone backfill cannot run) through scrubbedFetch, never a bare route.fetch.
 // Register it after the guard, so it runs first.
-async function transformRead(page: Page, match: (url: URL) => boolean, change: (body: unknown) => unknown): Promise<void> {
+async function transformRead(page: Page, match: (url: URL) => boolean, change: (body: unknown) => unknown | Promise<unknown>): Promise<void> {
   await page.route(match, async (route) => {
     if (route.request().method() !== 'GET') {
       await route.fallback();
@@ -465,7 +500,7 @@ async function transformRead(page: Page, match: (url: URL) => boolean, change: (
     url.searchParams.delete('timezone');
     const response = await scrubbedFetch(route, { url: url.toString() });
     const body = (await response.json().catch(() => null)) as unknown;
-    await route.fulfill({ response, json: change(body) });
+    await route.fulfill({ response, json: await change(body) });
   });
 }
 
@@ -519,8 +554,9 @@ interface CensusRecord {
   clippedBy?: RingClip | null;
   /** The shared reader's throw when the house ring did not resolve. */
   notHouse?: string;
-  // A checkbox row: the browser's own ring.
+  // A checkbox row: the browser's own ring (its computed width and colour are recorded, never judged).
   outlineStyle?: string;
+  outlineColour?: string;
   boxShadow?: string;
 }
 
@@ -563,9 +599,9 @@ async function measureRow(ctx: CensusContext, row: CensusRow, control: Locator, 
     await settleAnimations(control);
     const read = await control.evaluate((el) => {
       const cs = getComputedStyle(el);
-      return { focusVisible: el.matches(':focus-visible'), outlineStyle: cs.outlineStyle, boxShadow: cs.boxShadow };
+      return { focusVisible: el.matches(':focus-visible'), outlineStyle: cs.outlineStyle, outlineColour: cs.outlineColor, outlineWidth: cs.outlineWidth, boxShadow: cs.boxShadow };
     });
-    census.push({ ...base, outlineStyle: read.outlineStyle, boxShadow: read.boxShadow });
+    census.push({ ...base, outlineStyle: read.outlineStyle, outlineColour: `${read.outlineWidth} ${read.outlineColour}`, boxShadow: read.boxShadow });
     expect.soft(read.focusVisible, `${where}: the checkbox never matched :focus-visible`).toBe(true);
     expect.soft(read.outlineStyle, `${where}: the checkbox does not draw the browser's own ring (outline-style ${read.outlineStyle})`).toBe('auto');
     // No house band: neither the outset band (a 2px spread) nor the inset pair (2px and 4px).
@@ -1326,5 +1362,299 @@ test.describe('89.6-31 ring census rows', () => {
         await expect(showAll, 'E-14: Show fewer did not close the collection again').toBeVisible({ timeout: 15_000 });
       },
     );
+  });
+
+  test('B030, C-01 (89.6-31): Invite Members, Add friend on the found-person prompt and a friend checkbox', async ({ page }, testInfo) => {
+    let dialog: Locator | undefined;
+    await censusSurface(
+      page,
+      testInfo,
+      'B030',
+      async () => {
+        // The sweep's found-person staging: an address on a reserved test domain is sent, the send
+        // POST (/invites/send) is fulfilled in the browser, and the person search that follows it
+        // (GET /friendships/search) is answered with a made-up person who is not a friend.
+        dialog = (await reachSweepRow(page, 'D02-found')).root;
+        await expect(
+          dialog.locator('[data-add-friend-prompt]').getByRole('button', { name: /add friend/i }),
+          'B030: staging failed, not a ring result: Add friend never rendered after the send POST (/invites/send) and the person search (GET /friendships/search)',
+        ).toBeVisible({ timeout: 10_000 });
+        return dialog;
+      },
+      async (ctx) => {
+        const box = dialog as Locator;
+        // Measured, never pressed.
+        await measureRow(ctx, heldOutRow('B030'), box.locator('[data-add-friend-prompt]').getByRole('button', { name: /add friend/i }), 'Add friend');
+        const checkbox = box.locator('input[type="checkbox"]:not([disabled])').first();
+        await expect(checkbox, 'C-01: Invite Members shows no friend checkbox that can take focus').toBeVisible();
+        await measureRow(ctx, heldOutRow('C-01'), checkbox, 'the first friend checkbox');
+      },
+    );
+  });
+
+  test('B066, B067 (89.6-31): the planning page, Confirm Delete and Cancel in the schedule delete confirm box', async ({ page }, testInfo) => {
+    const main = page.getByRole('main');
+    await censusSurface(
+      page,
+      testInfo,
+      'B066',
+      async () => {
+        // The sweep's Recurring Check-ins staging (two schedules, the settings read answered in the
+        // browser), reached as its Edit Schedule row reaches it; then the first schedule's Delete
+        // opens the in-row confirm box, which is local state.
+        const staged = ALL_ROWS.find((candidate) => candidate.id === 'D26')?.answers;
+        if (!staged) throw new Error('sweep row D26 has no answers to reuse');
+        answers = staged;
+        await reachRecurring(page);
+        const trigger = page.getByRole('button', { name: 'Schedule actions', exact: true }).first();
+        await trigger.click();
+        await expect(trigger).toHaveAttribute('aria-controls', /.+/);
+        await page.locator(`[id="${await trigger.getAttribute('aria-controls')}"]`).getByRole('button', { name: 'Delete', exact: true }).click();
+        await expect(main.getByRole('button', { name: 'Confirm Delete', exact: true }), 'B066: the schedule delete confirm box never opened').toBeVisible({ timeout: 15_000 });
+        return main;
+      },
+      async (ctx) => {
+        // Measured, never pressed.
+        await measureRow(ctx, heldOutRow('B066'), main.getByRole('button', { name: 'Confirm Delete', exact: true }), 'Confirm Delete');
+        const confirmBox = main.getByRole('button', { name: 'Confirm Delete', exact: true }).locator('xpath=..');
+        await measureRow(ctx, heldOutRow('B067'), confirmBox.getByRole('button', { name: 'Cancel', exact: true }), 'Cancel');
+      },
+    );
+  });
+
+  test('B056 (89.6-31): the pending-member banner, Dismiss', async ({ page }, testInfo) => {
+    // DECISION Phase 89.6-31 (B056): the pending banner is staged by answering the members read in the browser (the caller's own row set to the pending role, kept in the list) OVER a seed row — no code path mints userRole pending and Phase 91.1 removes the banner, so a seed row would invent a state; recorded deviation from the seed rule, shot only to prove the shared Button.
+    // The group page takes the caller's role from the members read
+    // (src/app/groupHomePage/page.js ("setUserRole(currentUserMember.UserGroup.role);")); the
+    // caller's row is the one whose id is the self read's id, which the page reads first.
+    let resolveSelf: (id: string) => void = () => undefined;
+    const selfId = new Promise<string>((resolve) => {
+      resolveSelf = resolve;
+    });
+    await transformRead(page, isSelfRead, (body) => {
+      const id = body && typeof body === 'object' ? (body as { id?: unknown }).id : undefined;
+      if (typeof id === 'string') resolveSelf(id);
+      return body;
+    });
+    await transformRead(
+      page,
+      (url) => url.pathname.endsWith(`/groups/${E2E_GROUP_ID}/users`),
+      async (body) => {
+        const id = await Promise.race([selfId, new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000))]);
+        if (!id || !Array.isArray(body)) return body;
+        return (body as Array<Record<string, unknown> & { UserGroup?: Record<string, unknown> }>).map((member) =>
+          member.id === id ? { ...member, UserGroup: { ...(member.UserGroup ?? {}), role: 'pending' } } : member,
+        );
+      },
+    );
+    answers = answerPromptSettings;
+    const dismiss = page.getByRole('button', { name: 'Dismiss banner', exact: true });
+
+    await censusSurface(
+      page,
+      testInfo,
+      'B056',
+      async () => {
+        await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+        await expect(page.getByRole('status').filter({ hasText: 'Loading group' }), 'B056: the group page never finished loading').toHaveCount(0, { timeout: 20_000 });
+        await expect(
+          dismiss,
+          `B056: staging failed, not a ring result: the pending banner never rendered after the members read (GET /groups/${E2E_GROUP_ID}/users) was answered with the caller's own row set to pending`,
+        ).toBeVisible({ timeout: 10_000 });
+        return page.getByRole('main');
+      },
+      async (ctx) => {
+        // Measured, never pressed.
+        await measureRow(ctx, heldOutRow('B056'), dismiss, 'Dismiss banner');
+      },
+    );
+  });
+
+  test('R6-05 (89.6-31): Home, the removed-notice Dismiss draws one band and no hairline', async ({ page }, testInfo) => {
+    const dismiss = page.getByRole('button', { name: 'Dismiss', exact: true });
+    await censusSurface(
+      page,
+      testInfo,
+      'R6-05',
+      async () => {
+        // The notice is shown from the address alone (the value is this spec's own): the staging of
+        // e2e/home-removed-notice.spec.ts ("the removed-member box paints the status-warning tokens").
+        await page.goto('/?removedFrom=' + encodeURIComponent('Removed Check Group'));
+        await expect(dismiss, 'R6-05: the removed-from-group notice never rendered on Home').toBeVisible({ timeout: 20_000 });
+        return page.getByRole('main');
+      },
+      async (ctx) => {
+        await measureRow(ctx, heldOutRow('R6-05'), dismiss, 'the removed-notice Dismiss');
+        // Still focused. One band: the only painted box-shadow layer with a spread is the house
+        // band, and nothing is drawn inside the box (the hairline was an inset layer).
+        const read = await readRing(dismiss);
+        const painted = read.layers.filter((layer) => !isTransparent(layer.colour));
+        const at = `R6-05 (${ctx.theme}, ${ctx.cell.width} x ${ctx.cell.height}, ${ctx.cell.mode}% text)`;
+        expect.soft(painted.filter((layer) => layer.inset), `${at}: an inset layer is painted on the focused Dismiss (box-shadow: ${read.boxShadow})`).toEqual([]);
+        expect.soft(painted.length, `${at}: the focused Dismiss paints ${painted.length} box-shadow layers with a spread, the house ring one (box-shadow: ${read.boxShadow})`).toBe(1);
+      },
+    );
+  });
+
+  test('E10 loading (89.6-31): a busy Button draws one ring round its whole box', async ({ page }, testInfo) => {
+    await answerFriendsLists(page);
+    // The one write this spec presses (the made-up request's Accept). A dedicated route, registered
+    // after the write hold so it runs first, keeps the request in the browser until the read is
+    // taken and then answers it with route.fulfill. It is never unrouted: turning interception off
+    // would hand a held request to the network.
+    const makeGate = (): { open: Promise<void>; release: () => void } => {
+      let release: () => void = () => undefined;
+      const open = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { open, release };
+    };
+    let gate = makeGate();
+    let pressed = 0;
+    await page.route(
+      (url) => url.pathname.includes('/friendships/'),
+      async (route) => {
+        const method = route.request().method();
+        if (method === 'GET' || method === 'HEAD') {
+          await route.fallback();
+          return;
+        }
+        pressed += 1;
+        await gate.open;
+        await route.fulfill({ status: 200, json: {} });
+      },
+    );
+    const requestRow = page.locator(`[data-request-row="${RING_REQUEST.id}"]`);
+    // The busy name is the word plus the hidden suffix; a browser may put a space before its comma.
+    const busy = requestRow.getByRole('button', { name: /^Accept ?, accepting/ });
+
+    await censusSurface(
+      page,
+      testInfo,
+      'E10 loading',
+      async () => {
+        // The earlier theme's request is answered before the page is left.
+        gate.release();
+        gate = makeGate();
+        await page.goto('/friends');
+        await page.getByRole('button', { name: /^Requests(\s*\d+)?$/ }).click();
+        const accept = requestRow.getByRole('button', { name: 'Accept', exact: true });
+        await expect(accept, 'E10 loading: the made-up request row never rendered').toBeVisible({ timeout: 15_000 });
+        const before = pressed;
+        await focusByKeyboard(page, accept);
+        await page.keyboard.press('Enter');
+        await expect(busy, 'E10 loading: Accept never took its busy name while its write was held').toBeVisible({ timeout: 15_000 });
+        expect(pressed, 'E10 loading: the Accept write did not reach the dedicated route').toBe(before + 1);
+        return page.getByRole('main');
+      },
+      async (ctx) => {
+        const at = `E10 loading (${ctx.theme}, ${ctx.cell.width} x ${ctx.cell.height}, ${ctx.cell.mode}% text)`;
+        await expect(busy, `${at}: the Button is no longer busy, so this would read the resting state`).toHaveCount(1);
+        // One box as rendered while busy (its own rect at this moment), and one ring round it.
+        expect(await busy.evaluate((el) => el.getClientRects().length), `${at}: the busy Button draws more than one box`).toBe(1);
+        await measureRow(ctx, heldOutRow('E10-loading'), busy, 'Accept while busy');
+      },
+    );
+    gate.release();
+  });
+
+  test('E10 two-line (89.6-31): a Button whose label takes two lines draws one ring round its whole box', async ({ page }, testInfo) => {
+    const main = page.getByRole('main');
+    const button = main.getByRole('button', { name: 'Delete My Account', exact: true });
+    await censusSurface(
+      page,
+      testInfo,
+      'E10 two-line',
+      async () => {
+        await page.goto('/userProfile');
+        await expect(button, 'E10 two-line: Profile shows no Delete My Account button').toBeVisible({ timeout: 20_000 });
+        return main;
+      },
+      async (ctx) => {
+        const at = `E10 two-line (${ctx.theme}, ${ctx.cell.width} x ${ctx.cell.height}, ${ctx.cell.mode}% text)`;
+        // The label's own line boxes (Button text sits in span.bb-label), never the busy slot beside it.
+        const read = await button.evaluate((el) => {
+          const range = document.createRange();
+          range.selectNodeContents(el.querySelector('.bb-label') ?? el);
+          const tops = new Set(Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0).map((r) => Math.round(r.top)));
+          return { lines: tops.size, boxes: el.getClientRects().length };
+        });
+        // Asserted first, in the large-text cell: the row cannot pass on a one-line label.
+        if (ctx.cell.mode === '200') expect(read.lines, `${at}: the label is on ${read.lines} line(s), so this is no two-line read`).toBeGreaterThanOrEqual(2);
+        expect(read.boxes, `${at}: the Button draws more than one box`).toBe(1);
+        // Measured, never pressed.
+        await measureRow(ctx, heldOutRow('E10-two-line'), button, `a Button label on ${read.lines} line(s)`);
+      },
+    );
+  });
+
+  test('BP-5 (89.6-31): Tab through Create Event leaves no ring cut', async ({ page }, testInfo) => {
+    const reached = await reachSweepRow(page, 'D21');
+    const dialog = reached.dialog as Locator;
+    const close = dialog.locator('[data-modal-close]');
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    const lines: string[] = [];
+    const routed: string[] = [];
+
+    // DECISION Phase 89.6-31 (BP-5-grid): a Tab stop inside the calendar's week grid (the shared heatmap grid, src/app/components/heatmap/WeekGrid.tsx) is read and printed as routed to plan 89.6-45, and is not asserted here, OVER failing this test on it: its cell fills the grid's own scroll box, so the fix is rule 10's G4 (the ring drawn inside) at a shared grid this plan does not own, not BP-5's scroll padding, which that box already has. Measured: the focused cell's ring passes the box's right edge by 3px at 375 x 667 / 100% and at 320 x 568 / 200%. Changing this is a decision, not a cleanup.
+    // Geometry only, so one theme (the project's own, dark). Every stop of the dialog's Tab order,
+    // from the first control after the header close round to the close again, is read where the
+    // browser's own focus scroll left it.
+    for (const cell of censusCells(testInfo)) {
+      const at = `BP-5 (${cell.width} x ${cell.height}, ${cell.mode}% text)`;
+      await page.setViewportSize({ width: cell.width, height: cell.height });
+      await setTextMode(page, cell.mode, at);
+      await settleAnimations(dialog);
+      await close.focus();
+      const cuts: string[] = [];
+      let stops = 0;
+      let back = false;
+      for (let press = 0; press < 200 && !back; press += 1) {
+        await page.keyboard.press('Tab');
+        const focused = dialog.locator(':focus');
+        if ((await focused.count()) !== 1) throw new Error(`${at}: after ${press + 1} Tab presses the focus is not in the dialog`);
+        if (await focused.evaluate((el) => el.hasAttribute('data-modal-close'))) {
+          back = true;
+          break;
+        }
+        stops += 1;
+        await settleFocusTransitions(focused);
+        const stop = await focused.evaluate((el) => {
+          const inGrid = el.closest('[role="grid"]') !== null;
+          const cs = getComputedStyle(el);
+          const reach = cs.outlineStyle === 'none' ? 0 : Math.max(0, (parseFloat(cs.outlineOffset) || 0) + (parseFloat(cs.outlineWidth) || 0));
+          const name = el.getAttribute('aria-label') ?? el.getAttribute('placeholder') ?? (el.textContent ?? '').trim();
+          return { reach, inGrid, what: `${el.tagName.toLowerCase()} "${name.replace(/\s+/g, ' ').slice(0, 30)}"` };
+        });
+        const clip = await readRingClip(focused, stop.reach);
+        if (!clip) continue;
+        if (stop.inGrid) {
+          routed.push(`${at}: week grid cell cut by its scroll box (${JSON.stringify(clip.over)}), routed to 89.6-45`);
+          continue;
+        }
+        // A cut deeper than the ring's own reach means the control's BOX is partly outside its scroll
+        // window: the browser's focus scroll left it there (a text field is scrolled to its caret,
+        // not to its box). That is a scroll position, not a ring cut by a container: when one more
+        // scroll to the control (scroll padding applies) draws the ring whole, it is printed as
+        // routed and not failed. A cut within the reach, or one that scrolling does not clear, fails.
+        const deepest = Math.max(clip.over.left, clip.over.right, clip.over.top, clip.over.bottom);
+        if (deepest > stop.reach + 0.5) {
+          await focused.evaluate((el) => el.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+          if (!(await readRingClip(focused, stop.reach))) {
+            routed.push(`${at}: ${stop.what} was left ${deepest}px outside its scroll window by the focus scroll (whole once scrolled to), routed to 89.6-45`);
+            continue;
+          }
+        }
+        cuts.push(`stop ${stops} ${stop.what}: cut by ${clip.by} (${JSON.stringify(clip.over)})`);
+      }
+      expect(back, `${at}: 200 Tab presses did not come back round to the header close`).toBe(true);
+      expect(stops, `${at}: only ${stops} Tab stops were read in Create Event`).toBeGreaterThanOrEqual(8);
+      expect.soft(cuts, `${at}: ${cuts.length} of ${stops} Tab stops draw a ring that is cut`).toEqual([]);
+      lines.push(`${at}: ${stops} Tab stops, ${cuts.length} cut`);
+    }
+    for (const line of [...lines, ...routed]) {
+      // eslint-disable-next-line no-console -- the stop count is this test's record; a green CI run prints nothing else
+      console.log(`[89.6-31 census] BP-5 | ${testInfo.project.name} | ${line}`);
+    }
   });
 });

@@ -1835,11 +1835,18 @@ function CreateEvent({ resultInView = true, group_id, modal, modaltoggle, onEven
                 decision, not a cleanup.
                 AMENDED Phase 88.9-52 (R4 D6, owner page pick G6 = C, 2026-11-18): the one-line rows
                 start at sm (640px) now, so the 15rem cap starts there with them (at 700 the mock
-                measured 83px rows in a 240px box, about 2.9 rows); below sm the 24rem cap is kept. */}
+                measured 83px rows in a 240px box, about 2.9 rows); below sm the 24rem cap is kept.
+                DECISION Phase 89.6-31 (BP-5): this scroll box takes the house scroll padding (0.5rem, the
+                utility the Modal shell and Body carry) OVER a bare scroll region: Tab scrolled a row's
+                Score, Faction or Remove to the box's very edge, so the box cut the keyboard ring's
+                bottom by up to 4px (measured at 11 Tab stops across 320 x 568 / 200% and 375 x 667 /
+                100%; owner pick O-1 B, 2026-11-22: a ring cut by its container is the defect; outline
+                rule 10, BP-5). Scroll padding changes where a focus scroll stops and nothing else: no
+                box moves or resizes, and the caps above hold. Changing this is a decision, not a cleanup. */}
             <div
               role="group"
               aria-labelledby="participants-section-label"
-              className="relative space-y-2 max-h-96 sm:max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
+              className="relative space-y-2 max-h-96 sm:max-h-60 overflow-y-auto scroll-p-2 border border-line p-2 rounded-sm bg-surface-input"
             >
               {newEvent.participants.map((participant, index) => (
                 <ParticipantRow
