@@ -87,6 +87,8 @@ export async function expectFocusRingClearOfText(
 // The ink rect is the union of the control's drawn text (a Range per text node, so a box wider
 // than its glyphs does not count) and its svg / img descendants wider than 1px. Text that is not
 // drawn is skipped: a visually hidden span (a 1px clipped box), display none, visibility hidden.
+// A control with no ink at all throws, unless the caller passes allowNoInk (Phase 89.6-31: the
+// half-star hit zones draw nothing of their own); the box then stands in for the ink.
 //
 // Added by Phase 89.6-43 for the chrome's text controls (e2e/chrome-ring-geometry.spec.ts); plan
 // 89.6-31 reuses it for the ring census. ONE read, beside expectFocusRingClearOfText: a spec never
@@ -113,7 +115,7 @@ export interface RingRoom {
   summary: string;
 }
 
-export async function readRingRoom(page: Page, control: Locator, label: string): Promise<RingRoom> {
+export async function readRingRoom(page: Page, control: Locator, label: string, options: { allowNoInk?: boolean } = {}): Promise<RingRoom> {
   // The reader focuses by keyboard, waits for the control's transitions and throws on a non-house shape.
   const ring = await focusRingMeasurement(page, control, label);
   await settleAnimations(control);
@@ -164,7 +166,7 @@ export async function readRingRoom(page: Page, control: Locator, label: string):
       const r = media.getBoundingClientRect();
       if (r.width > 1 && r.height > 0) rects.push(r);
     }
-    if (rects.length === 0) return null;
+    if (rects.length === 0) return { radius, box: { left: box.left, right: box.right, top: box.top, bottom: box.bottom }, ink: null };
     const ink = {
       left: Math.min(...rects.map((r) => r.left)),
       right: Math.max(...rects.map((r) => r.right)),
@@ -177,19 +179,22 @@ export async function readRingRoom(page: Page, control: Locator, label: string):
       ink,
     };
   });
-  if (!read) throw new Error(`${label}: the control draws no text, svg or img to measure ring room from`);
+  // A control that draws nothing of its own (a transparent hit zone over a picture) has no ink to
+  // keep room from: its box stands in for the ink, only for a caller that says so (allowNoInk).
+  if (!read.ink && !options.allowNoInk) throw new Error(`${label}: the control draws no text, svg or img to measure ring room from`);
+  const ink = read.ink ?? read.box;
   const offset = ring.outlineOffset;
   const inkToRing: SideRoom = {
-    left: read.ink.left - read.box.left + offset,
-    right: read.box.right - read.ink.right + offset,
-    top: read.ink.top - read.box.top + offset,
-    bottom: read.box.bottom - read.ink.bottom + offset,
+    left: ink.left - read.box.left + offset,
+    right: read.box.right - ink.right + offset,
+    top: ink.top - read.box.top + offset,
+    bottom: read.box.bottom - ink.bottom + offset,
   };
   const two = (n: number) => n.toFixed(2);
   const summary =
     `radius ${two(read.radius)}px, ink to ring left ${two(inkToRing.left)} right ${two(inkToRing.right)} ` +
     `top ${two(inkToRing.top)} bottom ${two(inkToRing.bottom)}px (outline offset ${offset}px)`;
-  return { radius: read.radius, inkToRing, box: read.box, ink: read.ink, outlineOffset: offset, summary };
+  return { radius: read.radius, inkToRing, box: read.box, ink, outlineOffset: offset, summary };
 }
 
 // readRingClip(control, reach) — is the ring of a focused control cut off, and by what? The ring

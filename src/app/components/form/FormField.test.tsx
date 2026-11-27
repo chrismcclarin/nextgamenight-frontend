@@ -9,6 +9,7 @@ import { render, screen, cleanup } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { FormField } from './FormField';
 import { SelectField } from './SelectField';
+import { expectFocusRing } from '../../../test-utils/focusRingAssert';
 
 afterEach(cleanup);
 
@@ -146,5 +147,17 @@ describe('SelectField a11y contract', () => {
     const select = screen.getByLabelText('Color');
     expect(select).not.toHaveAttribute('aria-invalid');
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  // Phase 89.6-31, census row E-09 (outline rule 10, G1). SelectField has no production mount
+  // (src/app/components/form/FormField.tsx ("which has no production consumer yet")), so its ring
+  // cannot be measured in a browser: this is its row, at unit level. The rendered rows are in
+  // e2e/focus-ring-geometry.spec.ts ("test.describe('89.6-31 ring census rows'").
+  it("89.6-31 E-09: SelectField's select carries the house ring and a radius class", () => {
+    render(<SelectHarness />);
+    const select = screen.getByLabelText('Color');
+    expectFocusRing(select, 'the SelectField select');
+    const tokens = (select.getAttribute('class') ?? '').split(/\s+/);
+    expect(tokens.filter((token) => /^rounded(-|$)/.test(token))).toEqual(['rounded-btn']);
   });
 });

@@ -7,8 +7,9 @@ import { E2E_FAKE_GAME_ID, E2E_GAME_PATH, routeFakeGameSuccess } from './support
 import { openGroupSettings } from './support/groupSettings';
 import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
 import { answerPromptSettings } from './support/largeTextSurfaces/dialogs';
-import { sweepWriteGuard, type SweepHold } from './support/largeTextSurfaces/index';
+import { ALL_ROWS, sweepWriteGuard, type SweepHold } from './support/largeTextSurfaces/index';
 import { readRingClip, readRingRoom, type RingClip, type SideRoom } from './support/ringGeometry';
+import { scrubbedFetch } from './support/scrubbedFetch';
 import { setTextMode, type TextMode } from './support/wordLines';
 
 // Phase 88.9 plan 66 (X61, owner remarks at round-2 row N22) — keyboard focus rings as NUMBERS.
@@ -412,11 +413,61 @@ interface CensusRow {
   note?: string;
   /** The row has no production mount: it is measured at unit level and never reached here (the cite says where). */
   noConsumer?: string;
+  /** The control draws nothing of its own (a transparent hit zone): its box stands in for its ink. */
+  noInk?: boolean;
 }
 
 const EDGE_ROWS: readonly CensusRow[] = [
   { id: 'E-01', kind: 'house', note: 'the Modal close (every house dialog), read in Customize Group' },
+  { id: 'E-02', kind: 'house', note: 'the Share Game QR close: the shared Modal close since plan 89.6-28' },
+  { id: 'E-03', kind: 'house', note: 'the invite panel close: renders MODAL_CLOSE_CLASS since plan 89.6-10' },
+  { id: 'E-04', kind: 'house', note: 'Clear game selection, in the Create Event game field' },
+  { id: 'E-05', kind: 'house', noInk: true, note: 'the left half-star hit zone' },
+  { id: 'E-06', kind: 'house', noInk: true, note: 'the right half-star hit zone' },
+  { id: 'E-07', kind: 'house', textControl: true, note: 'Undo, after a participant is removed in Create Event' },
+  { id: 'E-08', kind: 'house', textControl: true, note: 'Dismiss undo, beside it' },
+  { id: 'E-09', kind: 'house', noConsumer: 'src/app/components/form/FormField.tsx ("which has no production consumer yet"): read at unit level in FormField.test.tsx' },
+  { id: 'E-10', kind: 'house', textControl: true, note: 'Remove on a Friends row' },
+  { id: 'E-11', kind: 'house', textControl: true, note: 'the Profile phone Remove (a made-up verified number staged in the browser)' },
+  { id: 'E-12', kind: 'house', textControl: true, note: 'the Profile schedule Delete' },
+  { id: 'E-13', kind: 'house', textControl: true, note: 'the Profile override Delete' },
+  { id: 'E-14', kind: 'house', note: 'the first revealed collection title, focused by the page after Show all: a focus target, not a text control, so G2 does not apply' },
+  { id: 'E-15', kind: 'house', textControl: true, note: 'Remove on a Profile collection card' },
+  { id: 'E-16', kind: 'house', noInk: true, note: 'the shared Input, read on an empty Score input in Create Event' },
+  { id: 'E-17', kind: 'house', note: 'the shared tab panel (TabsContent), read on the Profile availability tabs' },
 ];
+
+// The Profile row staging (E-11, E-14, E-15). A phone number in the range reserved for fiction
+// (555-0100 to 555-0199): no person has it. Eight made-up games, so the collection overflows at
+// every width (three cards show on a phone, six from md). All of it exists only in the browser.
+const CENSUS_PHONE = '+12025550143';
+const CENSUS_GAMES = Array.from({ length: 8 }, (_, index) => ({
+  id: `8963a031-0000-4000-8000-00000000000${index + 1}`,
+  name: `E2E Census Game ${index + 1}`,
+  image_url: null,
+}));
+
+// The self read: a path ending in /users/<id> (the exact path, never a prefix: the Profile writes
+// are its siblings one segment below).
+const isSelfRead = (url: URL): boolean => /\/users\/[^/]+$/.test(url.pathname);
+
+// One read answered from the real answer, changed in the browser. GET only: any other method falls
+// back to the write hold. The real answer is fetched without the self read's timezone parameter (so
+// the backend's time zone backfill cannot run) through scrubbedFetch, never a bare route.fetch.
+// Register it after the guard, so it runs first.
+async function transformRead(page: Page, match: (url: URL) => boolean, change: (body: unknown) => unknown): Promise<void> {
+  await page.route(match, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    const url = new URL(route.request().url());
+    url.searchParams.delete('timezone');
+    const response = await scrubbedFetch(route, { url: url.toString() });
+    const body = (await response.json().catch(() => null)) as unknown;
+    await route.fulfill({ response, json: change(body) });
+  });
+}
 
 function censusRow(rows: readonly CensusRow[], id: string): CensusRow {
   const row = rows.find((candidate) => candidate.id === id);
@@ -537,7 +588,7 @@ async function measureRow(ctx: CensusContext, row: CensusRow, control: Locator, 
     expect.soft(false, `${where}: the house ring is not painted: ${notHouse}`).toBe(true);
     return;
   }
-  const room = await readRingRoom(page, control, where);
+  const room = await readRingRoom(page, control, where, { allowNoInk: row.noInk === true });
   const clippedBy = await readRingClip(control, m.reach);
   const ringRadius = room.radius + m.outlineOffset + m.outlineWidth;
   census.push({
@@ -1082,5 +1133,198 @@ test.describe('89.6-31 ring census rows', () => {
       }
     }
     await publish(testInfo, [], census);
+  });
+
+  // A sweep row's staging, reused by import: its answers go to the write guard and its reach opens
+  // the surface (e2e/support/largeTextSurfaces/index.ts ("export const ALL_ROWS")). No reach here
+  // presses a control that saves; the sweep runs the same reaches under the same guard.
+  const reachSweepRow = async (page: Page, id: string): Promise<{ root: Locator; dialog?: Locator }> => {
+    const row = ALL_ROWS.find((candidate) => candidate.id === id);
+    if (!row?.reach) throw new Error(`sweep row ${id} has no reach to reuse`);
+    const rowAnswers = row.answers;
+    if (rowAnswers) {
+      const mine = answers;
+      answers = (url) => rowAnswers(url) ?? mine(url);
+    }
+    return row.reach(page);
+  };
+
+  // One surface through its project's cells, both themes: `open` navigates and stages (it runs once
+  // per theme, at normal text) and returns the element whose animations are settled before each
+  // cell's read; `read` measures the surface's rows in one cell.
+  const censusSurface = async (
+    page: Page,
+    testInfo: TestInfo,
+    label: string,
+    open: () => Promise<Locator>,
+    read: (ctx: CensusContext) => Promise<void>,
+  ): Promise<void> => {
+    const census: CensusRecord[] = [];
+    for (const theme of THEMES) {
+      if (theme === 'light') await forceLightMode(page);
+      const settled = await open();
+      await assertTheme(page, theme);
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      for (const cell of censusCells(testInfo)) {
+        await page.setViewportSize({ width: cell.width, height: cell.height });
+        await setTextMode(page, cell.mode, `${label} (${theme}, ${cell.width} x ${cell.height})`);
+        await settleAnimations(settled);
+        await read({ page, testInfo, theme, cell, census });
+      }
+    }
+    await publish(testInfo, [], census);
+  };
+
+  test('E-02 (89.6-31): Share Game QR, the header close', async ({ page }, testInfo) => {
+    let dialog: Locator | undefined;
+    await censusSurface(
+      page,
+      testInfo,
+      'E-02',
+      async () => {
+        dialog = (await reachSweepRow(page, 'D06')).root;
+        return dialog;
+      },
+      async (ctx) => {
+        const close = (dialog as Locator).locator('[data-modal-close]');
+        await expect(close, 'E-02: the QR box has no header close').toHaveCount(1);
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-02'), close, 'the QR box close');
+      },
+    );
+  });
+
+  test('E-03 (89.6-31): Invite Members, the panel close', async ({ page }, testInfo) => {
+    let dialog: Locator | undefined;
+    await censusSurface(
+      page,
+      testInfo,
+      'E-03',
+      async () => {
+        dialog = (await reachSweepRow(page, 'D02')).root;
+        return dialog;
+      },
+      async (ctx) => {
+        const close = (dialog as Locator).getByRole('button', { name: 'Close', exact: true });
+        await expect(close, 'E-03: Invite Members has not exactly one Close').toHaveCount(1);
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-03'), close, 'the invite panel close');
+      },
+    );
+  });
+
+  test('E-04, E-07, E-08, E-16 (89.6-31): Create Event, Clear game selection, Undo, Dismiss undo and a Score input', async ({ page }, testInfo) => {
+    let dialog: Locator | undefined;
+    await censusSurface(
+      page,
+      testInfo,
+      'Create Event',
+      async () => {
+        const reached = await reachSweepRow(page, 'D21-readonly');
+        dialog = reached.dialog as Locator;
+        // Local state only, nothing is sent to save: a typed game name shows Clear game selection,
+        // and removing the first staged member shows the Undo bar.
+        await dialog.getByPlaceholder('Search for a game or type a name').fill('E2E census game');
+        await reached.root.getByRole('button', { name: 'Remove', exact: true }).first().click();
+        await expect(dialog.getByRole('button', { name: 'Undo', exact: true }), 'Create Event: removing a participant showed no Undo').toBeVisible({ timeout: 15_000 });
+        return dialog;
+      },
+      async (ctx) => {
+        const box = dialog as Locator;
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-04'), box.getByRole('button', { name: 'Clear game selection', exact: true }), 'Clear game selection');
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-07'), box.getByRole('button', { name: 'Undo', exact: true }), 'Undo');
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-08'), box.getByRole('button', { name: /^Dismiss undo for / }), 'Dismiss undo');
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-16'), box.getByRole('group', { name: 'Participants (required)', exact: true }).locator('input[type="number"]').first(), 'the first Score input');
+      },
+    );
+  });
+
+  test('E-05, E-06 (89.6-31): Write a Review, the half-star hit zones', async ({ page }, testInfo) => {
+    let dialog: Locator | undefined;
+    await censusSurface(
+      page,
+      testInfo,
+      'Write a Review',
+      async () => {
+        dialog = (await reachSweepRow(page, 'D29')).root;
+        return dialog;
+      },
+      async (ctx) => {
+        const box = dialog as Locator;
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-05'), box.getByRole('radio', { name: '0.5 stars', exact: true }), 'the left half of the first star');
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-06'), box.getByRole('radio', { name: '1 stars', exact: true }), 'the right half of the first star');
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-06'), box.getByRole('radio', { name: '5 stars', exact: true }), 'the right half of the last star');
+      },
+    );
+  });
+
+  test('E-10 (89.6-31): Friends, Remove on a friend row', async ({ page }, testInfo) => {
+    await censusSurface(
+      page,
+      testInfo,
+      'Friends',
+      async () => (await reachSweepRow(page, 'R04')).root,
+      async (ctx) => {
+        const remove = page.locator('[data-friend-row]').first().getByRole('button', { name: /^Remove/ });
+        await expect(remove, 'E-10: the first friend row has not exactly one Remove').toHaveCount(1);
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-10'), remove, 'Remove on the first friend row');
+      },
+    );
+  });
+
+  test('E-11 to E-15, E-17 (89.6-31): Profile, the phone Remove, both Deletes, the revealed collection title, a collection Remove and the tab panel', async ({ page }, testInfo) => {
+    // Staged in the browser (the seeds hold none of these states): a made-up phone number in the
+    // reserved 555-01xx fiction range on the self read, marked verified, with the SMS entitlement
+    // the phone block is gated on (an admin-set flag), so the phone Remove draws;
+    // the patterns read answered as the sweep's availability row answers it (one weekly schedule and
+    // one override); the collection read answered with eight made-up games, so it overflows.
+    const patterns = ALL_ROWS.find((candidate) => candidate.id === 'R16-availability')?.answers;
+    if (!patterns) throw new Error('sweep row R16-availability has no answers to reuse');
+    answers = (url) => patterns(url) ?? (/\/user-games\/user\/[^/]+$/.test(url.pathname) ? CENSUS_GAMES : undefined);
+    await transformRead(page, isSelfRead, (body) =>
+      body && typeof body === 'object' && !Array.isArray(body) ? { ...(body as object), sms_enabled: true, phone: CENSUS_PHONE, phone_verified: true } : body,
+    );
+    const main = page.getByRole('main');
+    const tab = (name: string): Locator => page.getByRole('tab', { name, exact: true });
+
+    await censusSurface(
+      page,
+      testInfo,
+      'Profile',
+      async () => {
+        await page.goto('/userProfile');
+        await expect(main.getByRole('button', { name: 'Delete Wednesday schedule', exact: true }), 'Profile: the staged weekly schedule never rendered').toBeVisible({ timeout: 20_000 });
+        await expect(main.getByRole('button', { name: `Show all ${CENSUS_GAMES.length} games`, exact: true }), 'Profile: the staged collection does not overflow').toBeVisible({ timeout: 20_000 });
+        return main;
+      },
+      async (ctx) => {
+        // At rest the phone Remove is named by its word alone; a collection Remove carries its game's name.
+        const phoneRemove = main.getByRole('button', { name: 'Remove', exact: true });
+        await expect(phoneRemove, 'E-11: the phone Remove did not render for the staged verified number').toHaveCount(1);
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-11'), phoneRemove, 'the phone Remove');
+
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-12'), main.getByRole('button', { name: 'Delete Wednesday schedule', exact: true }), 'the schedule Delete');
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-17'), main.getByRole('tabpanel'), 'the Schedules tab panel');
+        // Opening a tab writes nothing.
+        await tab('Specific Dates').click();
+        const overrideDelete = main.getByRole('button', { name: /^Delete .* override$/ });
+        await expect(overrideDelete, 'E-13: the staged override row never rendered').toHaveCount(1);
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-13'), overrideDelete, 'the override Delete');
+        await tab('Schedules').click();
+
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-15'), main.getByRole('button', { name: `Remove ${CENSUS_GAMES[0].name}`, exact: true }), 'Remove on the first collection card');
+
+        // E-14 as a keyboard user reaches it: Enter on Show all (local state, no request) and the
+        // page puts the focus on the first revealed card's title.
+        const showAll = main.getByRole('button', { name: `Show all ${CENSUS_GAMES.length} games`, exact: true });
+        await focusByKeyboard(page, showAll);
+        await page.keyboard.press('Enter');
+        const revealed = main.getByRole('heading', { level: 3 }).and(main.locator('[tabindex="-1"]'));
+        await expect(revealed, 'E-14: Show all did not put the focus on the first revealed title').toBeFocused({ timeout: 15_000 });
+        await measureRow(ctx, censusRow(EDGE_ROWS, 'E-14'), revealed, 'the first revealed collection title');
+        const showFewer = main.getByRole('button', { name: 'Show fewer', exact: true });
+        await focusByKeyboard(page, showFewer);
+        await page.keyboard.press('Enter');
+        await expect(showAll, 'E-14: Show fewer did not close the collection again').toBeVisible({ timeout: 15_000 });
+      },
+    );
   });
 });
