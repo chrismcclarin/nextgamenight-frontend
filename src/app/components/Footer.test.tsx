@@ -33,13 +33,18 @@ import Footer from './Footer';
 import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 
 const LINK_BOX = ['min-h-11', 'inline-flex', 'items-center'];
+// Phase 89.6-43 (outline rule 10 G1 + G2, owner pick O-1 B, 2026-11-22): every footer text control's
+// ring is rounded (4px) and has 4px of side room paid back by an equal negative margin. jsdom lays
+// nothing out, so this pins the class tokens; the rendered reads are in
+// e2e/chrome-ring-geometry.spec.ts ("G1 + G2 (89.6-43): the footer controls").
+const RING_ROOM = ['rounded-sm', 'px-1', '-mx-1'];
 
 function expectFooterControls(signedIn: boolean) {
   const footer = within(screen.getByRole('contentinfo'));
   for (const name of ['About', 'Privacy', 'Terms']) {
     const link = footer.getByRole('link', { name });
     const where = `${name} link (${signedIn ? 'signed in' : 'signed out'})`;
-    expect(link, where).toHaveClass(...LINK_BOX, 'focus:outline-hidden');
+    expect(link, where).toHaveClass(...LINK_BOX, ...RING_ROOM, 'focus:outline-hidden');
     expectFocusRing(link, where);
     expectRingGround(link, 'page', where);
   }
@@ -50,7 +55,9 @@ function expectFooterControls(signedIn: boolean) {
     return;
   }
   expect(reportBug).not.toBeNull();
-  expect(reportBug).toHaveClass('min-h-11', 'focus:outline-hidden');
+  // 89.6-43 (register UR-05): Report bug is a flex box like the links, so its text is centred in
+  // the 44px box by construction.
+  expect(reportBug).toHaveClass(...LINK_BOX, ...RING_ROOM, 'focus:outline-hidden');
   expectFocusRing(reportBug as HTMLElement, 'Report bug');
   expectRingGround(reportBug as HTMLElement, 'page', 'Report bug');
 }

@@ -109,30 +109,31 @@ function PublicFooter() {
             reasoning in AuthFooter below; the two must move together or the footer prints one strip
             at two sizes depending on auth state. Going back to 12 is a decision, not a cleanup. */}
         <div className="flex flex-col md:flex-row md:flex-wrap items-center justify-between gap-3 text-sm text-content-muted">
-          {/* DECISION Phase 88.9-37 B5a (owner pick B5a, 88.9-PICKS-B1.json item B5, votes-b1 v9, 2026-11-04 8:01 PM Pacific; X1, UI-SPEC R2-48): every footer control — About, Privacy, Terms, and Report bug in the signed-in footer — wears the house focus ring with the page-ground halo, and the three links are 44px-tall flex boxes. Chosen OVER the register's arm (b), the ring on Report bug only with the links left on the browser outline: that outline measured 1.84:1 on the page ground in light (under 3:1) and the links measured 20px tall (under WCAG 2.5.8's 24). The ring reads 5.97 light / 10.13 dark against both the halo and the ground outside it (band 1.00). Both footers move together, as the 88.6-34 marker above requires. The capital-P Privacy path is untouched (the note at the top of this file). Going back is a decision, not a cleanup. */}
-          {/* DECISION Phase 88.9-52 (R4 S1, the round-3 capture: at 768px with doubled text the copyright broke onto two lines inside this row and the floating feedback button sat on it): from md the FOOTER keeps the button's corner clear, and the button keeps the size and place the owner picked (src/app/components/FeedbackButton.js ("AMENDED Phase 88.9-52 (R5, owner 2026-11-17, pick Always)")). Three classes do it. (1) The copyright never breaks from md (md:whitespace-nowrap on its group), so its top is never above the 3rem the button's offset is built on. (2) When the links and the copyright do not fit one line the ROW breaks instead (md:flex-wrap) and the copyright group takes the last line, still at the right-hand end (md:ms-auto): there it is lower than in the one-line row, never higher. (3) The link group stops 8px short of the button's box (md:max-w: the button's 24px inset, its 56px and the 8px gap, less this footer's own 1rem side padding), so when the links have a line to themselves, which is at the button's height, no link runs under it. Chosen OVER an inline-end reserve on the whole row (it would move the copyright out from under the button at ordinary text, and the owner picked the button just above that line), OVER raising the button further while the copyright is two lines (its offset is his pick, and a class cannot count lines), and OVER padding at the page end (owner: an awkward blank space). At ordinary text everything fits one line and nothing moves. Below md the button is not drawn, the footer is a column, and nothing here applies. Both footers move together. Dropping any of the three classes re-opens the overlap; held by src/app/components/Footer.test.tsx ("S1 (88.9-52 R4): from md the copyright stays on one line at the right") and, rendered, by e2e/touch-targets.spec.ts ("R5 (88.9-52 R4 S1, 768 wide"). */}
+          {/* DECISION Phase 88.9-37 B5a (owner pick B5a, 88.9-PICKS-B1.json item B5, votes-b1 v9, 2026-11-04 8:01 PM Pacific; X1, UI-SPEC R2-48): every footer control — About, Privacy, Terms, and Report bug in the signed-in footer — wears the house focus ring with the page-ground halo, and the three links are 44px-tall flex boxes. Chosen OVER the register's arm (b), the ring on Report bug only with the links left on the browser outline: that outline measured 1.84:1 on the page ground in light (under 3:1) and the links measured 20px tall (under WCAG 2.5.8's 24). The ring reads 5.97 light / 10.13 dark against both the halo and the ground outside it (band 1.00). Both footers move together, as the 88.6-34 marker above requires. The capital-P Privacy path is untouched (the note at the top of this file). Going back is a decision, not a cleanup. AMENDED Phase 89.6-43 (footer-ring): every footer control's ring is rounded (4px) with 4px side room paid back by a negative margin (rule 10 G1 + G2, owner pick O-1 B, 2026-11-22; register 'Square-cornered rings round the footer link'); Report bug is centred in its 44px box by inline-flex, as the links are (register 'Footer Report bug text may sit at the top of its 44px box'). The /Privacy path is untouched. */}
+          {/* DECISION Phase 88.9-52 (R4 S1, the round-3 capture: at 768px with doubled text the copyright broke onto two lines inside this row and the floating feedback button sat on it): from md the FOOTER keeps the button's corner clear, and the button keeps the size and place the owner picked (src/app/components/FeedbackButton.js ("AMENDED Phase 88.9-52 (R5, owner 2026-11-17, pick Always)")). Three classes do it. (1) The copyright never breaks from md (md:whitespace-nowrap on its group), so its top is never above the 3rem the button's offset is built on. (2) When the links and the copyright do not fit one line the ROW breaks instead (md:flex-wrap) and the copyright group takes the last line, still at the right-hand end (md:ms-auto): there it is lower than in the one-line row, never higher. (3) The link group stops 8px short of the button's box (md:max-w: the button's 24px inset, its 56px and the 8px gap, less this footer's own 1rem side padding), so when the links have a line to themselves, which is at the button's height, no link runs under it. Chosen OVER an inline-end reserve on the whole row (it would move the copyright out from under the button at ordinary text, and the owner picked the button just above that line), OVER raising the button further while the copyright is two lines (its offset is his pick, and a class cannot count lines), and OVER padding at the page end (owner: an awkward blank space). At ordinary text everything fits one line and nothing moves. Below md the button is not drawn, the footer is a column, and nothing here applies. Both footers move together. Dropping any of the three classes re-opens the overlap; held by src/app/components/Footer.test.tsx ("S1 (88.9-52 R4): from md the copyright stays on one line at the right") and, rendered, by e2e/touch-targets.spec.ts ("R5 (88.9-52 R4 S1, 768 wide"). AMENDED Phase 89.6-43 (mark-whole): the copyright group may wrap too (the BGG mark above the copyright); the copyright still never breaks from md and is then the group's last line, lower than in the one-line row, never higher, so (1) and (2) hold. The marker is on the group below. */}
+          {/* DECISION Phase 89.6-43 (mark-whole): the BGG mark and the copyright stack (the group wraps and centres) when they do not fit one line, chosen OVER the one unbreakable pair it was: in a row too narrow for both, the mark was squeezed out of its proportions (53 by 48 at 320 with doubled text and 73 by 48 at 375, where its own shape is 164 by 48; 37 by 24 at a 187px page-zoom window) and the copyright ran to five short lines beside it. It is BoardGameGeek's own mark and is drawn whole or not at all (src/app/components/BGGLogo.js ("flex shrink-0 items-center justify-center")). At ordinary text on a phone and from md the pair fits one line and nothing moves. Both footers move together. Held by the footer row of the large-text sweep (e2e/support/largeTextSurfaces/chrome.ts ("the BGG mark is squeezed")). Changing this is a decision, not a cleanup. */}
           {/* DECISION Phase 88.9-52 (W10): the link row wraps and centres, chosen OVER the one unbreakable line it was: at 375px with doubled text the signed-in row (About, Privacy, Terms, Report bug) was wider than the screen and the page scrolled sideways. At ordinary text size the row fits on one line and looks as before. Both footers move together. No href changes. */}
           <div className="flex flex-wrap items-center justify-center gap-4 md:max-w-[calc(100%_-_88px_+_1rem)]">
             <a
               href="/about"
-              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
+              className="min-h-11 inline-flex items-center rounded-sm px-1 -mx-1 hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
             >
               About
             </a>
             <a
               href="/Privacy"
-              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
+              className="min-h-11 inline-flex items-center rounded-sm px-1 -mx-1 hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
             >
               Privacy
             </a>
             <a
               href="/terms"
-              className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
+              className="min-h-11 inline-flex items-center rounded-sm px-1 -mx-1 hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
             >
               Terms
             </a>
           </div>
-          <div className="flex items-center gap-3 md:ms-auto md:whitespace-nowrap">
+          <div className="flex flex-wrap items-center justify-center gap-3 md:ms-auto md:whitespace-nowrap">
             <BGGLogo />
             <span>© {year} Next Game Night</span>
           </div>
@@ -157,31 +158,31 @@ function AuthFooter() {
             <div className="flex flex-wrap items-center justify-center gap-4 md:max-w-[calc(100%_-_88px_+_1rem)]">
               <a
                 href="/about"
-                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
+                className="min-h-11 inline-flex items-center rounded-sm px-1 -mx-1 hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
               >
                 About
               </a>
               <a
                 href="/Privacy"
-                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
+                className="min-h-11 inline-flex items-center rounded-sm px-1 -mx-1 hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
               >
                 Privacy
               </a>
               <a
                 href="/terms"
-                className="min-h-11 inline-flex items-center hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
+                className="min-h-11 inline-flex items-center rounded-sm px-1 -mx-1 hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
               >
                 Terms
               </a>
               <button
                 onClick={() => setShowFeedbackForm(true)}
-                className="hover:text-content-secondary transition-colors min-h-11 focus:outline-hidden focus-visible:focus-ring"
+                className="min-h-11 inline-flex items-center rounded-sm px-1 -mx-1 hover:text-content-secondary transition-colors focus:outline-hidden focus-visible:focus-ring"
                 aria-label="Report bug or suggest feature"
               >
                 Report bug
               </button>
             </div>
-            <div className="flex items-center gap-3 md:ms-auto md:whitespace-nowrap">
+            <div className="flex flex-wrap items-center justify-center gap-3 md:ms-auto md:whitespace-nowrap">
               <BGGLogo />
               <span>© {year} Next Game Night</span>
             </div>

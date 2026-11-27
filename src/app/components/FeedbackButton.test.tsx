@@ -573,10 +573,15 @@ describe('R5 (88.9-52): the floating feedback button is a fixed size and is rais
     expect(1 + (2.75 - 1.25) / 2 + 1.25).toBe(3);
     // 88.9-52 R4 S1: the 3rem only holds while the copyright is ONE line, so from md it may not
     // break (two footers). When the row breaks instead, the copyright group has the last line to
-    // itself: 1rem of padding, the 2.5rem group (the BGG mark's box), the 1.25rem line centred in
-    // it. That puts the line's top at 2.875rem, under the 3rem the offset is built on.
-    expect(footer.match(/className="flex items-center gap-3 md:ms-auto md:whitespace-nowrap"/g)?.length).toBe(2);
-    expect(1 + (2.5 - 1.25) / 2 + 1.25).toBeLessThanOrEqual(3);
+    // itself: 1rem of padding, the group (the BGG mark's box), the 1.25rem line centred in it.
+    // AMENDED Phase 89.6-43 (bgg-floor): the mark's box is the BGG link, at least 44px tall (it was a
+    // 2.5rem wrapper). 44px is 2.75rem at ordinary text and fewer rem at any larger text, so the
+    // line's top is at most 1 + (2.75 - 1.25) / 2 + 1.25 = 3rem, the 3rem the offset is built on (it
+    // was 2.875rem). The group may also wrap (the mark above the copyright, when the two do not fit
+    // one line): the copyright is then the group's last line, its top at 1 + 1.25 = 2.25rem.
+    expect(footer.match(/className="flex flex-wrap items-center justify-center gap-3 md:ms-auto md:whitespace-nowrap"/g)?.length).toBe(2);
+    expect(1 + (2.75 - 1.25) / 2 + 1.25).toBeLessThanOrEqual(3);
+    expect(1 + 1.25).toBeLessThanOrEqual(3);
     // The link group stops 8px short of the button's box: 24px inset + 56px + 8px, less the
     // footer's own 1rem side padding (two footers). 24 and 56 are the button's own px classes.
     expect(footer.match(/md:max-w-\[calc\(100%_-_88px_\+_1rem\)\]/g)?.length).toBe(2);
