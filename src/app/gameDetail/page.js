@@ -2797,43 +2797,62 @@ export default function GameDetailPage() {
                     ("deliberately NOT added … add it if one ever becomes one"); SPEC Requirement 11
                     (R7-M7) rules the change, and plan 88.6.1-55 amends that marker in place. These
                     four links plus Profile's Home link (plan 88.6.1-53) are the five D-46 counted.
-                    Removing the ring, the attribute or the cap is a decision, not a cleanup. */}
+                    Removing the ring, the attribute or the cap is a decision, not a cleanup.
+                    AMENDED Phase 89.6-29 (game-crumbs): same cause plan 20 measured on the planning page: the
+                    JSX joins Home, the separator and the name with no space, so the crumbs were one run
+                    that broke inside a word at 320 / 200%. Each crumb is now a .bb-crumbs item with its
+                    separator inside it, chosen OVER inline text (the glued run) and OVER adding spaces (a
+                    separator could end a line apart from its crumb); applies to this nav and the
+                    game-view twin. GR (owner, 2026-11-22: 'A row stays a row while everything in it fits
+                    whole. When it does not, items stack.'). A div and spans OVER an ol and li: what a
+                    screen reader hears stays byte-identical (spoken output is Phase 89.8's, SPEC A7).
+                    Each separator's left space is the block's 0.5rem column gap (mr-2 where it was
+                    mx-2), so crumbs that fit on one line sit where they sat; a crumb that does not fit
+                    moves to the next line as a unit, 4px lower than a wrapped text line was (the block's
+                    row gap). Each link's rounded-sm px-1 -mx-1 gives its ring a 4px gutter at no cost in
+                    width. */}
                 <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-edge-card py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
-                    {effectiveGroupId && singleEvent?.Group?.name && (
-                        /* Phase 71.1-02 Blocker 2 fix: only render the group
-                           segment when we actually have a group name. The
-                           previous fallback to the literal word "group"
-                           rendered as "Game night with group" — confusing UI.
-                           Backend GET /:event_id now includes Group eagerly
-                           (Plan 71.1-02 Blocker 2 backend fix), so this should
-                           always populate; the truthy check here is defense-
-                           in-depth so old data paths can never display the
-                           literal-word fallback. */
-                        <>
-                            <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
-                            {(userScope === 'group-member' || userScope === 'pending') ? (
-                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">
-                                    {singleEvent.Group.name}
-                                </Link>
-                            ) : (
-                                /* Phase 71.1 GAMP-11: game-only / none — render group
-                                   name as static text (no link). Per CONTEXT: "Group
-                                   name is shown as context but is not a link — they
-                                   can't navigate to a group page they don't belong
-                                   to." */
-                                <span className="text-content-secondary">
-                                    Game night with {singleEvent.Group.name}
-                                </span>
-                            )}
-                        </>
-                    )}
-                    <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
-                    {/* D-03 / R2 #171 (T-88.6-138, same shape as plan 17's breadcrumb): the
-                        weight was the ONLY thing marking the current page, so 700 is KEPT as the
-                        hierarchy outcome AND the distinction gains a PROGRAMMATIC cue. Without
-                        `aria-current` this would have been a visual-weight-only signal. */}
-                    <span aria-current="page" className="text-content-primary font-bold">{singleEvent.title || 'Game Night'}</span>
+                    <div className="bb-crumbs">
+                        <span>
+                            <Link href="/" className="rounded-sm px-1 -mx-1 text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
+                        </span>
+                        {effectiveGroupId && singleEvent?.Group?.name && (
+                            /* Phase 71.1-02 Blocker 2 fix: only render the group
+                               segment when we actually have a group name. The
+                               previous fallback to the literal word "group"
+                               rendered as "Game night with group" — confusing UI.
+                               Backend GET /:event_id now includes Group eagerly
+                               (Plan 71.1-02 Blocker 2 backend fix), so this should
+                               always populate; the truthy check here is defense-
+                               in-depth so old data paths can never display the
+                               literal-word fallback. */
+                            <span>
+                                <span aria-hidden="true" className="text-content-muted mr-2">{'>'}</span>
+                                {(userScope === 'group-member' || userScope === 'pending') ? (
+                                    <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="rounded-sm px-1 -mx-1 text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">
+                                        {singleEvent.Group.name}
+                                    </Link>
+                                ) : (
+                                    /* Phase 71.1 GAMP-11: game-only / none — render group
+                                       name as static text (no link). Per CONTEXT: "Group
+                                       name is shown as context but is not a link — they
+                                       can't navigate to a group page they don't belong
+                                       to." */
+                                    <span className="text-content-secondary">
+                                        Game night with {singleEvent.Group.name}
+                                    </span>
+                                )}
+                            </span>
+                        )}
+                        <span>
+                            <span aria-hidden="true" className="text-content-muted mr-2">{'>'}</span>
+                            {/* D-03 / R2 #171 (T-88.6-138, same shape as plan 17's breadcrumb): the
+                                weight was the ONLY thing marking the current page, so 700 is KEPT as the
+                                hierarchy outcome AND the distinction gains a PROGRAMMATIC cue. Without
+                                `aria-current` this would have been a visual-weight-only signal. */}
+                            <span aria-current="page" className="text-content-primary font-bold">{singleEvent.title || 'Game Night'}</span>
+                        </span>
+                    </div>
                 </nav>
 
                 {/* Phase 62-02: nudge banner so users without a profile TZ
@@ -3807,41 +3826,48 @@ export default function GameDetailPage() {
             {/* DECISION Phase 88.6.1-74 (C12, focus when a view is withdrawn): the group-content guard. */}
             <RetainedContentFocusGuard retained={groupContentRetained} focusTarget={gameTitleRef} />
             {/* Breadcrumbs */}
-            {/* Same ring, hidden separators and `min-w-0` as the event-view breadcrumb — `DECISION Phase 88.6.1-52 (D-46 / R7-M7)`. */}
+            {/* Same ring, hidden separators and `min-w-0` as the event-view breadcrumb — `DECISION Phase 88.6.1-52 (D-46 / R7-M7)`.
+                The crumbs are .bb-crumbs items here too: the game-crumbs amendment of that marker has the why. */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-edge-card py-2 rounded-lg inline-block max-w-full wrap-break-word min-w-0">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
-                {group_id && (
-                    <>
-                        <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
-                        {(userScope === 'group-member' || userScope === 'pending') ? (
-                            /* Group-context (game_id present) view: group-members
-                               see the link with the group name (or generic "Group"
-                               while loading — graceful, not load-bearing for the
-                               game-only flow).
-                               DECISION Phase 88.9-52 (W35): on this view the name comes from the
-                               group-nights answer this view already reads (each night carries its
-                               Group), chosen OVER the shipped singleEvent read alone (always empty
-                               here, so the crumb always said "Group") and OVER a new group read
-                               for one word. A group with no night at all still reads "Group". */
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">
-                                {singleEvent?.Group?.name || gameViewGroupName || 'Group'}
-                            </Link>
-                        ) : singleEvent?.Group?.name ? (
-                            /* Phase 71.1 GAMP-11 + Blocker 2 fix: render the
-                               static-text breadcrumb only when we have an actual
-                               group name. Suppress the literal "group" word
-                               fallback to avoid "Game night with group" UI. */
-                            <span className="text-content-secondary">
-                                Game night with {singleEvent.Group.name}
-                            </span>
-                        ) : null}
-                    </>
-                )}
-                <span aria-hidden="true" className="text-content-muted mx-2">{'>'}</span>
-                {/* D-03 / R2 #171 (T-88.6-138): the current-page twin of the single-event
-                    breadcrumb above — 700 kept as hierarchy, `aria-current` added so the
-                    distinction is not weight-only. */}
-                <span aria-current="page" className="text-content-primary font-bold">{game.name}</span>
+                <div className="bb-crumbs">
+                    <span>
+                        <Link href="/" className="rounded-sm px-1 -mx-1 text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">Home</Link>
+                    </span>
+                    {group_id && (
+                        <span>
+                            <span aria-hidden="true" className="text-content-muted mr-2">{'>'}</span>
+                            {(userScope === 'group-member' || userScope === 'pending') ? (
+                                /* Group-context (game_id present) view: group-members
+                                   see the link with the group name (or generic "Group"
+                                   while loading — graceful, not load-bearing for the
+                                   game-only flow).
+                                   DECISION Phase 88.9-52 (W35): on this view the name comes from the
+                                   group-nights answer this view already reads (each night carries its
+                                   Group), chosen OVER the shipped singleEvent read alone (always empty
+                                   here, so the crumb always said "Group") and OVER a new group read
+                                   for one word. A group with no night at all still reads "Group". */
+                                <Link href={`/groupHomePage?id=${group_id}`} className="rounded-sm px-1 -mx-1 text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:focus-ring">
+                                    {singleEvent?.Group?.name || gameViewGroupName || 'Group'}
+                                </Link>
+                            ) : singleEvent?.Group?.name ? (
+                                /* Phase 71.1 GAMP-11 + Blocker 2 fix: render the
+                                   static-text breadcrumb only when we have an actual
+                                   group name. Suppress the literal "group" word
+                                   fallback to avoid "Game night with group" UI. */
+                                <span className="text-content-secondary">
+                                    Game night with {singleEvent.Group.name}
+                                </span>
+                            ) : null}
+                        </span>
+                    )}
+                    <span>
+                        <span aria-hidden="true" className="text-content-muted mr-2">{'>'}</span>
+                        {/* D-03 / R2 #171 (T-88.6-138): the current-page twin of the single-event
+                            breadcrumb above — 700 kept as hierarchy, `aria-current` added so the
+                            distinction is not weight-only. */}
+                        <span aria-current="page" className="text-content-primary font-bold">{game.name}</span>
+                    </span>
+                </div>
             </nav>
 
             {/* DECISION Phase 88.6.1-74 (AC-29 / RF1, game view): CHOSEN — plan 70's shared
@@ -3917,13 +3943,25 @@ export default function GameDetailPage() {
                     </div>
                 ) : (
                     /* BGG game: show full detail view */
-                    <div className="flex flex-col md:flex-row gap-6">
+                    /* DECISION Phase 89.6-29 (game-card): the picture stacks above the details when the title
+                       column would be squeezed, chosen OVER a smaller title (GR: nothing shrunk) and OVER
+                       dropping the picture (it identifies the game; sessions still come first below).
+                       Measured: at 768 wide and 200% text the 12rem picture left the title a column so
+                       narrow that 'Imperium:' broke inside the word (CI runs 45910881979 and 45913099717).
+                       The row is the house .bb-columns block: from md up the details column takes the
+                       block's own 18rem basis, so it wraps under the picture when 18rem no longer fits
+                       beside it. Normal text does not move: the gap stays gap-6, the picture keeps the
+                       browser's default flex (flex-initial, so the block's basis never sizes it), and on
+                       phones the column keeps flex-1 in the stacked layout. GR (owner, 2026-11-22: 'A row
+                       stays a row while everything in it fits whole. When it does not, items stack.').
+                       Changing this is a decision, not a cleanup. */
+                    <div className="bb-columns flex-col md:flex-row gap-6">
                         <SafeImage
                             src={game.image_url}
                             alt={game.name}
-                            className="w-full max-w-xs mx-auto h-auto md:mx-0 md:w-48 md:h-48 md:max-w-none object-cover rounded-lg"
+                            className="flex-initial w-full max-w-xs mx-auto h-auto md:mx-0 md:w-48 md:h-48 md:max-w-none object-cover rounded-lg"
                         />
-                        <div className="flex-1 min-w-0">
+                        <div className="max-md:flex-1 min-w-0">
                             {/* Phase 65-03 EVT-04: BGG link on game name. Subtle —
                                 link color + underline only on hover; no separate button,
                                 no chip, no external-link icon. Fallback to plain text

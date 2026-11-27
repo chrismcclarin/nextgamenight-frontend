@@ -18,8 +18,8 @@
 // read on without its timezone parameter). No reach presses a control that writes.
 //
 // WHAT A ROW PRINTS. CI keeps nothing from a passing browser test, so the normal-text boxes of
-// R05-game are printed as one ZZ29 line per width. The phase reads those lines with
-// execute/ci-log.sh in the planning folder.
+// R05-game are printed as ZZ29 lines, six boxes to a line (the phase reads them with
+// execute/ci-log.sh in the planning folder, which cuts a line at 400 characters).
 import type { Locator, Page } from '@playwright/test';
 
 import { E2E_FAKE_GAME_ID, routeFakeGameSuccess } from '../fakeGame';
@@ -200,9 +200,10 @@ async function twoFrames(page: Page): Promise<void> {
 
 /**
  * The page boxes of the game view's rows, each as name=left,top,width,height (page coordinates,
- * two decimals): the breadcrumb's pieces, Show More, each session's date, duration, actions and
- * participant chips, the Reviews heading and Add Review, and each review's name line, date, stars,
- * Recommended and Edit.
+ * two decimals): the breadcrumb and the text of each of its pieces (the words, not the link's box,
+ * so a link's ring gutter does not show as a move), the picture, the details column and the title,
+ * Show More, each session's date, duration, actions and participant chips, the Reviews heading and
+ * Add Review, and each review's name line, date, stars, Recommended and Edit.
  */
 export async function gameRowBoxes(page: Page): Promise<string[]> {
   return page.getByRole('main').evaluate((main) => {
@@ -220,7 +221,16 @@ export async function gameRowBoxes(page: Page): Promise<string[]> {
     };
     const crumbs = main.querySelector('nav[aria-label="Breadcrumb"]');
     add('crumbs', crumbs);
-    Array.from(crumbs?.querySelectorAll('a, span[aria-current], span[aria-hidden="true"]') ?? []).forEach((el, at) => add(`crumb${at}`, el));
+    Array.from(crumbs?.querySelectorAll('a, span[aria-current], span[aria-hidden="true"]') ?? []).forEach((el, at) => {
+      const words = document.createRange();
+      words.selectNodeContents(el);
+      const box = words.getBoundingClientRect();
+      out.push(`crumb${at}=${r2(box.left + window.scrollX)},${r2(box.top + window.scrollY)},${r2(box.width)},${r2(box.height)}`);
+    });
+    const title = main.querySelector('h1');
+    add('picture', title?.parentElement?.previousElementSibling);
+    add('details', title?.parentElement);
+    add('title', title);
     add('showMore', main.querySelector('button[aria-controls="game-description"]'));
     const actions = Array.from(main.querySelectorAll('button[aria-label="Session actions"], button[title="Edit this session"], button[title="Delete this session"]')).filter(visible);
     const rows = [...new Set(actions.map((el) => el.closest('div.mb-2')))].filter((row): row is Element => row !== null);
@@ -252,18 +262,20 @@ export async function gameRowBoxes(page: Page): Promise<string[]> {
   });
 }
 
-// R05-game extras. In the 320 normal-text cell the page is also sized to 375 x 667 and 1280 x 800
-// (normal text) and the row boxes are printed, one ZZ29 line per width: recording only, so the
+// R05-game extras. In the 320 normal-text cell the page is also sized to 375 x 667, 768 x 1024 and
+// 1280 x 800 (normal text) and the row boxes are printed as ZZ29 lines: recording only, so the
 // boxes of one commit can be laid beside the next one's (normal text must not move).
 const gameExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
   if (cell.id !== '320x568-dark-100') return;
   for (const size of [
     { width: 375, height: 667 },
+    { width: 768, height: 1024 },
     { width: 1280, height: 800 },
   ]) {
     await page.setViewportSize(size);
     await twoFrames(page);
-    say(`R05-game boxes ${size.width}x${size.height} ${(await gameRowBoxes(page)).join(' ')}`);
+    const boxes = await gameRowBoxes(page);
+    for (let at = 0; at < boxes.length; at += 6) say(`R05-game boxes ${size.width}x${size.height} ${boxes.slice(at, at + 6).join(' ')}`);
   }
   await page.setViewportSize({ width: cell.width, height: cell.height });
   await twoFrames(page);
