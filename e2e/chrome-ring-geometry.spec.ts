@@ -190,3 +190,67 @@ test('G1 + G2 (89.6-43): the footer controls', async ({ page, browser, baseURL }
 
   expect(problems, `footer G1 + G2: ${problems.length} read(s) outside the rule`).toEqual([]);
 });
+
+// The staged failures of e2e/error-recovery-floor.spec.ts ("const IDENTITY_GET ="), answered in the
+// browser: the identity read (the compact notice on Home) and the schedules list (the full banner on
+// /userProfile). A spec file cannot import another, so the two patterns are repeated here.
+const IDENTITY_GET = /\/users\/[^/?]*%7C[^/?]*(\?|$)/i;
+const PATTERNS_GET = /\/availability\/user\/[^/]+\/patterns/;
+
+test("G1 + G2 (89.6-43): the error banner's controls", async ({ page }) => {
+  hold = await sweepWriteGuard(page, {});
+  // Registered after the guard, so they answer first. GET only; anything else goes back to the hold.
+  let failIdentity = true;
+  await page.route(IDENTITY_GET, async (route) => {
+    if (route.request().method() !== 'GET' || !failIdentity) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ status: 500, json: { error: 'e2e forced failure' } });
+  });
+  await page.route(PATTERNS_GET, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ status: 500, json: { error: 'e2e forced failure' } });
+  });
+  const problems: string[] = [];
+  const read = async (control: Locator, label: string) => {
+    problems.push(...(await ringProblems(page, control, label)));
+    await expectRingWhole(page, control, label);
+  };
+
+  // The compact notice's Retry, on Home (at phone width the one drawn copy is the group list's).
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto('/');
+  const retry = page.getByRole('button', { name: /^Retry( ?, retrying)?$/ });
+  await expect(retry, 'the compact notice never rendered on Home').toHaveCount(1, { timeout: 15_000 });
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  await read(retry, 'compact Retry, 375 x 667, 100% text');
+  await page.setViewportSize({ width: 320, height: 568 });
+  await setTextMode(page, '200', 'compact Retry 320 x 568');
+  await read(retry, 'compact Retry, 320 x 568, 200% text');
+
+  // The full banner on /userProfile: Try again, then Report this once a retry has failed too (the
+  // retry is a GET, answered 500 in the browser like the first read).
+  failIdentity = false;
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto('/userProfile');
+  const tryAgain = page.getByRole('button', { name: /^Try again( ?, retrying)?$/ });
+  await expect(tryAgain, 'the full banner never rendered on /userProfile').toHaveCount(1, { timeout: 15_000 });
+  const report = page.getByRole('button', { name: 'Report this' });
+  await tryAgain.focus();
+  await page.keyboard.press('Enter');
+  await expect(report, 'Report this did not appear after a failed Try again').toHaveCount(1, { timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(1, { timeout: 15_000 });
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  await read(tryAgain, 'Try again, 375 x 667, 100% text');
+  await read(report, 'Report this, 375 x 667, 100% text');
+  await page.setViewportSize({ width: 320, height: 568 });
+  await setTextMode(page, '200', 'full banner 320 x 568');
+  await read(tryAgain, 'Try again, 320 x 568, 200% text');
+  await read(report, 'Report this, 320 x 568, 200% text');
+
+  expect(problems, `banner G1 + G2: ${problems.length} read(s) outside the rule`).toEqual([]);
+});
