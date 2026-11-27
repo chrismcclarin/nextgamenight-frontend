@@ -19,12 +19,18 @@
 // a green CI run prints one line per project naming this spec (CI prints nothing per passing test),
 // and they move in the commit that adds a test. Signed in (the stored sign-in).
 //
+// THE DESKTOP ICONS (owner pick DT-2 = 44, 2026-11-23; SPEC A9 item 3, O-M4 Fixed+). The header
+// bell and the Theme toggle hold a 44 x 44 box at every text size and their icons follow the text to
+// 32px; the bell's count badge follows the same cap. Their sizes are inline min() and calc() values
+// that jsdom cannot read, so the two tests at the end of this file are their only computed check.
+//
 // Selectors are role and name only, never Tailwind classes. Messages carry numbers only.
 import { test, expect, type Locator, type Page } from '@playwright/test';
 
 import { expectNoApiWrites } from './support/inFlight';
 import { expectRingWhole } from './support/largeTextSurfaces/home';
 import { sweepWriteGuard, type SweepHold } from './support/largeTextSurfaces/index';
+import { answerPendingInvites, pendingInvite } from './support/pendingInvite';
 import { readRingRoom } from './support/ringGeometry';
 import { setTextMode } from './support/wordLines';
 
@@ -253,4 +259,122 @@ test("G1 + G2 (89.6-43): the error banner's controls", async ({ page }) => {
   await read(report, 'Report this, 320 x 568, 200% text');
 
   expect(problems, `banner G1 + G2: ${problems.length} read(s) outside the rule`).toEqual([]);
+});
+
+// The desktop list is the header nav's first list; the bell is its Notifications button and the
+// Theme toggle is the button of its last item (the phone menu's row copies are in another list).
+const desktopList = (page: Page): Locator => page.getByRole('navigation', { name: 'Main' }).locator('ul').first();
+const desktopBell = (page: Page): Locator => desktopList(page).getByRole('button', { name: 'Notifications', exact: true });
+const desktopTheme = (page: Page): Locator => desktopList(page).locator('li').last().getByRole('button');
+
+interface IconBox {
+  box: Box;
+  svg: Box;
+}
+
+const iconBox = (control: Locator): Promise<IconBox> =>
+  control.evaluate((element) => {
+    const rect = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    };
+    return { box: rect(element), svg: rect(element.querySelector('svg') as SVGElement) };
+  });
+
+/** What is wrong with one desktop icon control: its box is not 44 x 44, or its icon is not the size named. */
+function iconProblems(read: IconBox, icon: number, label: string): string[] {
+  const problems: string[] = [];
+  if (Math.abs(read.box.width - 44) > PX || Math.abs(read.box.height - 44) > PX) problems.push(`${label}: the box is ${read.box.width} x ${read.box.height}, not 44 x 44`);
+  if (Math.abs(read.svg.width - icon) > PX || Math.abs(read.svg.height - icon) > PX) problems.push(`${label}: the icon is ${read.svg.width} x ${read.svg.height}, not ${icon}`);
+  return problems;
+}
+
+test('O-M4 + DT-2 (89.6-43): the desktop bell and Theme hold 44px', async ({ page }) => {
+  await openSignedIn(page, '/about', 1280, 800);
+  const bell = desktopBell(page);
+  const theme = desktopTheme(page);
+  await expect(bell, 'the desktop bell is not drawn at 1280 x 800 with 100% text').toBeVisible({ timeout: 15_000 });
+  await expect(theme, 'the desktop Theme toggle is not drawn at 1280 x 800 with 100% text').toBeVisible();
+  const problems: string[] = [];
+
+  // 100% text: the as-built 24px and 20px icons in 44px boxes, and the header strip still 64px tall.
+  problems.push(...iconProblems(await iconBox(bell), 24, 'bell, 1280 x 800, 100% text'));
+  problems.push(...iconProblems(await iconBox(theme), 20, 'Theme, 1280 x 800, 100% text'));
+  const strip = await page.getByRole('navigation', { name: 'Main' }).evaluate((nav) => (nav.parentElement as HTMLElement).getBoundingClientRect().height);
+  if (Math.abs(strip - 64) > PX) problems.push(`1280 x 800, 100% text: the header strip is ${strip}px tall, not 64`);
+
+  // 200% text: the boxes hold, the icons stop at 32px. The desktop list is drawn from 1280 wide.
+  await setTextMode(page, '200', 'desktop icons 1280 x 800');
+  for (const [width, height] of [[1280, 800], [1400, 900]] as const) {
+    await page.setViewportSize({ width, height });
+    await expect(bell, `the desktop bell is not drawn at ${width} x ${height} with 200% text`).toBeVisible();
+    problems.push(...iconProblems(await iconBox(bell), 32, `bell, ${width} x ${height}, 200% text`));
+    problems.push(...iconProblems(await iconBox(theme), 32, `Theme, ${width} x ${height}, 200% text`));
+  }
+
+  expect(problems, `desktop icons: ${problems.length} read(s) outside O-M4 Fixed+ at 44px`).toEqual([]);
+});
+
+interface BadgeRead {
+  /** The bell svg. */
+  s: Box;
+  /** The count badge. */
+  b: Box;
+  fontSize: number;
+  /** The share of the bell svg's box the badge covers. */
+  cover: number;
+}
+
+const badgeRead = (bell: Locator): Promise<BadgeRead> =>
+  bell.evaluate((element) => {
+    const rect = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    };
+    const badge = element.querySelector('span[aria-hidden="true"]') as HTMLElement;
+    const s = rect(element.querySelector('svg') as SVGElement);
+    const b = rect(badge);
+    const overlapX = Math.max(0, Math.min(s.x + s.width, b.x + b.width) - Math.max(s.x, b.x));
+    const overlapY = Math.max(0, Math.min(s.y + s.height, b.y + b.height) - Math.max(s.y, b.y));
+    return { s, b, fontSize: Number.parseFloat(getComputedStyle(badge).fontSize), cover: (overlapX * overlapY) / (s.width * s.height) };
+  });
+
+test("badge (89.6-43): the count badge follows the bell's cap and leaves the bell visible", async ({ page }, testInfo) => {
+  // One pending invite, answered in the browser inside the write guard, so the badge reads 1.
+  hold = await sweepWriteGuard(page, { answers: answerPendingInvites([pendingInvite('e2e-badge-cap-invite', 'E2E Badge Cap')]) });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/about');
+  const bell = desktopBell(page);
+  await expect(bell, 'the desktop bell is not drawn at 1280 x 800').toBeVisible({ timeout: 15_000 });
+  const badge = bell.locator('span[aria-hidden="true"]');
+  await expect(badge, 'the count badge is not drawn with one pending invite').toHaveText('1', { timeout: 15_000 });
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  const problems: string[] = [];
+
+  // 100% text, the normal-text identity: 20 x 20, centred on the icon's top-right corner, a 12px digit.
+  const normal = await badgeRead(bell);
+  await testInfo.attach('badge-1280x800-100.json', { body: JSON.stringify(normal, null, 1), contentType: 'application/json' });
+  if (Math.abs(normal.b.width - 20) > PX || Math.abs(normal.b.height - 20) > PX) problems.push(`100% text: the badge is ${normal.b.width} x ${normal.b.height}, not 20 x 20`);
+  const dx = normal.b.x + normal.b.width / 2 - (normal.s.x + normal.s.width);
+  const dy = normal.b.y + normal.b.height / 2 - normal.s.y;
+  if (Math.abs(dx) > PX || Math.abs(dy) > PX) problems.push(`100% text: the badge centre is ${dx.toFixed(2)}px, ${dy.toFixed(2)}px off the icon's top-right corner`);
+  if (Math.abs(normal.fontSize - 12) > PX) problems.push(`100% text: the digit is ${normal.fontSize}px, not 12`);
+
+  // 200% text: 5/6 of the 32px icon, at most 35% of the bell covered, the centre in the bell's
+  // top-right quadrant or outside it, a 16px digit.
+  await setTextMode(page, '200', 'badge 1280 x 800');
+  await expect(bell, 'the desktop bell is not drawn at 1280 x 800 with 200% text').toBeVisible();
+  const large = await badgeRead(bell);
+  await testInfo.attach('badge-1280x800-200.json', { body: JSON.stringify(large, null, 1), contentType: 'application/json' });
+  const want = (32 * 5) / 6;
+  if (Math.abs(large.b.width - want) > PX || Math.abs(large.b.height - want) > PX) problems.push(`200% text: the badge is ${large.b.width.toFixed(2)} x ${large.b.height.toFixed(2)}, not ${want.toFixed(1)} x ${want.toFixed(1)}`);
+  if (large.cover > 0.35) problems.push(`200% text: the badge covers ${(large.cover * 100).toFixed(1)}% of the bell, over 35%`);
+  const centreX = large.b.x + large.b.width / 2;
+  const centreY = large.b.y + large.b.height / 2;
+  if (centreX < large.s.x + large.s.width / 2 || centreY > large.s.y + large.s.height / 2) {
+    problems.push(`200% text: the badge centre (${centreX.toFixed(1)}, ${centreY.toFixed(1)}) is not in the bell's top-right quadrant or outside it`);
+  }
+  if (Math.abs(large.fontSize - 16) > PX) problems.push(`200% text: the digit is ${large.fontSize}px, not 16`);
+
+  expect(problems, `count badge: ${problems.length} read(s) outside the cap`).toEqual([]);
 });
