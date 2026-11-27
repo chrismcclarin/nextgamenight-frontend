@@ -4674,7 +4674,17 @@ export default function GameDetailPage() {
                                 placeholder="Share your thoughts about this game..."
                             />
                         </div>
-                        <div className="flex items-center">
+                        {/* DECISION Phase 89.6-29 (review-dialog, recommend row): the checkbox and its label are
+                            the house row (.bb-row, the label .bb-row-text), so the label moves under the
+                            checkbox when its longest word no longer fits beside it, chosen OVER the plain
+                            flex row it was (at 320 wide and 200% text the word "Recommended" in quotes is
+                            wider than the room beside the checkbox, and the dialog's content scrolled
+                            sideways by 5px) and OVER breaking the word or holding the label small. GR
+                            (owner, 2026-11-22: 'A row stays a row while everything in it fits whole. When
+                            it does not, items stack.'). items-center and gap-x-0 keep normal text where it
+                            was (the checkbox keeps its own mr-2). Changing this is a decision, not a
+                            cleanup. */}
+                        <div className="bb-row items-center gap-x-0">
                             {/* DECISION Phase 88-20 (Req 1): the recommend checkbox stays a NATIVE
                                 <input>, deliberately NOT routed through the `Input` primitive like
                                 its ten filter siblings. The primitive carries `block w-full p-2`,
@@ -4690,7 +4700,7 @@ export default function GameDetailPage() {
                                 onChange={(e) => setReviewForm({...reviewForm, is_recommended: e.target.checked})}
                                 className="mr-2"
                             />
-                            <label htmlFor="recommended" className="text-sm text-content-secondary cursor-pointer">
+                            <label htmlFor="recommended" className="bb-row-text text-sm text-content-secondary cursor-pointer">
                                 ✓ Mark as recommended (shows a "Recommended" badge on your review)
                             </label>
                         </div>

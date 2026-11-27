@@ -83,9 +83,17 @@ export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rat
 
   const handleLeave = () => setHoverValue(null);
 
+  // DECISION Phase 89.6-29 (review-dialog): the stars and their readout WRAP (flex-wrap, capped at the
+  // width they are given), chosen OVER the one unbreakable line they were (five 3rem stars are 496px
+  // at 200% text, so the review dialog's content scrolled sideways by 265 to 321px on a phone, and at
+  // 320 wide and normal text the readout ran past the dialog's edge), OVER holding the stars at a px
+  // size or making them smaller (GR: nothing shrunk; the 48px star is owner pick O15b, see the
+  // docblock above) and OVER letting the dialog scroll sideways. GR (owner, 2026-11-22: 'A row stays
+  // a row while everything in it fits whole. When it does not, items stack.'). While everything fits
+  // (375 wide and up at normal text) nothing moves. Removing the wrap is a decision, not a cleanup.
   return (
     <div
-      className="inline-flex items-center gap-1"
+      className="inline-flex max-w-full flex-wrap items-center gap-1"
       onMouseLeave={handleLeave}
       role="radiogroup"
       aria-label={ariaLabel}
