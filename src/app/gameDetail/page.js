@@ -4017,7 +4017,18 @@ export default function GameDetailPage() {
                                    88-33 Task 9 (UAT row 326): the toggle renders only when the clamped
                                    paragraph ACTUALLY overflows (or is currently expanded — it must stay
                                    reachable to collapse), with aria-expanded/aria-controls disclosure
-                                   semantics. */
+                                   semantics.
+                                   AMENDED Phase 89.6-29 (OW-1): the three-line clamp stays on phones, owner pick
+                                   OW-1 = A, 2026-11-22: 'The game page shows game sessions. When people are going
+                                   to these pages, they are going to mainly see the game sessions. Their score and
+                                   who won, etc. The game description is only there because a person might
+                                   remember the name and picture, but forget what the game was about or how it is
+                                   played. It's a reminder, not the intent of the page.' Chosen OVER showing the
+                                   whole text at large text (the recommendation he declined). It is exception A10
+                                   of the large-text cut check (SPEC A10); the whole text stays one tap away, and
+                                   Show More is held at the 44px floor (min-h-11). The 88.9-52 rule against
+                                   cutting text to keep a layout tidy is met by that one tap. Changing this is a
+                                   decision, not a cleanup. */
                                 <div className="mt-4">
                                     <p
                                         ref={setDescNode}
@@ -4032,7 +4043,7 @@ export default function GameDetailPage() {
                                             onClick={() => setDescExpanded((v) => !v)}
                                             aria-expanded={descExpanded}
                                             aria-controls="game-description"
-                                            className="md:hidden mt-1 text-sm text-content-link hover:text-content-link-hover"
+                                            className="md:hidden mt-1 inline-flex min-h-11 items-center text-sm text-content-link hover:text-content-link-hover rounded-sm px-1 -mx-1"
                                         >
                                             {descExpanded ? 'Show Less' : 'Show More'}
                                         </button>

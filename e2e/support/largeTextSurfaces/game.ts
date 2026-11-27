@@ -262,10 +262,71 @@ export async function gameRowBoxes(page: Page): Promise<string[]> {
   });
 }
 
+/**
+ * Pick OW-1 = A (the description keeps its three-line clamp on phones; Show More is held at the 44px
+ * floor). Wherever the phone layout draws (below the md breakpoint, which the font32 cell is too):
+ * Show More is drawn and at least 44px tall, the description is three lines and has more below
+ * them; one press shows the whole text (Show Less, also at the floor) and a second press puts the
+ * three lines back. Nothing here writes. From md up the whole text shows and no toggle draws.
+ */
+async function showMoreProblems(page: Page): Promise<string[]> {
+  const main = page.getByRole('main');
+  const toggle = main.locator('button[aria-controls="game-description"]');
+  const phoneLayout = await page.evaluate(() => !window.matchMedia('(min-width: 48rem)').matches);
+  const drawn = await toggle.isVisible();
+  if (!phoneLayout) return drawn ? ['Show More is drawn from md up, where the whole description shows'] : [];
+  if (!drawn) return ['Show More is not drawn in the phone layout (the description is cut with no way to read it)'];
+  const read = () =>
+    main.evaluate((root) => {
+      const text = root.querySelector('#game-description');
+      const button = root.querySelector('button[aria-controls="game-description"]');
+      if (!text || !button) return null;
+      const lineHeight = parseFloat(getComputedStyle(text).lineHeight);
+      return {
+        label: (button.textContent ?? '').trim(),
+        expanded: button.getAttribute('aria-expanded'),
+        height: Math.round(button.getBoundingClientRect().height * 100) / 100,
+        lines: Math.round((text.getBoundingClientRect().height / lineHeight) * 100) / 100,
+        hidden: text.scrollHeight - text.clientHeight,
+      };
+    });
+  const problems: string[] = [];
+  const closed = await read();
+  if (!closed) return ['the description or its toggle is gone'];
+  if (closed.label !== 'Show More' || closed.expanded !== 'false') problems.push(`the toggle reads "${closed.label}" (aria-expanded ${closed.expanded}) before it is pressed`);
+  if (closed.height < 43.99) problems.push(`Show More is ${closed.height}px tall (floor 44)`);
+  if (Math.abs(closed.lines - 3) > 0.05) problems.push(`the description is ${closed.lines} lines before Show More is pressed (the clamp is three)`);
+  if (closed.hidden <= 1) problems.push('the description has nothing below its three lines, so Show More should not draw');
+  await toggle.click();
+  await twoFrames(page);
+  const open = await read();
+  if (!open) return [...problems, 'the description or its toggle is gone after the press'];
+  if (open.label !== 'Show Less' || open.expanded !== 'true') problems.push(`after the press the toggle reads "${open.label}" (aria-expanded ${open.expanded})`);
+  if (open.height < 43.99) problems.push(`Show Less is ${open.height}px tall (floor 44)`);
+  if (open.hidden > 1) problems.push(`after the press ${open.hidden}px of the description is still cut`);
+  await toggle.click();
+  await twoFrames(page);
+  const again = await read();
+  if (!again || Math.abs(again.lines - 3) > 0.05 || again.label !== 'Show More') problems.push('a second press did not put the three lines and Show More back');
+  return problems;
+}
+
 // R05-game extras. In the 320 normal-text cell the page is also sized to 375 x 667, 768 x 1024 and
 // 1280 x 800 (normal text) and the row boxes are printed as ZZ29 lines: recording only, so the
-// boxes of one commit can be laid beside the next one's (normal text must not move).
+// boxes of one commit can be laid beside the next one's (normal text must not move). In every
+// cell: the Show More check above.
 const gameExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const problems = (await showMoreProblems(page)).map((line) => `${cell.id}: ${line}`);
+  if (cell.id === '320x568-dark-100') {
+    // The same check at 375 wide, normal text (the lane has no such cell).
+    await page.setViewportSize({ width: 375, height: 667 });
+    await twoFrames(page);
+    problems.push(...(await showMoreProblems(page)).map((line) => `375x667 normal text: ${line}`));
+    await page.setViewportSize({ width: cell.width, height: cell.height });
+    await twoFrames(page);
+  }
+  // A soft failure would leave the cell marked passed, so the problems are thrown as one line.
+  if (problems.length > 0) throw new Error(`R05-game Show More (OW-1 = A): ${problems.join(' | ')}`);
   if (cell.id !== '320x568-dark-100') return;
   for (const size of [
     { width: 375, height: 667 },

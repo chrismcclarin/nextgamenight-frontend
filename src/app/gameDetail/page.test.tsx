@@ -2502,6 +2502,9 @@ describe('gameDetail expand affordances (rows 326/334)', () => {
     const toggle = await screen.findByRole('button', { name: 'Show More' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveAttribute('aria-controls', 'game-description');
+    // Phase 89.6-29 (OW-1 = A): the toggle is held at the 44px floor (min-h-11 on an inline-flex box).
+    expect(toggle.className.split(/\s+/), 'Show More is not held at the 44px floor').toContain('min-h-11');
+    expect(toggle.className.split(/\s+/), 'Show More is not an inline-flex box, so min-h-11 would not centre its word').toContain('inline-flex');
 
     fireEvent.click(toggle);
     expect(screen.getByRole('button', { name: 'Show Less' })).toHaveAttribute(
