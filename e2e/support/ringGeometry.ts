@@ -191,3 +191,111 @@ export async function readRingRoom(page: Page, control: Locator, label: string):
     `top ${two(inkToRing.top)} bottom ${two(inkToRing.bottom)}px (outline offset ${offset}px)`;
   return { radius: read.radius, inkToRing, box: read.box, ink: read.ink, outlineOffset: offset, summary };
 }
+
+// readRingClip(control, reach) — is the ring of a focused control cut off, and by what? The ring
+// box is the control's border box grown by reach on every side (reach comes from the shared ring
+// reader: focusRingMeasurement in e2e/support/contrast.ts). It returns null when the ring is drawn
+// whole, or the FIRST thing that cuts it, with how far the ring passes that thing's padding box per
+// side: a clipping ancestor (overflow-x or overflow-y not visible) or the screen edge (sideways
+// only: the page scrolls down to anything below the fold; and where the page scrolls sideways, the
+// edge is the end of that scroll).
+//
+// Callers: the geometry record (e2e/focus-ring-geometry.spec.ts: readRing and measureRow) and
+// expectRingWhole (e2e/support/largeTextSurfaces/home.ts), which the Home sweep row and the chrome
+// ring spec use. Plan 89.6-45 (the whole-tree ring census) is the next caller.
+//
+// DECISION Phase 89.6-31 (one-clip-read): one clip read in ringGeometry.ts called by the geometry record and expectRingWhole OVER the two ancestor walks plans 88.9-66 and 89.6-16 left — the same rule read twice drifts (the spec stopped at body, the sweep at html). Only containing-block ancestors are read, and body only when its overflow is its own, chosen OVER every ancestor with overflow set (an absolute or fixed control is not clipped by a non-containing ancestor, and an open dialog's scroll lock puts overflow hidden on body, which clips nothing while html is visible; either would read a false cut and send Task 2 to an unneeded inset ring). Changing this is a decision, not a cleanup.
+//
+// The containing-block chain, as CSS defines what can clip a box: from a position absolute element
+// the next element is its containing block (the first ancestor that is positioned, or that has a
+// transform, a filter, a perspective, or contain paint / layout / strict / content); from a position
+// fixed element it is the first ancestor with a transform, a filter, a perspective or that contain
+// (none: only the screen clips it); from any other element it is the parent. Each element reached
+// this way is judged, then becomes the element whose containing block is sought. html is never
+// judged (its overflow belongs to the screen) and body is skipped while html's overflow-x and
+// overflow-y are both visible (body's overflow is then handed to the screen too).
+
+export interface RingClip {
+  /** What cuts the ring: tag, id and classes of the ancestor, or "the screen edge". */
+  by: string;
+  /** How far the ring passes the clipping box per side, px (0 on a side that is whole). */
+  over: SideRoom;
+}
+
+export async function readRingClip(control: Locator, reach: number): Promise<RingClip | null> {
+  return control.evaluate((el, grow) => {
+    const round = (n: number) => Math.round(n * 100) / 100;
+    const rect = el.getBoundingClientRect();
+    const ring = { left: rect.left - grow, top: rect.top - grow, right: rect.right + grow, bottom: rect.bottom + grow };
+    const doc = document.documentElement;
+    const body = document.body;
+
+    // Does this element establish a containing block for fixed (and absolute) descendants?
+    // (Tailwind v4 writes translate-*, rotate-* and scale-* as the translate, rotate and scale
+    // properties, which make a containing block just as transform does.)
+    const containsFixed = (style: CSSStyleDeclaration): boolean =>
+      style.transform !== 'none' ||
+      style.translate !== 'none' ||
+      style.rotate !== 'none' ||
+      style.scale !== 'none' ||
+      style.filter !== 'none' ||
+      style.backdropFilter !== 'none' ||
+      style.perspective !== 'none' ||
+      /\b(paint|layout|strict|content)\b/.test(style.contain) ||
+      /\b(transform|translate|rotate|scale|filter|perspective)\b/.test(style.willChange);
+    const next = (from: Element): Element | null => {
+      const position = getComputedStyle(from).position;
+      if (position !== 'absolute' && position !== 'fixed') return from.parentElement;
+      for (let up = from.parentElement; up; up = up.parentElement) {
+        const style = getComputedStyle(up);
+        if (containsFixed(style)) return up;
+        if (position === 'absolute' && style.position !== 'static') return up;
+      }
+      return null;
+    };
+    const htmlStyle = getComputedStyle(doc);
+    const bodyClips = htmlStyle.overflowX !== 'visible' || htmlStyle.overflowY !== 'visible';
+
+    for (let up = next(el); up; up = next(up)) {
+      if (up === doc) break;
+      if (up === body && !bodyClips) continue;
+      const style = getComputedStyle(up);
+      const clipsX = style.overflowX !== 'visible';
+      const clipsY = style.overflowY !== 'visible';
+      if (!clipsX && !clipsY) continue;
+      // The padding box: clipping starts inside the border and inside a scrollbar's gutter.
+      const box = up.getBoundingClientRect();
+      const left = box.left + up.clientLeft;
+      const top = box.top + up.clientTop;
+      const right = left + up.clientWidth;
+      const bottom = top + up.clientHeight;
+      const over = {
+        left: clipsX ? round(Math.max(0, left - ring.left)) : 0,
+        right: clipsX ? round(Math.max(0, ring.right - right)) : 0,
+        top: clipsY ? round(Math.max(0, top - ring.top)) : 0,
+        bottom: clipsY ? round(Math.max(0, ring.bottom - bottom)) : 0,
+      };
+      if (over.left > 0.5 || over.right > 0.5 || over.top > 0.5 || over.bottom > 0.5) {
+        const classes = String(up.getAttribute('class') ?? '').split(/\s+/).filter(Boolean).join('.');
+        return { by: `${up.tagName.toLowerCase()}${up.id ? `#${up.id}` : ''}${classes ? `.${classes}` : ''}`, over };
+      }
+    }
+    // The screen edge, sideways only. Where the page itself scrolls sideways (the screen's overflow-x
+    // is html's, or body's while html's is visible), the edge is the end of that scroll, not the
+    // window: a ring a sideways scroll brings into view is not cut. With no sideways scroll the two
+    // are the same line.
+    const bodyStyle = body ? getComputedStyle(body) : null;
+    const screenOverflowX = htmlStyle.overflowX !== 'visible' ? htmlStyle.overflowX : (bodyStyle?.overflowX ?? 'visible');
+    const scrollsSideways = screenOverflowX === 'visible' || screenOverflowX === 'auto' || screenOverflowX === 'scroll';
+    const edgeLeft = scrollsSideways ? -window.scrollX : 0;
+    const edgeRight = scrollsSideways ? Math.max(doc.clientWidth, doc.scrollWidth - window.scrollX) : doc.clientWidth;
+    const over = {
+      left: round(Math.max(0, edgeLeft - ring.left)),
+      right: round(Math.max(0, ring.right - edgeRight)),
+      top: 0,
+      bottom: 0,
+    };
+    if (over.left > 0.5 || over.right > 0.5) return { by: 'the screen edge', over };
+    return null;
+  }, reach);
+}

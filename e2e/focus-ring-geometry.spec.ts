@@ -4,7 +4,12 @@ import { test, expect, type Locator, type Page, type Route, type TestInfo } from
 
 import { assertTheme, C40_BAND, describeRing, focusByKeyboard, focusRingMeasurement, forceLightMode, type RingMeasurement } from './support/contrast';
 import { E2E_FAKE_GAME_ID, E2E_GAME_PATH, routeFakeGameSuccess } from './support/fakeGame';
+import { openGroupSettings } from './support/groupSettings';
 import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from './support/inFlight';
+import { answerPromptSettings } from './support/largeTextSurfaces/dialogs';
+import { sweepWriteGuard, type SweepHold } from './support/largeTextSurfaces/index';
+import { readRingClip, readRingRoom, type RingClip, type SideRoom } from './support/ringGeometry';
+import { setTextMode, type TextMode } from './support/wordLines';
 
 // Phase 88.9 plan 66 (X61, owner remarks at round-2 row N22) — keyboard focus rings as NUMBERS.
 //
@@ -56,6 +61,14 @@ import { expectNoApiWrites, holdWrites, settleAnimations, type WriteHold } from 
 // Loading group gate Retry, left with that notice in 88.9-52 P1: the page shows its full banner). Each small notice is staged by answering the self-identity read with a 500 in the
 // browser (the state the captured frames were in); the game page's upcoming night and its two
 // replies are made up and answered in the browser. Nothing is written and no control is pressed.
+//
+// Phase 89.6 plan 31 (the ring census rows) adds the second describe, '89.6-31 ring census rows':
+// rows HELD to owner pick O-1 B (2026-11-22) plus outline rule 10 (G1 a rounded corner of at least
+// 4px, G2 side room round a standalone text control, and a ring no container cuts), read by
+// measureRow through the shared ring reader, readRingRoom and the one clip read, readRingClip. Its
+// cells come from the project: phone runs 320 x 568 at 200% text and 375 x 667 at 100%, journeys
+// runs 1280 x 800 at 100%, both themes in each. It runs under the sweep's write guard and never
+// calls unrouteAll.
 
 
 const RING_FRIEND = { id: 'e2e-friends-x61-f', friend: { id: '88966a61-0000-4000-8000-0000000000d1', username: 'E2E Ring Friend' } };
@@ -100,8 +113,8 @@ interface RingRead {
    * otherwise the widest outward spread or a painted outline's offset plus width.
    */
   outward: number;
-  /** The first ancestor (or the screen) that cuts the ring, with how far it is cut per side. */
-  clippedBy: { by: string; over: Edges } | null;
+  /** The first containing ancestor (or the screen edge) that cuts the ring, with how far it is cut per side (readRingClip). */
+  clippedBy: RingClip | null;
   /** Tabs only: the ring's bottom edge minus the top of the strip's bottom line. */
   pastStripLine: number | null;
 }
@@ -128,7 +141,7 @@ interface RingRecord extends RingRead {
 // One evaluate per control, after it holds a keyboard focus and its animations have settled.
 // reach: the shared reader's reach when the house ring resolved (89.6-14); null reads it here.
 async function readRing(control: Locator, reach: number | null = null): Promise<RingRead> {
-  return control.evaluate((el, readerReach) => {
+  const read: Omit<RingRead, 'clippedBy'> = await control.evaluate((el, readerReach) => {
     const round = (n: number) => Math.round(n * 100) / 100;
     const cs = getComputedStyle(el);
 
@@ -201,40 +214,9 @@ async function readRing(control: Locator, reach: number | null = null): Promise<
         }
       : null;
 
-    // Is the ring cut off? An ancestor whose overflow is not visible clips paint at its padding box.
+    // The ring box, for the tab line below. Whether the ring is cut is read after this evaluate, by the
+    // one clip read (e2e/support/ringGeometry.ts ("export async function readRingClip(")).
     const ring = { left: rect.left - outward, top: rect.top - outward, right: rect.right + outward, bottom: rect.bottom + outward };
-    let clippedBy: { by: string; over: { left: number; top: number; right: number; bottom: number } } | null = null;
-    for (let up = el.parentElement; up && up !== document.body && !clippedBy; up = up.parentElement) {
-      const us = getComputedStyle(up);
-      const clipsX = us.overflowX !== 'visible';
-      const clipsY = us.overflowY !== 'visible';
-      if (!clipsX && !clipsY) continue;
-      const ur = up.getBoundingClientRect();
-      const pad = {
-        left: ur.left + parseFloat(us.borderLeftWidth),
-        top: ur.top + parseFloat(us.borderTopWidth),
-        right: ur.right - parseFloat(us.borderRightWidth),
-        bottom: ur.bottom - parseFloat(us.borderBottomWidth),
-      };
-      const over = {
-        left: clipsX ? round(Math.max(0, pad.left - ring.left)) : 0,
-        top: clipsY ? round(Math.max(0, pad.top - ring.top)) : 0,
-        right: clipsX ? round(Math.max(0, ring.right - pad.right)) : 0,
-        bottom: clipsY ? round(Math.max(0, ring.bottom - pad.bottom)) : 0,
-      };
-      if (over.left > 0.5 || over.top > 0.5 || over.right > 0.5 || over.bottom > 0.5) {
-        clippedBy = { by: `${up.tagName.toLowerCase()}${up.id ? `#${up.id}` : ''}`, over };
-      }
-    }
-    if (!clippedBy) {
-      const over = {
-        left: round(Math.max(0, -ring.left)),
-        top: 0,
-        right: round(Math.max(0, ring.right - document.documentElement.clientWidth)),
-        bottom: 0,
-      };
-      if (over.left > 0.5 || over.right > 0.5) clippedBy = { by: 'the screen edge', over };
-    }
 
     // A tab: the first ancestor that draws a bottom border is the strip; its line starts at the
     // bottom of its padding box.
@@ -268,10 +250,10 @@ async function readRing(control: Locator, reach: number | null = null): Promise<
       outlineColour: cs.outlineColor,
       layers: layers.filter((l) => l.spread > 0),
       outward,
-      clippedBy,
       pastStripLine,
     };
   }, reach);
+  return { ...read, clippedBy: await readRingClip(control, read.outward) };
 }
 
 // A colour that paints nothing: the keyword, a zero FOURTH value in the comma form
@@ -374,10 +356,10 @@ async function measure(ctx: Context, control: Locator, what: string, mustBeHouse
 
 // The numbers leave the run two ways: the attachment (kept with the test's output) and one line
 // per control in the job log, which is where a green run's numbers can be read from.
-async function publish(testInfo: TestInfo, records: RingRecord[]): Promise<void> {
-  expect(records.length, 'no control was measured, so there is nothing to record').toBeGreaterThan(0);
+async function publish(testInfo: TestInfo, records: RingRecord[], census: CensusRecord[] = []): Promise<void> {
+  expect(records.length + census.length, 'no control was measured, so there is nothing to record').toBeGreaterThan(0);
   const file = testInfo.outputPath('ring-geometry.json');
-  await writeFile(file, JSON.stringify(records, null, 1));
+  await writeFile(file, JSON.stringify([...records, ...census], null, 1));
   await testInfo.attach('ring-geometry', { path: file, contentType: 'application/json' });
   for (const r of records) {
     const line = {
@@ -404,6 +386,255 @@ async function publish(testInfo: TestInfo, records: RingRecord[]): Promise<void>
     // eslint-disable-next-line no-console -- the measured ring numbers are this spec's product; plan 88.9-66's table reads them out of the CI log
     console.log(`[88.9-66 X61 ring] ${JSON.stringify(line)}`);
   }
+  // The census rows (Phase 89.6-31): one line per record, the row id first.
+  for (const c of census) {
+    // eslint-disable-next-line no-console -- the census numbers are this spec's product; a green CI run prints nothing else per row
+    console.log(`[89.6-31 census] ${c.row} ${JSON.stringify(c)}`);
+  }
+}
+
+// ---- Phase 89.6-31: the ring census rows ----
+//
+// The rows owner pick O-1 B (2026-11-22, "Two-colour ring, 2px") left at risk: the Modal close, the
+// sites plan 89.6-13 moved 2px outside their box, and the rows no earlier census reached. Unlike the
+// X61 tests above, which record looks and assert only the house ring, a census row is HELD to the
+// rule: the house ring resolves (the shared reader), its two bands are C40-apart, its corner is at
+// least 4px (outline rule 10, G1), a standalone text control keeps side room (G2), and no container
+// cuts it (the one clip read). The whole-tree census (every ring string in the tree) is plan 89.6-45.
+
+/** One census row: a control the pick left at risk. */
+interface CensusRow {
+  id: string;
+  /** 'house': held to the house ring. 'checkbox': the browser's own ring, a written exception (pick O-1b c). */
+  kind: 'house' | 'checkbox';
+  /** A standalone text control: G2 asks for room between its words and the ring, left and right. */
+  textControl?: boolean;
+  note?: string;
+  /** The row has no production mount: it is measured at unit level and never reached here (the cite says where). */
+  noConsumer?: string;
+}
+
+const EDGE_ROWS: readonly CensusRow[] = [
+  { id: 'E-01', kind: 'house', note: 'the Modal close (every house dialog), read in Customize Group' },
+];
+
+function censusRow(rows: readonly CensusRow[], id: string): CensusRow {
+  const row = rows.find((candidate) => candidate.id === id);
+  if (!row) throw new Error(`no census row ${id}`);
+  return row;
+}
+
+interface CensusCell {
+  width: number;
+  height: number;
+  mode: TextMode;
+}
+
+// DECISION Phase 89.6-31 (census-cells): the census cells split by project (phone: 320 / 200 and 375 / 100; journeys: 1280) OVER every cell in both projects (each cell measured twice per run, and the 1280 cell under touch emulation). Changing this is a decision, not a cleanup.
+// The project is read by name and the test branches on it; it never skips (the house convention:
+// e2e/profile-look-fixes.spec.ts ("branches on the project name, it never skips")).
+const PHONE_CELLS: readonly CensusCell[] = [
+  { width: 320, height: 568, mode: '200' },
+  { width: 375, height: 667, mode: '100' },
+];
+const DESKTOP_CELLS: readonly CensusCell[] = [{ width: 1280, height: 800, mode: '100' }];
+const censusCells = (testInfo: TestInfo): readonly CensusCell[] => (testInfo.project.name === 'phone' ? PHONE_CELLS : DESKTOP_CELLS);
+
+interface CensusRecord {
+  row: string;
+  what: string;
+  project: string;
+  theme: 'dark' | 'light';
+  textMode: TextMode;
+  viewport: { width: number; height: number };
+  kind: 'house' | 'checkbox';
+  note?: string;
+  // A house row: the shared reader's numbers, the ring room and the clip read.
+  ringKind?: 'offset' | 'inset';
+  outer?: string;
+  inner?: string;
+  outlineWidth?: number;
+  outlineOffset?: number;
+  bandWidth?: number;
+  reach?: number;
+  bandRatio?: number;
+  ratio?: number;
+  /** The control's smallest corner radius, px. */
+  radius?: number;
+  /** The ring's outer corner: radius + outlineOffset + outlineWidth. */
+  ringRadius?: number;
+  inkToRing?: SideRoom;
+  box?: SideRoom;
+  clippedBy?: RingClip | null;
+  /** The shared reader's throw when the house ring did not resolve. */
+  notHouse?: string;
+  // A checkbox row: the browser's own ring.
+  outlineStyle?: string;
+  boxShadow?: string;
+}
+
+interface CensusContext {
+  page: Page;
+  testInfo: TestInfo;
+  theme: 'dark' | 'light';
+  cell: CensusCell;
+  census: CensusRecord[];
+}
+
+const two = (n: number): number => Math.round(n * 100) / 100;
+
+// G1: the house corner is at least 4px. G2: 4px of padding plus the ring's 2px offset is 6px of
+// room; 0.5px is subpixel slack (the numbers of e2e/chrome-ring-geometry.spec.ts ("const MIN_SIDE_ROOM = 5.5;")).
+const CENSUS_MIN_RADIUS = 4;
+const CENSUS_MIN_SIDE_ROOM = 5.5;
+
+// DECISION Phase 89.6-31 (census-record): every census row is held to owner pick O-1 B (2026-11-22) plus G1 and a whole ring, and overlap is recorded, never asserted OVER an overlap check — the owner: "There is no issue with B."; a ring cut by its container is the defect. Changing this is a decision, not a cleanup.
+//
+// Focus one census control by keyboard, record it, and hold it to its row's rule. It branches on
+// the row's kind FIRST: the shared reader throws on the browser's own outline, so it never runs
+// for a checkbox except to prove that throw.
+async function measureRow(ctx: CensusContext, row: CensusRow, control: Locator, what = ''): Promise<void> {
+  const { page, testInfo, theme, cell, census } = ctx;
+  const where = `${row.id}${what ? ` ${what}` : ''} (${theme}, ${cell.width} x ${cell.height}, ${cell.mode}% text, ${testInfo.project.name})`;
+  const base = {
+    row: row.id,
+    what,
+    project: testInfo.project.name,
+    theme,
+    textMode: cell.mode,
+    viewport: page.viewportSize() ?? { width: 0, height: 0 },
+    kind: row.kind,
+    ...(row.note ? { note: row.note } : {}),
+  };
+
+  if (row.kind === 'checkbox') {
+    await focusByKeyboard(page, control);
+    await settleAnimations(control);
+    const read = await control.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { focusVisible: el.matches(':focus-visible'), outlineStyle: cs.outlineStyle, boxShadow: cs.boxShadow };
+    });
+    census.push({ ...base, outlineStyle: read.outlineStyle, boxShadow: read.boxShadow });
+    expect.soft(read.focusVisible, `${where}: the checkbox never matched :focus-visible`).toBe(true);
+    expect.soft(read.outlineStyle, `${where}: the checkbox does not draw the browser's own ring (outline-style ${read.outlineStyle})`).toBe('auto');
+    // No house band: neither the outset band (a 2px spread) nor the inset pair (2px and 4px).
+    expect
+      .soft(/\b0px 0px 0px [24]px\b/.test(read.boxShadow), `${where}: the checkbox carries a house band layer (box-shadow: ${read.boxShadow})`)
+      .toBe(false);
+    // The written exception is pinned by the reader itself: it refuses the browser's own outline.
+    await expect(focusRingMeasurement(page, control, where), `${where}: the shared reader read the browser's ring as the house ring`).rejects.toThrow(
+      /the browser's own outline, not the house ring/,
+    );
+    return;
+  }
+
+  let m: RingMeasurement;
+  try {
+    m = await focusRingMeasurement(page, control, where);
+  } catch (error) {
+    const notHouse = error instanceof Error ? error.message : String(error);
+    census.push({ ...base, notHouse });
+    expect.soft(false, `${where}: the house ring is not painted: ${notHouse}`).toBe(true);
+    return;
+  }
+  const room = await readRingRoom(page, control, where);
+  const clippedBy = await readRingClip(control, m.reach);
+  const ringRadius = room.radius + m.outlineOffset + m.outlineWidth;
+  census.push({
+    ...base,
+    ringKind: m.ringGroundKind,
+    outer: m.outer,
+    inner: m.inner,
+    outlineWidth: m.outlineWidth,
+    outlineOffset: m.outlineOffset,
+    bandWidth: m.bandWidth,
+    reach: m.reach,
+    bandRatio: Math.round(m.bandRatio * 1000) / 1000,
+    ratio: Math.round(m.ratio * 1000) / 1000,
+    radius: two(room.radius),
+    ringRadius: two(ringRadius),
+    inkToRing: { left: two(room.inkToRing.left), right: two(room.inkToRing.right), top: two(room.inkToRing.top), bottom: two(room.inkToRing.bottom) },
+    box: { left: two(room.box.left), right: two(room.box.right), top: two(room.box.top), bottom: two(room.box.bottom) },
+    clippedBy,
+  });
+
+  const ring = describeRing(where, m);
+  const inset = m.ringGroundKind === 'inset';
+  expect.soft(m.outlineWidth, `${where}: the outline is ${m.outlineWidth}px, the house ring 2px. ${ring}`).toBe(2);
+  expect.soft(m.outlineOffset, `${where}: the outline sits at ${m.outlineOffset}px, the house ring ${inset ? -2 : 2}px. ${ring}`).toBe(inset ? -2 : 2);
+  expect.soft(m.bandWidth, `${where}: the inner band is ${m.bandWidth}px, the house ring ${inset ? 4 : 2}px. ${ring}`).toBe(inset ? 4 : 2);
+  expect.soft(m.bandRatio, `${where}: the two bands are not C40-apart. ${ring}`).toBeGreaterThanOrEqual(C40_BAND);
+  expect.soft(m.ratio, `${where}: neither band is 3:1 against the ground and the fill. ${ring}`).toBeGreaterThanOrEqual(3);
+  expect.soft(room.radius, `${where}: G1 the ring corner is ${two(room.radius)}px, under ${CENSUS_MIN_RADIUS} (${room.summary})`).toBeGreaterThanOrEqual(CENSUS_MIN_RADIUS);
+  expect
+    .soft(clippedBy, `${where}: the ring is cut off by ${clippedBy?.by} (per side: ${JSON.stringify(clippedBy?.over)})`)
+    .toBeNull();
+  if (row.textControl) {
+    expect
+      .soft(
+        Math.min(room.inkToRing.left, room.inkToRing.right),
+        `${where}: G2 ink to ring is ${two(room.inkToRing.left)}px left and ${two(room.inkToRing.right)}px right, under 6 (${room.summary})`,
+      )
+      .toBeGreaterThanOrEqual(CENSUS_MIN_SIDE_ROOM);
+  }
+}
+
+// The clip read can fail, and reads only what CSS lets clip (run once, on the open Customize Group
+// dialog): (1) a header that clips at its own edge cuts the close's ring and is named; (2) an
+// absolutely positioned control outside a clipping wrapper that is NOT its containing block is not
+// cut, and is once the wrapper is positioned; (3) under the dialog's scroll lock, body's overflow
+// is hidden while html's is visible, and body clips nothing.
+async function proveClipRead(page: Page, dialog: Locator, close: Locator): Promise<void> {
+  const { reach } = await focusRingMeasurement(page, close, 'clip self-proof: the Modal close');
+  expect(await readRingClip(close, reach), 'clip self-proof: the close ring reads cut before anything is staged').toBeNull();
+
+  // (1) The header clips at its own edge.
+  const header = close.locator('xpath=..');
+  await header.evaluate((el) => el.setAttribute('id', 'e2e-ring-clip-proof'));
+  const clipping = await page.addStyleTag({ content: '#e2e-ring-clip-proof { overflow: hidden !important; padding: 0 !important; }' });
+  const cut = await readRingClip(close, reach);
+  expect(cut?.by ?? 'null', 'clip self-proof (1): a header clipping at its own edge is not named').toContain('#e2e-ring-clip-proof');
+  expect(cut?.over.right ?? 0, `clip self-proof (1): the close ring passes the header's right edge by its reach (${JSON.stringify(cut?.over)})`).toBeGreaterThan(reach - 0.5);
+  await clipping.evaluate((el) => el.parentNode?.removeChild(el));
+  await header.evaluate((el) => el.removeAttribute('id'));
+  expect(await readRingClip(close, reach), 'clip self-proof (1): the read did not recover once the staged style left').toBeNull();
+
+  // (2) A clipping wrapper that is not the control's containing block clips nothing.
+  await page.evaluate(() => {
+    const wrap = document.createElement('div');
+    wrap.id = 'e2e-ring-clip-wrap';
+    wrap.setAttribute('style', 'overflow: hidden; width: 40px; height: 40px;');
+    const button = document.createElement('button');
+    button.id = 'e2e-ring-clip-abs';
+    button.type = 'button';
+    button.textContent = 'x';
+    button.setAttribute('style', 'position: absolute; left: 100px; top: 200px; width: 44px; height: 44px;');
+    wrap.appendChild(button);
+    document.body.appendChild(wrap);
+  });
+  const fixture = page.locator('#e2e-ring-clip-abs');
+  expect(await readRingClip(fixture, reach), 'clip self-proof (2): a wrapper that is not the containing block was read as cutting').toBeNull();
+  await page.evaluate(() => document.getElementById('e2e-ring-clip-wrap')?.style.setProperty('position', 'relative'));
+  const contained = await readRingClip(fixture, reach);
+  expect(contained?.by ?? 'null', 'clip self-proof (2): the wrapper, once positioned, is not named').toContain('#e2e-ring-clip-wrap');
+  await page.evaluate(() => document.getElementById('e2e-ring-clip-wrap')?.remove());
+
+  // (3) The scroll lock: body's overflow is hidden, html's is visible, the page is made shorter
+  // than the screen, and the dialog's last control lies outside body's box.
+  const last = dialog.locator('button, a[href], input, select, textarea').last();
+  await last.focus();
+  const lock = await page.evaluate(() => {
+    const body = getComputedStyle(document.body);
+    const html = getComputedStyle(document.documentElement);
+    return { body: `${body.overflowX} ${body.overflowY}`, html: `${html.overflowX} ${html.overflowY}` };
+  });
+  expect(lock.body, 'clip self-proof (3): the open dialog did not lock the page scroll on body').toBe('hidden hidden');
+  expect(lock.html, "clip self-proof (3): html's overflow is not visible, so body's is its own").toBe('visible visible');
+  await page.evaluate(() => document.body.style.setProperty('height', '10px', 'important'));
+  const outside = await last.evaluate((el) => el.getBoundingClientRect().top > document.body.getBoundingClientRect().bottom);
+  expect(outside, "clip self-proof (3): the dialog's last control is not outside body's box").toBe(true);
+  expect(await readRingClip(last, reach), "clip self-proof (3): body's scroll-lock overflow was read as cutting the dialog's last control").toBeNull();
+  await page.evaluate(() => document.body.style.removeProperty('height'));
 }
 
 const isFriendshipList = (url: URL, key: 'status' | 'direction', value: string) =>
@@ -765,5 +996,91 @@ test.describe('focus ring geometry, measured (plan 88.9-66, X61)', () => {
       await measureVisibleRetries(ctx, 'Plan Game Session');
     }
     await publish(testInfo, records);
+  });
+});
+
+// Scrolls every scroll area of a dialog (the shell, and the Body where it scrolls by itself) to its
+// end; returns how far the furthest one moved, so a caller can tell that something scrolled.
+async function scrollDialogToEnd(dialog: Locator): Promise<number> {
+  return dialog.evaluate((shell) => {
+    let moved = 0;
+    for (const el of [shell, ...Array.from(shell.querySelectorAll('*'))]) {
+      if (el.scrollHeight <= el.clientHeight + 1) continue;
+      const overflowY = getComputedStyle(el).overflowY;
+      if (overflowY !== 'auto' && overflowY !== 'scroll') continue;
+      const before = el.scrollTop;
+      el.scrollTop = el.scrollHeight;
+      moved = Math.max(moved, el.scrollTop - before);
+    }
+    return moved;
+  });
+}
+
+test.describe('89.6-31 ring census rows', () => {
+  // The sweep's write guard (holdWrites first; the self read sent on without its timezone
+  // parameter; a GET that writes held unless the test answers it), registered before the first
+  // navigation: e2e/support/largeTextSurfaces/index.ts ("export async function sweepWriteGuard").
+  // A test sets `answers` before it navigates. No unrouteAll: turning interception off resumes the
+  // requests the hold is holding.
+  let hold: SweepHold | undefined;
+  let answers: (url: URL) => unknown = () => undefined;
+  test.beforeEach(async ({ page }) => {
+    answers = () => undefined;
+    hold = await sweepWriteGuard(page, { answers: (url) => answers(url) });
+  });
+  test.afterEach(() => {
+    expectNoApiWrites(hold);
+    expect(hold?.writeGets ?? [], 'a GET that writes was held with no answer').toEqual([]);
+    hold = undefined;
+  });
+
+  test('E-01 (89.6-31): the Modal close draws a rounded, whole house ring, at rest and after the shell scrolls', async ({ page }, testInfo) => {
+    const census: CensusRecord[] = [];
+    const row = censusRow(EDGE_ROWS, 'E-01');
+    let proved = false;
+    // Customize Group mounts the check-in schedule summary; its settings read is a GET that writes.
+    answers = answerPromptSettings;
+
+    for (const theme of THEMES) {
+      if (theme === 'light') await forceLightMode(page);
+      await openGroupSettings(page);
+      await assertTheme(page, theme);
+      const dialog = page.getByRole('dialog', { name: /customize group/i });
+      const close = dialog.locator('[data-modal-close]');
+      await expect(close, `E-01 (${theme}): Customize Group has no header close`).toHaveCount(1);
+      // The dialog's 200ms opening animation: a read inside it measures a transformed box.
+      await settleAnimations(dialog);
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      if (!proved) {
+        await proveClipRead(page, dialog, close);
+        proved = true;
+      }
+
+      for (const cell of censusCells(testInfo)) {
+        const ctx: CensusContext = { page, testInfo, theme, cell, census };
+        const at = `E-01 (${theme}, ${cell.width} x ${cell.height}, ${cell.mode}% text)`;
+        await page.setViewportSize({ width: cell.width, height: cell.height });
+        await setTextMode(page, cell.mode, at);
+        await settleAnimations(dialog);
+        await dialog.evaluate((shell) => {
+          for (const el of [shell, ...Array.from(shell.querySelectorAll('*'))]) el.scrollTop = 0;
+        });
+        await measureRow(ctx, row, close, 'the Modal close, at rest');
+
+        // After the shell is scrolled to its end, Shift+Tab from the first control under the header
+        // brings the keyboard back to the close, and the browser scrolls it into view.
+        await close.focus();
+        await page.keyboard.press('Tab');
+        await expect(close, `${at}: Tab did not leave the close`).not.toBeFocused();
+        const moved = await scrollDialogToEnd(dialog);
+        if (cell.width === 320) {
+          expect(moved, `${at}: nothing in Customize Group scrolled, so the after-scroll read measures the resting state again`).toBeGreaterThan(0);
+        }
+        await page.keyboard.press('Shift+Tab');
+        await expect(close, `${at}: Shift+Tab did not return the keyboard to the close`).toBeFocused();
+        await measureRow(ctx, row, close, `the Modal close, after the shell scrolls to its end (${Math.round(moved)}px)`);
+      }
+    }
+    await publish(testInfo, [], census);
   });
 });

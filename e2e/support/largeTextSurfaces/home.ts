@@ -12,6 +12,7 @@ import { expect, type Locator, type Page, type Route } from '@playwright/test';
 
 import { focusRingMeasurement } from '../contrast';
 import { settleAnimations } from '../inFlight';
+import { readRingClip } from '../ringGeometry';
 import { scrubbedFetch } from '../scrubbedFetch';
 import { EMOJI_NAME, THIRTY_LETTER_WORD } from '../wordLines';
 import { toDialogTop } from './dialogs';
@@ -180,39 +181,17 @@ const upcomingEmptyShown: SurfaceRow['extras'] = async (page, cell) => {
 
 /**
  * The focus ring of locator is drawn whole: focused by keyboard, its ring reaches reach px past the
- * border box (focusRingMeasurement, plan 89.6-14), and no ancestor up to html whose overflow is not
- * visible has a padding box that cuts that grown box (0.5px). The page and body clip only sideways
- * (their vertical overflow is the page's own scroll). Used by e2e/home-large-text.spec.ts and by
- * R01's extras (one helper, never a copy).
+ * border box (focusRingMeasurement, plan 89.6-14), and the one clip read finds nothing that cuts
+ * that grown box: e2e/support/ringGeometry.ts ("export async function readRingClip("), which walks
+ * the control's containing-block chain and then the screen edge (0.5px). Used by
+ * e2e/home-large-text.spec.ts, e2e/chrome-ring-geometry.spec.ts and R01's extras (one helper,
+ * never a copy). AMENDED Phase 89.6-31 (one-clip-read): the ancestor walk this helper carried is
+ * gone; the shared read is the rule.
  */
 export async function expectRingWhole(page: Page, locator: Locator, label: string): Promise<void> {
   const { reach } = await focusRingMeasurement(page, locator, label);
-  const clipped = await locator.evaluate((element, grow) => {
-    const box = element.getBoundingClientRect();
-    const ring = { left: box.left - grow, right: box.right + grow, top: box.top - grow, bottom: box.bottom + grow };
-    const found: string[] = [];
-    const doc = document.documentElement;
-    for (let a = element.parentElement; a; a = a.parentElement) {
-      const style = getComputedStyle(a);
-      const clipsX = style.overflowX !== 'visible';
-      const clipsY = style.overflowY !== 'visible';
-      if (!clipsX && !clipsY) continue;
-      const page = a === doc || a === document.body;
-      const rect = a.getBoundingClientRect();
-      const left = page ? 0 : rect.left + a.clientLeft;
-      const right = page ? doc.clientWidth : left + a.clientWidth;
-      const top = rect.top + a.clientTop;
-      const bottom = top + a.clientHeight;
-      const cuts: string[] = [];
-      if (clipsX && ring.left < left - 0.5) cuts.push(`left by ${(left - ring.left).toFixed(2)}px`);
-      if (clipsX && ring.right > right + 0.5) cuts.push(`right by ${(ring.right - right).toFixed(2)}px`);
-      if (!page && clipsY && ring.top < top - 0.5) cuts.push(`top by ${(top - ring.top).toFixed(2)}px`);
-      if (!page && clipsY && ring.bottom > bottom + 0.5) cuts.push(`bottom by ${(ring.bottom - bottom).toFixed(2)}px`);
-      if (cuts.length > 0) found.push(`${a.tagName.toLowerCase()}.${String(a.className).split(/\s+/).filter(Boolean).join('.')} cuts it ${cuts.join(', ')}`);
-    }
-    return found;
-  }, reach);
-  expect(clipped, `${label}: its focus ring (reach ${reach}px) is cut by an ancestor that clips`).toEqual([]);
+  const clip = await readRingClip(locator, reach);
+  expect(clip, `${label}: its focus ring (reach ${reach}px) is cut by ${clip?.by} (per side: ${JSON.stringify(clip?.over)})`).toBeNull();
 }
 
 // R01 extras (owner pick O-M4 = Fixed+, 2026-11-22: 'The box stays 44px, and the icon inside grows
