@@ -1,4 +1,5 @@
-// Surface rows: the game page (the game view of census R05) and the two review dialogs. Owner: plan 89.6-29.
+// Surface rows: the game page (the game view of census R05), its two empty states and the two review
+// dialogs. Owner: plan 89.6-29.
 // One row per line, each with its census id.
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 //
@@ -26,6 +27,7 @@ import { E2E_FAKE_GAME_ID, routeFakeGameSuccess } from '../fakeGame';
 import { settleAnimations } from '../inFlight';
 import { routeMemberRoster } from '../memberRoster';
 import { TWO_WORD_NAME } from '../wordLines';
+import { toDialogTop } from './dialogs';
 import type { SurfaceRow, SweepCell } from './index';
 import { LONG_NAME, SHORT_GUEST, everyMemberAnOwner, groupId, onGet, uuid } from './night';
 
@@ -342,8 +344,81 @@ const gameExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: S
   await twoFrames(page);
 };
 
+// The card (the nearest .card above the line) that holds an empty-state line.
+const cardOf = (line: Locator): Locator => line.locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " card ")][1]');
+
+// R05-game-sessions-empty: the staged game view with the group's events read answered as an empty
+// list (no history at all, so the ruled empty line shows, not the filtered one). The root is the
+// Game Sessions card.
+const reachSessionsEmpty: SurfaceRow['reach'] = async (page) => {
+  const main = await openGame(page, { sessions: false });
+  const card = cardOf(main.getByText('No game sessions yet', { exact: false }));
+  await card.waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: card };
+};
+
+// R05-game-reviews-empty: the staged game view with the reviews read answered as an empty list. The
+// root is the Reviews card, its header and Add Review included.
+const reachReviewsEmpty: SurfaceRow['reach'] = async (page) => {
+  const main = await openGame(page, { reviews: false });
+  const card = cardOf(main.getByText('No reviews yet. Be the first to review this game.', { exact: true }));
+  await card.waitFor({ state: 'visible', timeout: 15_000 });
+  await card.getByRole('button', { name: 'Add Review', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  return { root: card };
+};
+
+// D29 and D30: the review form. D29 is the staged game view without the viewer's own review, where
+// Add Review opens Write a Review; D30 is the staged view with it, where the own review's Edit opens
+// Edit Your Review. Neither reach submits: opening the form writes nothing.
+type ReviewDialogName = 'Write a Review' | 'Edit Your Review';
+const reviewDialog = (page: Page, name: ReviewDialogName): Locator => page.getByRole('dialog', { name, exact: true });
+async function openReviewDialog(page: Page, name: ReviewDialogName, opener: Locator): Promise<{ root: Locator; dialog: Locator }> {
+  await opener.click();
+  const dialog = reviewDialog(page, name);
+  await dialog.waitFor({ state: 'visible', timeout: 15_000 });
+  await settleAnimations(dialog);
+  await toDialogTop(dialog);
+  return { root: dialog, dialog };
+}
+const reachWriteReview: SurfaceRow['reach'] = async (page) => {
+  const main = await openGame(page, { ownReview: false });
+  return openReviewDialog(page, 'Write a Review', main.getByRole('button', { name: 'Add Review', exact: true }));
+};
+const reachEditReview: SurfaceRow['reach'] = async (page) => {
+  const main = await openGame(page);
+  // The own review's Edit (the sessions draw an Edit of their own from md up).
+  const own = main.locator('div.border-l-4').filter({ hasText: '(You)' });
+  return openReviewDialog(page, 'Edit Your Review', own.getByRole('button', { name: 'Edit', exact: true }));
+};
+
+// D29 and D30 extras (a tall dialog scrolls, plans 89.6-10 and -11). The form's submit button sits in
+// the dialog body, not in a footer (src/app/gameDetail/page.js ("The submit button stays INSIDE the <form>")), so the
+// shell read does not list it and it is read here: scrolled into view, it lies inside the dialog
+// box, is the thing under a finger at its centre and is at least 44px tall.
+const reviewDialogExtras = (name: ReviewDialogName, submit: string): NonNullable<SurfaceRow['extras']> =>
+  async (page: Page, cell: SweepCell) => {
+    const dialog = reviewDialog(page, name);
+    const problems = await dialog.evaluate((box, label) => {
+      const out: string[] = [];
+      const button = Array.from(box.querySelectorAll('button')).find((candidate) => (candidate.textContent ?? '').trim() === label);
+      if (!button) return [`the dialog holds no "${label}" button`];
+      button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      const at = button.getBoundingClientRect();
+      const frame = box.getBoundingClientRect();
+      if (at.left < frame.left - 0.5 || at.right > frame.right + 0.5 || at.top < frame.top - 0.5 || at.bottom > frame.bottom + 0.5) out.push(`"${label}", scrolled into view, is outside the dialog box`);
+      const under = document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2);
+      if (!under || !(under === button || button.contains(under))) out.push(`"${label}", scrolled into view, is not the thing under a finger at its centre`);
+      if (at.height < 43.99) out.push(`"${label}" is ${Math.round(at.height * 100) / 100}px tall (floor 44)`);
+      return out;
+    }, submit);
+    await toDialogTop(dialog);
+    if (problems.length > 0) throw new Error(`${name} ${cell.id}: ${problems.join(' | ')}`);
+  };
+
 export const rows: SurfaceRow[] = [
   { id: 'R05-game', census: 'R05', kind: 'route', owner: '89.6-29', status: 'enforced', reach: reachGame, extras: gameExtras },
-  { id: 'D29', census: 'D29', kind: 'dialog', owner: '89.6-29', status: 'pending' },
-  { id: 'D30', census: 'D30', kind: 'dialog', owner: '89.6-29', status: 'pending' },
+  { id: 'R05-game-sessions-empty', census: 'R05', kind: 'route', owner: '89.6-29', state: 'No game sessions yet', status: 'enforced', reach: reachSessionsEmpty },
+  { id: 'R05-game-reviews-empty', census: 'R05', kind: 'route', owner: '89.6-29', state: 'No reviews yet', status: 'enforced', reach: reachReviewsEmpty },
+  { id: 'D29', census: 'D29', kind: 'dialog', owner: '89.6-29', status: 'enforced', reach: reachWriteReview, extras: reviewDialogExtras('Write a Review', 'Submit Review') },
+  { id: 'D30', census: 'D30', kind: 'dialog', owner: '89.6-29', status: 'enforced', reach: reachEditReview, extras: reviewDialogExtras('Edit Your Review', 'Update Review') },
 ];
