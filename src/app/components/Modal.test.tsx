@@ -17,6 +17,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 
+import { expectFocusRing } from '../../test-utils/focusRingAssert';
 import { withoutComments } from '../../test-utils/sourceScan';
 import { pressInStackedDialog } from '../../test-utils/stackedDialogPress';
 import { Combobox, type ComboboxItem } from '../../components/ui/Combobox';
@@ -171,6 +172,19 @@ describe('Modal', () => {
     expect(closeButtons).toHaveLength(1);
     await user.click(closeButtons[0]);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // Phase 89.6-31 (census row E-01; outline rule 10, G1): the close paints no fill, so its corner
+  // shows only as the corner of its keyboard ring. The class is the btn radius plan 89.6-10 put on
+  // MODAL_CLOSE_CLASS (8px at every text size); the rendered ring is read by
+  // e2e/focus-ring-geometry.spec.ts ("E-01 (89.6-31): the Modal close draws a rounded, whole house ring").
+  it('89.6-31 G1: the close ring is rounded and is the house ring', () => {
+    renderModal();
+    const close = screen.getByRole('button', { name: 'Close' });
+    const tokens = (close.getAttribute('class') ?? '').split(/\s+/);
+    // Exactly one radius token, and it is the btn radius: a square close, or a second radius beside it, fails.
+    expect(tokens.filter((token) => /^rounded(-|$)/.test(token))).toEqual(['rounded-btn']);
+    expectFocusRing(close, 'the Modal close');
   });
 
   // Phase 88.6-44 (T-88.6-141, WCAG 2.4.3). MEASURED before this pin existed: Radix's modal

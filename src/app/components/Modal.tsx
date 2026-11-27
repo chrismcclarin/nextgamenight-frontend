@@ -71,6 +71,17 @@ export const MODAL_SHELL_CLASS = 'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-
    the title, then the close, which is the dialog's own name first, as on open; putting the close
    first in the DOM would make every dialog read Close before its title. Checked on VoiceOver at
    plan 89.6-32. Changing this is a decision, not a cleanup. */
+/* DECISION Phase 89.6-31 (modal-close): the close KEEPS the btn-radius corner plan 89.6-10 gave it
+   (8px at every text size, so its keyboard ring's outer corner is 12px), chosen OVER the 0.25rem
+   small-radius corner this plan was written to add when the close was still square: plan 10 landed
+   first, the ring is already rounded (owner pick O-1 B, 2026-11-22; outline rule 10, G1), two
+   radius classes on one element conflict, and a 4px corner would change the close ring of every
+   dialog a second time. Measured in Customize Group at 320 x 568 / 200%, 375 x 667 / 100% and
+   1280 x 800 / 100%, both themes, at rest and after the shell scrolls: radius 8, ring corner 12, no
+   container cuts it. The close paints no fill, so only the ring shows the corner. Pinned by
+   src/app/components/Modal.test.tsx ("89.6-31 G1: the close ring is rounded and is the house ring")
+   and e2e/focus-ring-geometry.spec.ts ("E-01 (89.6-31): the Modal close draws a rounded, whole house ring").
+   Changing this is a decision, not a cleanup. */
 /* DECISION Phase 89.6-15 (modal-header-edge): every Modal header's and footer's side edge is the
    card edge token (12px, 24px from md; owner pick O-M1 = D, 2026-11-22: 'Edges stay thin (16px page
    edge, 12px card edge)'; HR-9, SPEC A9: every card and bar), chosen OVER leaving the header and
