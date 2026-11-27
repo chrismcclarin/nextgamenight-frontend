@@ -423,6 +423,20 @@ const reachLibrary: SurfaceRow['reach'] = (page) => openLibrary(page, (root) => 
 // R07-library-empty (EMPTY_STATES: This library is empty): the same read answered with no games; the
 // Add games link is never pressed.
 const reachLibraryEmpty: SurfaceRow['reach'] = (page) => openLibrary(page, (root) => root.getByText('This library is empty', { exact: true }));
+// R07-library-open (UI-SPEC E4 overflow and long-text): the two-word game's row opened (a row
+// button: no write), so its four owners (one named with the 30-letter word, the fourth behind the
+// more-owners button) and View game are on screen. The root is that game's card.
+const openRow = (page: Page) => libraryRows(page).filter({ hasText: TWO_WORD_NAME });
+const reachLibraryOpen: SurfaceRow['reach'] = async (page) => {
+  await openLibrary(page, (root) => root.getByText(TWO_WORD_NAME, { exact: true }));
+  const row = openRow(page);
+  await row.click();
+  const card = row.locator('xpath=..');
+  // The reveal is the box after the row button: it has a height once the row is open.
+  await expect.poll(() => row.evaluate((button) => button.nextElementSibling?.getBoundingClientRect().height ?? 0), { message: 'R07-library-open: the row did not open', timeout: 5_000 }).toBeGreaterThan(0);
+  await settleAnimations(card);
+  return { root: card };
+};
 
 // R07-library extras (S2 = Drop: at large text the Library row's picture is not drawn; the game name
 // beside it is its text twin). The product's own threshold, written HERE and never read from a class:
@@ -456,8 +470,60 @@ const libraryExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
     if (row.drawn !== pictureDrawnIn(cell)) problems.push(`"${name}": the picture is ${row.drawn ? 'drawn' : 'not drawn'} in ${cell.id} (S2: drawn only at 768 wide and at 320 with normal text)`);
     if (row.inside > threshold !== pictureDrawnIn(cell)) problems.push(`"${name}": the row's inside is ${row.inside.toFixed(1)}px against ${threshold.toFixed(1)}px (${PICTURE_DROPS_AT_REM}rem at ${row.rem}px), so this cell does not prove the drop it is listed for`);
   }
+  // A closed row says so (WCAG 4.1.2): its button reads aria-expanded false.
+  const expanded = await libraryRows(page).first().getAttribute('aria-expanded');
+  if (expanded !== 'false') problems.push(`the first (closed) Library row's button reads aria-expanded ${expanded === null ? 'not set' : expanded}, not false`);
+  if (cell.id === '320x568-dark-200') {
+    // 89.6-42: Tab skips a closed Library row
+    const scrollY = await page.evaluate(() => window.scrollY);
+    await libraryRows(page).first().focus();
+    await page.keyboard.press('Tab');
+    const landed = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      const rowButtons = Array.from(document.querySelectorAll('main button')).filter((button) => button.querySelector(':scope > div > p'));
+      return { second: el !== null && el === rowButtons[1], what: el ? `${el.tagName.toLowerCase()} "${(el.textContent ?? '').trim().slice(0, 30)}"` : 'nothing' };
+    });
+    said.push(`Tab from the first row lands on ${landed.what}`);
+    if (!landed.second) problems.push(`Tab from the first (closed) Library row lands on ${landed.what}, not on the second row: a closed row's hidden control takes the keyboard focus`);
+    await page.evaluate((y) => {
+      (document.activeElement as HTMLElement | null)?.blur();
+      window.scrollTo(0, y);
+    }, scrollY);
+  }
   process.stdout.write(`S2 recorded: R07-library ${cell.id}: ${said.join(' | ')}\n`);
   if (problems.length > 0) throw new Error(`S2: in ${cell.id}: ${problems.join('; ')}`);
+};
+
+// R07-library-open extras: the opened row's button reads aria-expanded true in every cell; in the
+// 320 x 568 200% cell, Tab from that button walks the opened row's own controls, View game among
+// them, before it leaves the card (they are in the keyboard order once the row is open).
+const libraryOpenExtras: NonNullable<SurfaceRow['extras']> = async (page, cell) => {
+  const problems: string[] = [];
+  const row = openRow(page);
+  const expanded = await row.getAttribute('aria-expanded');
+  if (expanded !== 'true') problems.push(`the opened Library row's button reads aria-expanded ${expanded === null ? 'not set' : expanded}, not true`);
+  let walked: string[] = [];
+  if (cell.id === '320x568-dark-200') {
+    const scrollY = await page.evaluate(() => window.scrollY);
+    await row.focus();
+    for (let step = 0; step < 8; step += 1) {
+      await page.keyboard.press('Tab');
+      const at = await row.evaluate((button) => {
+        const el = document.activeElement as HTMLElement | null;
+        const reveal = button.nextElementSibling;
+        return { inside: el !== null && reveal !== null && reveal.contains(el), text: el ? (el.textContent ?? '').trim().slice(0, 30) : '' };
+      });
+      if (!at.inside) break;
+      walked.push(at.text);
+    }
+    if (!walked.includes('View game')) problems.push(`Tab from the opened row's button walked [${walked.join(', ')}] and never reached View game`);
+    await page.evaluate((y) => {
+      (document.activeElement as HTMLElement | null)?.blur();
+      window.scrollTo(0, y);
+    }, scrollY);
+  } else walked = ['not read in this cell'];
+  process.stdout.write(`library-open recorded: R07-library-open ${cell.id}: aria-expanded ${expanded}; Tab walks [${walked.join(', ')}]\n`);
+  if (problems.length > 0) throw new Error(`library-open: in ${cell.id}: ${problems.join('; ')}`);
 };
 
 export const rows: SurfaceRow[] = [
@@ -466,6 +532,7 @@ export const rows: SurfaceRow[] = [
   { id: 'R07-long', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'long name', reach: reachLong, answers: answerNoGames, extras: headerExtras },
   { id: 'R07-library', census: 'R07', kind: 'route', owner: '89.6-42', status: 'enforced', state: 'the Library tab: three games, a 30-letter game name, a 30-letter member name', reach: reachLibrary, answers: answerLibrary, extras: libraryExtras },
   { id: 'R07-library-empty', census: 'R07', kind: 'route', owner: '89.6-42', status: 'enforced', state: 'empty library', reach: reachLibraryEmpty, answers: answerEmptyLibrary },
+  { id: 'R07-library-open', census: 'R07', kind: 'route', owner: '89.6-42', status: 'enforced', state: 'a Library row opened, a 30-letter owner name', reach: reachLibraryOpen, answers: answerLibrary, extras: libraryOpenExtras },
   { id: 'R08-checkins', census: 'R08', kind: 'route', owner: '89.6-42', status: 'enforced', state: 'three check-in cards: short title beside the dots, generic title, 30-letter title', reach: reachCheckIns, answers: emptySettingsAnswers, extras: checkInsExtras },
   { id: 'R07-history', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', reach: reachHistory, answers: answerThreeGames },
   { id: 'R07-history-error', census: 'R07', kind: 'route', owner: '89.6-17', status: 'enforced', state: 'games read failed', reach: reachHistoryError },
