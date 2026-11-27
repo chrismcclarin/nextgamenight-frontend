@@ -1048,3 +1048,112 @@ describe('G4 (88.9-52): an open menu stays inside the box that clips it', () => 
     expect(list.getAttribute('style')).toBeNull();
   });
 });
+
+// K-hide = Close (plan 89.6-36, owner pick 2026-11-23: Close any open three-dot menu when the page
+// goes to the background; this affects every menu, armed or not). The close runs through the same
+// closer as a dismissal, so an armed item disarms and the menu says the revert words; focus that
+// was in the menu is on the trigger when the person comes back, focus elsewhere is left alone, and
+// the page listener exists only while the menu is open.
+describe('K-hide (89.6-36): an open three-dot menu closes when the page goes to the background', () => {
+  // The house idiom (src/app/userHome/UserHomePage.calendarSheet.test.tsx ("function fireVisibility(state: 'visible' | 'hidden')")):
+  // jsdom has no page visibility of its own, so the state is defined on document and the event sent.
+  function setVisibility(state: 'visible' | 'hidden') {
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  }
+
+  afterEach(() => {
+    delete (document as unknown as { visibilityState?: string }).visibilityState;
+  });
+
+  it('K-hide (89.6-36): with nothing armed the menu closes when the page is hidden, focus goes to the trigger and nothing is said', () => {
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { trigger, list } = openMenu();
+    const makeAdmin = within(list).getByRole('button', { name: 'Make admin' });
+    act(() => makeAdmin.focus());
+    expect(document.activeElement).toBe(makeAdmin);
+
+    setVisibility('hidden');
+    expect(list).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.getByRole('status').textContent).toBe('');
+
+    // Coming back changes nothing: the menu stays closed, focus stays on the trigger, nothing is said.
+    setVisibility('visible');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).not.toHaveAttribute('aria-controls');
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  it('K-hide (89.6-36): an armed, live Remove is disarmed when the page is hidden, the menu says Confirmation cancelled. and focus is on the trigger', () => {
+    vi.useFakeTimers();
+    render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+    const { trigger, list } = openMenu();
+    const remove = within(list).getByRole('button', { name: 'Remove' });
+    fireEvent.click(remove);
+    act(() => {
+      vi.advanceTimersByTime(CONFIRM_DELAY_MS);
+    });
+    act(() => remove.focus());
+    // Armed and live before the page goes away.
+    expect(remove).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('status').textContent).toBe('Press again to confirm: Remove');
+
+    setVisibility('hidden');
+    expect(list).not.toBeInTheDocument();
+    expect(screen.getByRole('status').textContent).toBe('Confirmation cancelled.');
+    expect(document.activeElement).toBe(trigger);
+
+    // Reopened, Remove is at rest: its own label, no pressed state, no name of its own.
+    setVisibility('visible');
+    const reopened = openMenu();
+    const removeAtRest = within(reopened.list).getByRole('button', { name: 'Remove' });
+    expect(removeAtRest.textContent).toBe('Remove');
+    expect(removeAtRest).not.toHaveAttribute('aria-pressed');
+    expect(removeAtRest).not.toHaveAttribute('aria-label');
+  });
+
+  it('K-hide (89.6-36): focus that is outside the menu is left where it is when the page is hidden', () => {
+    render(
+      <div>
+        <button type="button">Elsewhere</button>
+        <KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />
+      </div>
+    );
+    const { trigger, list } = openMenu();
+    const elsewhere = screen.getByRole('button', { name: 'Elsewhere' });
+    act(() => elsewhere.focus());
+    // The menu is still open with focus outside it (a click opened it; nothing in it was focused).
+    expect(list).toBeInTheDocument();
+    expect(document.activeElement).toBe(elsewhere);
+
+    setVisibility('hidden');
+    expect(list).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it('K-hide (89.6-36): the page listener exists only while the menu is open', () => {
+    const added = vi.spyOn(document, 'addEventListener');
+    const removed = vi.spyOn(document, 'removeEventListener');
+    const live = () =>
+      added.mock.calls.filter(([type]) => type === 'visibilitychange').length -
+      removed.mock.calls.filter(([type]) => type === 'visibilitychange').length;
+    try {
+      render(<KebabMenu ariaLabel="Member actions" items={LARGEST_SHIPPED_ITEMS()} />);
+      expect(live(), 'before the menu opens').toBe(0);
+      const { trigger, list } = openMenu();
+      expect(live(), 'while the menu is open').toBe(1);
+      fireEvent.click(trigger);
+      expect(list).not.toBeInTheDocument();
+      expect(live(), 'after the trigger closes the menu').toBe(0);
+    } finally {
+      added.mockRestore();
+      removed.mockRestore();
+    }
+  });
+});

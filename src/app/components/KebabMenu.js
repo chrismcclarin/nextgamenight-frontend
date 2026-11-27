@@ -168,7 +168,11 @@ export default function KebabMenu({
      A dismissal changes ONLY `open`: `closeMenu` deliberately does NOT reset the
      armed index, because the close-resets effect below reads the PRE-transition
      armed index to decide whether to emit the revert copy (KM-17, KM-24).
-     Re-inlining these handlers is a decision, not a cleanup. */
+     Re-inlining these handlers is a decision, not a cleanup.
+     AMENDED Phase 89.6-36 (K-hide): one close trigger now lives in this component, not in the
+     hook: the page-hidden close (the K-hide marker below). The hook's four pieces are unchanged
+     and still the hook's; the page-hidden close changes only open, like a dismissal, so the
+     close-resets effect still decides the revert words. */
   const closeMenu = () => setOpen(false);
   const { containerProps, restoreFocusToTrigger } = useDismissal({
     open,
@@ -178,6 +182,36 @@ export default function KebabMenu({
   });
 
   // The Escape / focusout / outside-pointer contract and its DECISION Phase 88.6-16 markers live in src/components/ui/useDismissal.ts since 88.6.1-05.
+
+  // DECISION Phase 89.6-36 (K-hide, owner 2026-11-23: Close; the card: Close any open three-dot menu
+  // when the page goes to the background (this affects every menu, armed or not)): an open menu
+  // closes when the page is hidden, armed or not, through closeMenu, so the close-resets effect
+  // disarms an armed item and says the revert words as an outside press does. Focus that was in the
+  // menu moves to the trigger first (the list unmounts on close and would drop focus to the body),
+  // so it is on the trigger when the person comes back, as after Escape; focus elsewhere is left
+  // alone. The listener lives only while this menu is open; becoming visible does nothing. Chosen
+  // OVER Leave (the recommendation; OW-2a as written kept an armed item live across a locked phone)
+  // and OVER the shared dismissal hook
+  // (src/components/ui/useDismissal.ts ("DECISION Phase 88.6.1-05 (D-18): ONE hook")),
+  // which the notification bell also uses and the pick does not name. Not a blur rule: a null
+  // relatedTarget still never dismisses. The revert words are written while hidden and may go
+  // unspoken; the menu is simply closed on return. Changing this is a decision, not a cleanup.
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePageHidden = () => {
+      if (document.visibilityState !== 'hidden') return;
+      const container = containerRef.current;
+      const focusWasInside = Boolean(container && container.contains(document.activeElement));
+      closeMenu();
+      if (focusWasInside) restoreFocusToTrigger();
+    };
+    document.addEventListener('visibilitychange', handlePageHidden);
+    return () => document.removeEventListener('visibilitychange', handlePageHidden);
+    // Depends on open only, as the dismissal hook's outside-press listener does: closeMenu calls a
+    // state setter and the restore reads refs when it runs, so the first render's functions are
+    // still right, and the one listener is added once per open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   /* DECISION Phase 88.6-16 (D-12), the KEBAB-ONLY half of the Escape contract
      (the shared half moved to `src/components/ui/useDismissal.ts` by 88.6.1-05).
@@ -273,6 +307,13 @@ export default function KebabMenu({
   // src/components/ui/useConfirmAction.ts ("export const DISARM_ANNOUNCEMENT"),
   // the one home the page buttons say too (owner OW-2b: Yes), chosen OVER a second copy of the
   // sentence here. Adding a revert timer back is a decision, not a cleanup.
+  // AMENDED Phase 89.6-36 (K-hide, owner 2026-11-23: Close, against the recommendation to leave it):
+  // the sentence above about a menu left open across a locked phone is history. Any open menu now
+  // closes when the page is hidden,
+  // this file ("DECISION Phase 89.6-36 (K-hide, owner"),
+  // and that close disarms the item through this effect and says the revert words, as every close
+  // does. OW-2a Keep stands: closing the menu is still the only disarm; this adds a close trigger,
+  // not a disarm.
   useEffect(() => {
     if (!open) {
       if (armedIndex !== null) {
