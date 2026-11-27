@@ -1,5 +1,7 @@
 // Surface rows: Manage Group Members, Members and the dialogs they open. Owner: plan 89.6-11.
 // One row per line, each with its census id. All seven are enforced (Phase 89.6-11).
+// D12 and D13 also read their tags (plan 89.6-44, owner pick N04 = B): readRoleTags below and the
+// night module's readTagLines (one helper, never a copy).
 // How a row is turned on: e2e/support/largeTextSurfaces/index.ts ("HOW A SWEEP PLAN TURNS A ROW ON").
 // D18 (Remove member) opens only from md up, so it is reached at 768 and then read through the cells (FL-17c).
 //
@@ -24,7 +26,10 @@ import type { Locator, Page } from '@playwright/test';
 
 import { settleAnimations } from '../inFlight';
 import { routeMemberRoster } from '../memberRoster';
-import type { SurfaceRow } from './index';
+import { setTextMode } from '../wordLines';
+import { toDialogTop } from './dialogs';
+import type { SurfaceRow, SweepCell } from './index';
+import { readTagLines, tagSummary } from './night';
 
 // The seeded group minted by the backend's scripts/e2e-fixtures.js in CI, which the CI login
 // owns. No fallback id, as in e2e/manage-members-refresh.spec.ts ("No '1' fallback").
@@ -107,6 +112,92 @@ const reachMembers: SurfaceRow['reach'] = async (page) => {
   return { root: dialog, dialog };
 };
 
+// readRoleTags: the role tags of the members dialog (owner pick N04 = B, plan 89.6-44).
+// readTagLines (./night) reads Owner and Admin by its own word list; Member and a bare Pending are
+// not on that list (on the night page those words are not tags), so this read is the dialog's own.
+// A role tag is a leaf span, shown, not inside a button, a select or an option, whose trimmed text
+// is exactly Owner, Admin, Member or Pending. It returns one message for:
+//   each tag whose computed weight is not 400 (the pick is regular weight everywhere);
+//   each tag with an edge (a top border wider than 0px);
+//   each tag drawn in more than one box (it broke inside itself);
+//   tag heights that spread more than 0.5px across the dialog (one tag block, one height);
+//   each (You) that is not plain words (a weight other than 400, a fill, or side padding);
+//   fewer than min tags found (a read that found nothing proves nothing).
+// An empty list means every role tag is one height, whole, with no edge, at regular weight, and
+// every (You) the roster shows is plain words. A roster that shows no (You) adds no message.
+async function readRoleTags(dialog: Locator, min: number): Promise<string[]> {
+  return dialog.evaluate((root, floor) => {
+    const round = (n: number): number => Math.round(n * 100) / 100;
+    const words = ['Owner', 'Admin', 'Member', 'Pending'];
+    const shown = (span: Element): boolean => {
+      const style = getComputedStyle(span);
+      const box = span.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility === 'visible' && span.getClientRects().length > 0 && box.width > 0 && box.height > 0;
+    };
+    const problems: string[] = [];
+    const heights: Array<{ word: string; height: number }> = [];
+    for (const span of Array.from(root.querySelectorAll('span'))) {
+      if (span.childElementCount > 0) continue;
+      const word = (span.textContent ?? '').trim();
+      if (span.closest('button, select, option') || !shown(span)) continue;
+      const style = getComputedStyle(span);
+      if (word === '(You)') {
+        const fill = style.backgroundColor;
+        if (style.fontWeight !== '400') problems.push(`(You) has weight ${style.fontWeight}, not 400`);
+        if (fill !== 'transparent' && fill !== 'rgba(0, 0, 0, 0)') problems.push(`(You) has a fill (${fill}): it is plain words`);
+        if (style.paddingLeft !== '0px') problems.push(`(You) has side padding (${style.paddingLeft}): it is plain words`);
+        continue;
+      }
+      if (!words.includes(word)) continue;
+      heights.push({ word, height: span.getBoundingClientRect().height });
+      if (style.fontWeight !== '400') problems.push(`the role tag ${word} has weight ${style.fontWeight}, not 400`);
+      if (style.borderTopWidth !== '0px') problems.push(`the role tag ${word} has an edge (${style.borderTopWidth})`);
+      const boxes = span.getClientRects().length;
+      if (boxes > 1) problems.push(`the role tag ${word} is drawn in ${boxes} boxes (it broke inside itself)`);
+    }
+    if (heights.length < floor) problems.push(`${heights.length} role tags found, fewer than ${floor}`);
+    if (heights.length > 1) {
+      const low = heights.reduce((a, b) => (b.height < a.height ? b : a));
+      const high = heights.reduce((a, b) => (b.height > a.height ? b : a));
+      if (high.height - low.height > 0.5) {
+        problems.push(`role tags differ in height by ${round(high.height - low.height)}px: ${high.word} ${round(high.height)}px, ${low.word} ${round(low.height)}px`);
+      }
+    }
+    return problems;
+  }, min);
+}
+
+// The tag reads of one members dialog, as one list of short lines (tagSummary, ./night): the role
+// tags read above, and the night module's tag read (one height and one top on a line, whole, 400).
+async function memberTagProblems(dialog: Locator, at: string): Promise<string[]> {
+  return [...tagSummary(`${at} role tags`, await readRoleTags(dialog, 2)), ...tagSummary(`${at} tags`, await readTagLines(dialog, 1))];
+}
+
+// D12 and D13 extras, every cell (plan 89.6-44, N04 B): the tags of the open dialog. Reads only:
+// nothing is pressed. In D12's 320 x 568, 200% cell the same reads are also taken at normal text at
+// 320 x 568 and at 375 x 667 (the pick was drawn at normal text), then the cell's size and mode are
+// put back; the sweep sets the next cell's mode itself. A failure throws ONE joined line, because
+// the sweep keeps only an error's first line.
+const membersTagExtras = (rowId: 'D12' | 'D13', title: 'Manage Group Members' | 'Members'): NonNullable<SurfaceRow['extras']> =>
+  async (page: Page, cell: SweepCell) => {
+    const tag = `${rowId} ${cell.id}`;
+    const dialog = page.getByRole('dialog', { name: title, exact: true });
+    const problems = await memberTagProblems(dialog, tag);
+    if (rowId === 'D12' && cell.id === '320x568-dark-200') {
+      await setTextMode(page, '100', `${tag} tags normal-text pass`);
+      for (const size of [{ width: 320, height: 568 }, { width: 375, height: 667 }]) {
+        await page.setViewportSize(size);
+        await settleAnimations(dialog);
+        problems.push(...(await memberTagProblems(dialog, `${tag} at ${size.width} x ${size.height}, normal text`)));
+      }
+      await page.setViewportSize({ width: cell.width, height: cell.height });
+      await setTextMode(page, '200', `${tag} back to 200%`);
+      await settleAnimations(dialog);
+      await toDialogTop(dialog);
+    }
+    if (problems.length > 0) throw new Error(problems.join(' || '));
+  };
+
 // D16: the long member's Transfer ownership item opens the confirm. Its Transfer ownership button is NEVER pressed.
 const reachTransfer: SurfaceRow['reach'] = async (page) => {
   const members = await openMembers(page, withLongMember, 'Manage Group Members');
@@ -162,8 +253,8 @@ const reachMakeAdmin: SurfaceRow['reach'] = async (page) => {
 };
 
 export const rows: SurfaceRow[] = [
-  { id: 'D12', census: 'D12', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachManage },
-  { id: 'D13', census: 'D13', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachMembers },
+  { id: 'D12', census: 'D12', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachManage, extras: membersTagExtras('D12', 'Manage Group Members') },
+  { id: 'D13', census: 'D13', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachMembers, extras: membersTagExtras('D13', 'Members') },
   { id: 'D16', census: 'D16', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachTransfer },
   { id: 'D17', census: 'D17', kind: 'dialog', owner: '89.6-11', status: 'enforced', reach: reachLeave },
   // DECISION Phase 89.6-15 (D18 and D20 enforced again by the owner's hyphen ruling, 2026-11-25): plan 89.6-15 had set
