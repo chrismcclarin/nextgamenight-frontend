@@ -5,7 +5,7 @@
 // WRITES. Every page gets the sweep's guard first. A row here never presses a control that writes
 // unless that write is caught by a later route on a pathname predicate (any host: the backend and
 // the proxy under /api alike) and answered in the browser; nothing is ever handed on to the network.
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { holdRequests, settleAnimations } from '../inFlight';
 import { readCellUnderExceptions, readPageZoomCellUnderExceptions } from '../largeTextExceptions';
@@ -233,8 +233,162 @@ const restExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: S
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
+// ---------------------------------------------------------------------------------------------
+// O07: the time-zone list (the Combobox listbox) open on Profile, after a FAILED save.
+// The save is PATCH /users/<id>/timezone: caught here on a pathname predicate (any host), answered
+// 500 in the browser, never handed on. The reach picks a zone, waits for the failure line, reopens
+// the list, and at 375 and 320 with normal text reads:
+//   (i)  with the field near the top of the window the list opens BELOW the field and the failure
+//        line, which sits between the hint and the field (pick O-9d = B), is readable: the point at
+//        its centre is the line itself (asserted);
+//   (ii) with the field near the bottom of the window the list flips ABOVE the field (the shared
+//        Combobox places it; this plan does not own that file): what covers the line's centre is
+//        READ, attached and printed, not asserted (owner item for look 2 when it is the list);
+//   and the two theme buttons: icon and word centred (left and right gaps within 1px, N48).
+// The root is the open listbox. The reads are thrown by every cell's extras, not by the reach.
+const isTimezoneSave = (url: URL): boolean => /\/users\/[^/]+\/timezone$/.test(url.pathname);
+const timezoneRouted = new WeakSet<Page>();
+const timezoneProblems = new WeakMap<Page, string[]>();
+const timezoneField = (page: Page): Locator => page.getByRole('combobox', { name: 'Timezone', exact: true });
+const timezoneList = (page: Page): Locator => page.getByRole('listbox', { name: 'Timezones', exact: true });
+const saveErrorLine = (page: Page): Locator => page.locator('[data-testid="timezone-save-error"]');
+
+/** Scroll so the Timezone field's top sits fromTop px under the window's top, with the list closed, then open it. */
+async function openListAt(page: Page, fromTop: number): Promise<void> {
+  if (await timezoneList(page).isVisible()) {
+    await page.keyboard.press('Escape');
+    await timezoneList(page).waitFor({ state: 'hidden', timeout: 5_000 });
+  }
+  await timezoneField(page).evaluate((el, top) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - top), fromTop);
+  await settleFrames(page);
+  await timezoneField(page).click();
+  await timezoneList(page).waitFor({ state: 'visible', timeout: 5_000 });
+  await settleFrames(page);
+}
+
+interface TimezoneRead {
+  /** The failure line's bottom minus the field's top: zero or less when the line sits above the field. */
+  lineOverField: number;
+  /** What is drawn at the centre of the failure line. */
+  atLineCentre: 'line' | 'listbox' | 'other';
+  /** The list's box against the field's: where the Combobox placed it. */
+  placed: 'below' | 'above' | 'over';
+  fieldBottomToWindowBottom: number;
+}
+async function readTimezone(page: Page): Promise<TimezoneRead> {
+  return page.evaluate(() => {
+    const line = document.querySelector('[data-testid="timezone-save-error"]');
+    const field = document.querySelector('#profile-timezone');
+    const list = document.querySelector('[role="listbox"][aria-label="Timezones"]');
+    const surface = list?.parentElement;
+    if (!line || !field || !list || !surface) throw new Error('the failure line, the Timezone field or its open list is missing');
+    const l = line.getBoundingClientRect();
+    const f = field.getBoundingClientRect();
+    const s = surface.getBoundingClientRect();
+    const hit = document.elementFromPoint(l.left + l.width / 2, l.top + l.height / 2);
+    const atLineCentre = hit && line.contains(hit) ? 'line' : hit && surface.contains(hit) ? 'listbox' : 'other';
+    const placed = s.top >= f.bottom - 0.5 ? 'below' : s.bottom <= f.top + 0.5 ? 'above' : 'over';
+    return { lineOverField: l.bottom - f.top, atLineCentre, placed, fieldBottomToWindowBottom: window.innerHeight - f.bottom };
+  });
+}
+
+/** In each theme button: the gap from its left edge to the icon, against the gap from the word to its right edge. */
+async function themeGaps(page: Page): Promise<Array<{ name: string; left: number; right: number }>> {
+  return cardWith(page, 'Theme').evaluate((card) =>
+    Array.from(card.querySelectorAll('button')).map((button) => {
+      const box = button.getBoundingClientRect();
+      const icon = button.querySelector('svg');
+      const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+      let word: DOMRect | null = null;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const text = (node.textContent ?? '').trim();
+        if (text !== 'Light' && text !== 'Dark') continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        word = range.getBoundingClientRect();
+      }
+      if (!icon || !word) throw new Error('a theme button has no icon or no word');
+      return { name: (button.textContent ?? '').replace(/[^A-Za-z]/g, ''), left: icon.getBoundingClientRect().left - box.left, right: box.right - word.right };
+    }),
+  );
+}
+
+const reachTimezoneList: SurfaceRow['reach'] = async (page) => {
+  if (!timezoneRouted.has(page)) {
+    timezoneRouted.add(page);
+    await page.route(isTimezoneSave, async (route) => {
+      if (route.request().method() !== 'PATCH') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ status: 500, json: { error: 'held by the large-text sweep' } });
+    });
+  }
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto('/userProfile');
+  await page.getByRole('heading', { level: 2, name: 'Timezone', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByRole('button', { name: 'Edit username', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await expectNormalText(page, 'O07');
+
+  // Pick a zone; the save fails in the browser; the failure line shows and stays.
+  await timezoneField(page).click();
+  await timezoneField(page).fill('Chicago');
+  await page.getByRole('option', { name: /Chicago/ }).first().click();
+  await saveErrorLine(page).waitFor({ state: 'visible', timeout: 10_000 });
+
+  const problems: string[] = [];
+  const flipped: string[] = [];
+  for (const size of [
+    { width: 375, height: 667 },
+    { width: 320, height: 568 },
+  ]) {
+    await page.setViewportSize(size);
+    await settleFrames(page);
+    const tag = `O07 at ${size.width} x ${size.height} with normal text`;
+
+    // (i) the field near the top of the window: the list opens below it.
+    await openListAt(page, 200);
+    const below = await readTimezone(page);
+    if (below.placed !== 'below') problems.push(`${tag}: with the field near the top the list is ${below.placed} the field, not below it`);
+    if (below.lineOverField > 0.5) problems.push(`O-9d: ${tag}: the failure line ends ${r1(below.lineOverField)}px below the field's top (it must sit above the field)`);
+    if (below.atLineCentre !== 'line') problems.push(`O-9d: ${tag}: with the list open below the field, the point at the failure line's centre is the ${below.atLineCentre}, not the line`);
+
+    // (ii) the field near the bottom of the window: the list flips above it. Recorded, not asserted.
+    let above: TimezoneRead | null = null;
+    for (const room of [96, 64, 32, 8]) {
+      await openListAt(page, size.height - room - 44);
+      above = await readTimezone(page);
+      if (above.placed === 'above') break;
+    }
+    if (!above || above.placed !== 'above') problems.push(`${tag}: the staging never made the list flip above the field (last: ${above?.placed}, ${r1(above?.fieldBottomToWindowBottom ?? 0)}px under the field)`);
+    else flipped.push(`${size.width}: ${above.atLineCentre}`);
+
+    // N48: icon and word centred in both theme buttons.
+    for (const gap of await themeGaps(page)) {
+      if (Math.abs(gap.left - gap.right) > 1) problems.push(`N48: ${tag}: the ${gap.name} button's icon starts ${r1(gap.left)}px from its left edge and its word ends ${r1(gap.right)}px from its right edge`);
+    }
+  }
+  const flippedLine = `O-9d flipped: ${flipped.join(', ')}`;
+  process.stdout.write(`${flippedLine}\n`);
+  await test.info().attach('O-9d flipped', { body: flippedLine, contentType: 'text/plain' });
+  timezoneProblems.set(page, problems);
+
+  // Left for the cells: the list open below the field.
+  await openListAt(page, 200);
+  const root = timezoneList(page);
+  await settleAnimations(root);
+  return { root };
+};
+
+// O07 extras, every cell: the list is still open, and the reach's normal-text reads hold.
+const timezoneListExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const problems = [...(timezoneProblems.get(page) ?? [])];
+  if (!(await timezoneList(page).isVisible())) problems.push(`O07 ${cell.id}: the time-zone list closed`);
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R16-rest', census: 'R16', kind: 'route', owner: '89.6-27', status: 'enforced', reach: reachRest, answers: answerOwnedGames, extras: restExtras },
   { id: 'D34', census: 'D34', kind: 'dialog', owner: '89.6-27', status: 'pending' },
-  { id: 'O07', census: 'O07', kind: 'overlay', owner: '89.6-27', status: 'pending' },
+  { id: 'O07', census: 'O07', kind: 'overlay', owner: '89.6-27', status: 'enforced', reach: reachTimezoneList, extras: timezoneListExtras },
 ];
