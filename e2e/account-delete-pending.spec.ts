@@ -15,6 +15,8 @@ import { expectGatedPair, holdWrites } from './support/inFlight';
 //     --color-btn-danger-gated-* tokens, opacity 1 — not the 50% wash;
 //   - focus lands on the progress wrapper itself (D52 piece (ii)), checked by IDENTITY, and
 //     never on <body>;
+//     AMENDED Phase 89.6-27 (K2 focus): focus is on the pressed button itself now (the progress
+//     line is spoken, not drawn, and its wrapper is no longer focusable), still never on <body>;
 //   - the header Close says it is unavailable;
 //   - a second Enter on the action sends no second DELETE (the deleteInFlightRef latch);
 //   - nothing overflows horizontally.
@@ -42,7 +44,11 @@ test.skip(
 );
 
 test.describe('Account deletion — the pressed danger action stays focusable at 375px (88.6.1-22)', () => {
-  test('pressed "Delete my account" keeps the gated colour, focus moves to the progress wrapper, the header Close is unavailable, a second Enter sends nothing', async ({ page }) => {
+  // AMENDED Phase 89.6-27 (K2 focus), owner pick K = K2 (2026-11-22: No, K2 is the better option):
+  // the progress line is spoken and not drawn, so focus rests on the pressed Delete my account
+  // button while it works, not on the hidden line's wrapper (review M117). The title and the focus
+  // read below say so; the rest of the test is unchanged.
+  test('pressed "Delete my account" keeps the gated colour, focus stays on the pressed button, the header Close is unavailable, a second Enter sends nothing', async ({ page }) => {
     // Registered BEFORE navigation. Held: never answered, never handed on. This is what makes
     // the test safe.
     const hold = await holdWrites(page, {
@@ -114,24 +120,27 @@ test.describe('Account deletion — the pressed danger action stays focusable at
     // helper (opacity 1, computed colours equal --color-btn-danger-gated-bg / -text).
     await expectGatedPair(page, pressed, 'danger', 'dark');
 
-    // Focus is on the progress wrapper ITSELF, checked by identity. A text check cannot do this
-    // job: the pressed action reads the same in-flight label and, being aria-disabled, keeps
-    // focus, so it would pass with the D52 (ii) focus move deleted (then focus stays on BUTTON).
+    // Focus is on the pressed button ITSELF, checked by identity (the focused element is the node
+    // the locator resolves to), and the progress wrapper is no longer focusable at all. The
+    // Deleting line is still said by the polite region inside that wrapper, and is not drawn.
     await expect
       .poll(
         () =>
-          page.evaluate(() => {
+          pressed.evaluate((button) => {
             const element = document.activeElement as HTMLElement | null;
+            const region = document.querySelector('[role="dialog"] [role="status"]:not([data-announcer])');
+            const box = region?.getBoundingClientRect();
             return {
               onBody: element === document.body,
-              tag: element?.tagName ?? null,
-              tabindex: element?.getAttribute('tabindex') ?? null,
-              holdsStatusRegion: element?.querySelector('[role="status"]') != null,
+              onPressedButton: element === button,
+              wrapperTabindex: region?.parentElement?.getAttribute('tabindex') ?? null,
+              regionText: region?.textContent ?? null,
+              regionDrawn: box ? box.width > 1 || box.height > 1 : null,
             };
           }),
         { timeout: 5_000 },
       )
-      .toEqual({ onBody: false, tag: 'DIV', tabindex: '-1', holdsStatusRegion: true });
+      .toEqual({ onBody: false, onPressedButton: true, wrapperTabindex: null, regionText: 'Deleting…', regionDrawn: false });
 
     await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toHaveAttribute(
       'aria-disabled',
