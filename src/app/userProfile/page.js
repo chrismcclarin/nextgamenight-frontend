@@ -155,6 +155,7 @@ const ADDING_TO_COLLECTION_BUSY_SUFFIX = ', adding';
 // E4a (88.9-32, owner pick 2026-11-06): the ONE pressed arm both theme toggles read. A full literal so
 // Tailwind v4 emits every class. See the DECISION Phase 88.6-17 (D-11, outcome (a)) marker at the toggles.
 const THEME_TOGGLE_PRESSED = 'border-line-accent bg-surface-muted enabled-hover:bg-surface-muted text-content-accent';
+const THEME_CHECK_CLASS = 'absolute left-3 top-1/2 -translate-y-1/2';
 
 function Profile(){
     const { user, error, isLoading } = Auth();
@@ -3464,6 +3465,7 @@ function Profile(){
                         font-bold (option a, dead under the unlayered .btn font-weight). Removing the glyph or the
                         shared width is a decision, not a cleanup. DECISION Phase 88-10 (aria-pressed) is unchanged.
                         AMENDED Phase 88.9-68 (X57, owner at N48: the overall text is centered, so adding the checkmark makes the text move a little): the glyph's space is reserved in both states (invisible, not absent), chosen OVER mounting it only when pressed; the shared min width stands.
+                        AMENDED Phase 89.6-27 (N48): register H-09 (the unpicked button sat right of centre): the glyph is positioned out of flow at the button's left inner edge, so the icon and word are centred in both states and a switch moves nothing, chosen OVER the in-flow reserved glyph (it pushed the pair right) and OVER mounting the glyph on press (the text moved, the X57 finding). Look 2 (D-02).
 
                         `enabled-hover:bg-*` pins the SELECTED arm's fill through hover: ghost's base
                         carries `enabled-hover:bg-surface-ghost-hover`, which would otherwise wash the
@@ -3485,13 +3487,13 @@ function Profile(){
                                 variant="ghost"
                                 onClick={() => setTheme('light')}
                                 aria-pressed={resolvedTheme === 'light'}
-                                className={`border min-w-32 transition-colors ${
+                                className={`relative border min-w-32 transition-colors ${
                                     resolvedTheme === 'light'
                                         ? THEME_TOGGLE_PRESSED
                                         : 'border-line bg-surface-card enabled-hover:bg-surface-ghost-hover text-content-secondary'
                                 }`}
                             >
-                                <span aria-hidden="true" className={resolvedTheme === 'light' ? undefined : 'invisible'}>{'\u2713'}</span>
+                                <span aria-hidden="true" className={resolvedTheme === 'light' ? THEME_CHECK_CLASS : `${THEME_CHECK_CLASS} invisible`}>{'\u2713'}</span>
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                                 </svg>
@@ -3501,13 +3503,13 @@ function Profile(){
                                 variant="ghost"
                                 onClick={() => setTheme('dark')}
                                 aria-pressed={resolvedTheme === 'dark'}
-                                className={`border min-w-32 transition-colors ${
+                                className={`relative border min-w-32 transition-colors ${
                                     resolvedTheme === 'dark'
                                         ? THEME_TOGGLE_PRESSED
                                         : 'border-line bg-surface-card enabled-hover:bg-surface-ghost-hover text-content-secondary'
                                 }`}
                             >
-                                <span aria-hidden="true" className={resolvedTheme === 'dark' ? undefined : 'invisible'}>{'\u2713'}</span>
+                                <span aria-hidden="true" className={resolvedTheme === 'dark' ? THEME_CHECK_CLASS : `${THEME_CHECK_CLASS} invisible`}>{'\u2713'}</span>
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                                 </svg>
@@ -3526,6 +3528,31 @@ function Profile(){
                 <div ref={timezoneCardRef} className="card p-edge-card md:p-edge-wide mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-1">Timezone</Heading>
                     <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
+                    {/* DECISION Phase 88.9-52 (T1, owner 2026-11-17, pick Field: I thought we were making a
+                        toast next to the Timezones, not a notice at the top of the page): a failed timezone
+                        save shows its line HERE, where Saved shows, in this page's inline error style, chosen
+                        OVER the provider's top toast (owner ruling T1 A, 2026-11-16, ruled the sentence only;
+                        the place is this ruling). The page hands setTimezone an onSaveFailed and the provider
+                        raises no toast for it (src/app/components/TimezoneProvider.js ("const reportFailure = (message) => {")).
+                        The words are the provider's: the timezone sentence, or the register's own line for
+                        signed out, offline and going too fast.
+                        Spoken as the phone flow's failed submission is on this page (DECISION Phase 88-25):
+                        a conditionally mounted alert, inserted with its text, chosen OVER putting the words
+                        in the polite Saved region above (a failure would wait its turn behind other speech,
+                        and that region clears itself after 4000 ms; this line must stay) and OVER a standing
+                        empty assertive region. Each failure mounts it afresh, so the same sentence twice is
+                        spoken twice.
+                        It stays until the NEXT PICK (cleared at the press) and is never beside Saved;
+                        reopening the picker or typing in it does not clear it, chosen OVER clearing on
+                        reopen as Saved does: it is the only thing saying why the field went back to the
+                        saved zone. A result from an earlier pick is ignored. With no Timezone card on screen
+                        when the answer comes, the failure is the top toast.
+                        AMENDED Phase 89.6-27 (O-9d): owner pick O-9d = B, 2026-11-22 ('Good catch putting it on top.'): the line sits between the hint and the field, so a list that opens below the field does not cover it (measured, 89.6-27 O07 reach; when the list flips above the field near the bottom of the screen the result is recorded in that reach and on look 2), chosen OVER the place under the field this marker chose. Everything else here (alert, words, when it clears) stands. */}
+                    {timezoneSaveError && (
+                        <p data-testid="timezone-save-error" role="alert" className="text-content-status-error text-xs mb-1">
+                            {timezoneSaveError}
+                        </p>
+                    )}
                     {/* F-359: the picker is the `Combobox` primitive (88-08). Keyboard
                         operation, Esc AND click-outside close, and focus restore all come
                         from the primitive — the hand-rolled panel this replaces had none of
@@ -3566,7 +3593,8 @@ function Profile(){
                         (setTimezone resolved true) and only for the latest pick; a failed save shows the
                         provider's error toast and the saved zone back in the field instead (owner ruling Q8 b).
                         AMENDED Phase 88.9-52 (T1, owner 2026-11-17): a failed save no longer shows the toast
-                        here; it shows the line below this region (the T1 marker there). */}
+                        here; it shows the line below this region (the T1 marker there).
+                        AMENDED Phase 89.6-27 (O-9d): the failure line now sits above the field. */}
                     <StatusRegion
                         data-testid="timezone-receipt"
                         politeness="polite"
@@ -3574,30 +3602,6 @@ function Profile(){
                         message={timezoneReceipt}
                         className="mt-2 text-xs text-content-status-success"
                     />
-                    {/* DECISION Phase 88.9-52 (T1, owner 2026-11-17, pick Field: I thought we were making a
-                        toast next to the Timezones, not a notice at the top of the page): a failed timezone
-                        save shows its line HERE, where Saved shows, in this page's inline error style, chosen
-                        OVER the provider's top toast (owner ruling T1 A, 2026-11-16, ruled the sentence only;
-                        the place is this ruling). The page hands setTimezone an onSaveFailed and the provider
-                        raises no toast for it (src/app/components/TimezoneProvider.js ("const reportFailure = (message) => {")).
-                        The words are the provider's: the timezone sentence, or the register's own line for
-                        signed out, offline and going too fast.
-                        Spoken as the phone flow's failed submission is on this page (DECISION Phase 88-25):
-                        a conditionally mounted alert, inserted with its text, chosen OVER putting the words
-                        in the polite Saved region above (a failure would wait its turn behind other speech,
-                        and that region clears itself after 4000 ms; this line must stay) and OVER a standing
-                        empty assertive region. Each failure mounts it afresh, so the same sentence twice is
-                        spoken twice.
-                        It stays until the NEXT PICK (cleared at the press) and is never beside Saved;
-                        reopening the picker or typing in it does not clear it, chosen OVER clearing on
-                        reopen as Saved does: it is the only thing saying why the field went back to the
-                        saved zone. A result from an earlier pick is ignored. With no Timezone card on screen
-                        when the answer comes, the failure is the top toast. */}
-                    {timezoneSaveError && (
-                        <p data-testid="timezone-save-error" role="alert" className="text-content-status-error text-xs mt-1">
-                            {timezoneSaveError}
-                        </p>
-                    )}
                 </div>
 
                 {/* Notification Preferences Section — absent while identity has no row, on purpose:

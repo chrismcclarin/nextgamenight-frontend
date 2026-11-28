@@ -2419,6 +2419,10 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
     // AMENDED Phase 88.9-68 (X57, owner at N48: adding the checkmark makes the text move a little):
     // BOTH buttons lead with the aria-hidden glyph, and the unpressed one's is invisible, so its
     // space is held in both states and neither label moves at a switch.
+    // AMENDED Phase 89.6-27 (N48, register H-09: the unpicked button sat right of centre): the glyph
+    // is still the first child of both buttons and invisible on the unpressed one, but it is
+    // positioned out of flow now, so it holds no space and the icon and word are centred in both
+    // states (the new 89.6-27 N48 test holds the classes; the sweep's O07 row measures the gaps).
     const first = light.firstElementChild as HTMLElement | null;
     expect(first?.tagName).toBe('SPAN');
     expect(first).toHaveAttribute('aria-hidden', 'true');
@@ -7503,16 +7507,22 @@ describe('search no-results line and timezone Saved caption (88.9-68: X58, X33b)
     // Nothing at rest: the line is not mounted (no standing empty alert, no footprint).
     expect(errorLine()).toBeNull();
 
-    // A failed save: the sentence, in the page's inline error style, as an alert, right after
-    // the Saved region in the Timezone card; no toast, and no Saved.
+    // A failed save: the sentence, in the page's inline error style, as an alert; no toast, and no
+    // Saved.
+    // AMENDED Phase 89.6-27 (O-9d), owner pick O-9d = B (2026-11-22): Good catch putting it on top.
+    // The line sits between the hint and the field now (it was right after the Saved region, under
+    // the field, where the open list covered it), with a bottom margin where it had a top one.
     failWith(SENTENCE);
     pickZone('America/Chicago');
     await waitFor(() => expect(errorLine()).not.toBeNull());
     const line = errorLine() as HTMLElement;
     expect(line.textContent).toBe(SENTENCE);
     expect(line).toHaveAttribute('role', 'alert');
-    expect(line.className.split(/\s+/).sort()).toEqual(['mt-1', 'text-content-status-error', 'text-xs']);
-    expect(line.previousElementSibling).toBe(receipt);
+    expect(line.className.split(/\s+/).sort()).toEqual(['mb-1', 'text-content-status-error', 'text-xs']);
+    expect(line.previousElementSibling?.tagName).toBe('P');
+    expect(line.previousElementSibling?.textContent).toBe('All event times and schedules use this timezone');
+    expect(line.nextElementSibling?.contains(field)).toBe(true);
+    expect(receipt.previousElementSibling?.contains(field)).toBe(true);
     expect(receipt.textContent).toBe('');
     expect(toastMock().error).not.toHaveBeenCalled();
     expect(vi.mocked(announceStatus)).not.toHaveBeenCalled();
@@ -7920,5 +7930,25 @@ describe('Phase 89.6-27 — Profile part 2 at large text', () => {
     } finally {
       (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
     }
+  });
+
+  // N48 / H-09 (register: the unpicked theme button sits right of centre). The check glyph used to
+  // hold its space in flow in both states, which pushed the icon and the word right of centre. It
+  // is positioned at the button's left inner edge now; the button is the positioned box.
+  it('89.6-27 N48: each theme Button is relative and its check glyph is absolute (invisible on the unpressed one)', async () => {
+    renderProfile();
+    const light = await screen.findByRole('button', { name: 'Light' });
+    const dark = screen.getByRole('button', { name: 'Dark' });
+    const pressed = [light, dark].filter((button) => button.getAttribute('aria-pressed') === 'true');
+    expect(pressed, 'exactly one theme button is pressed').toHaveLength(1);
+    for (const button of [light, dark]) {
+      expect(classesOf(button), `${button.textContent}: the button is the positioned box`).toContain('relative');
+      const glyph = button.firstElementChild;
+      expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+      for (const token of ['absolute', 'left-3', 'top-1/2', '-translate-y-1/2']) expect(classesOf(glyph), `${button.textContent}: the glyph carries ${token}`).toContain(token);
+      expect(classesOf(glyph).includes('invisible'), `${button.textContent}: invisible exactly when not pressed`).toBe(button.getAttribute('aria-pressed') !== 'true');
+    }
+    const source = await pageSource();
+    expect(source).toContain("const THEME_CHECK_CLASS = 'absolute left-3 top-1/2 -translate-y-1/2';");
   });
 });

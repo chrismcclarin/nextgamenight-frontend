@@ -220,7 +220,9 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // shared useScrollEdges and revealTabInStrip (X-01: the availability strip's edge cue).
     // RE-DERIVED by plan 89.6-27 (Task 2, 2026-11-28): 272 -> 273. One import line above it: the
     // DelayedSpinner import became two (useDelayedSpinner and Spinner: the raw busy hosts on S4-c).
-    declaredAt: 273,
+    // RE-DERIVED by plan 89.6-27 (Task 3, 2026-11-28): 273 -> 274. One constant line above it,
+    // THEME_CHECK_CLASS (N48: the theme buttons' check glyph is positioned out of flow).
+    declaredAt: 274,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +
