@@ -54,7 +54,7 @@ import { revealTabInStrip, useScrollEdges } from '../../lib/hooks/useScrollEdges
 import { Button } from '../../components/ui/Button';
 import { ReservedLabel } from '../../components/ui/ReservedLabel';
 import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
-import { Icon } from '../../components/ui/Icon';
+import { Icon, iconTextSize } from '../../components/ui/Icon';
 import { usePhoneViewport } from '../../lib/hooks/usePhoneViewport';
 import { Heading } from '../../components/ui/Heading';
 import { useFocusRecovery } from '../../components/ui/useFocusRecovery';
@@ -2572,8 +2572,11 @@ function Profile(){
                                AMENDED Phase 88.9-58 (X21b): light box now amber-200 (the X21b pick); ring vs halo
                                re-measured 6.26 light / 6.37 dark, band 1.00.
                                AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22: the halo this marker chose is
-                               retired; the ring is the focus-ring utility. */
-                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-status-warning hover:text-content-primary text-lg leading-none shrink-0 focus:outline-hidden focus-visible:focus-ring"
+                               retired; the ring is the focus-ring utility.
+                               AMENDED Phase 89.6-27 (O-M4-pencil): same Fixed+ hold as the pencil's (see that AMENDED line);
+                               the halo colours are unchanged. */
+                            className="-m-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-btn text-content-status-warning hover:text-content-primary text-lg leading-none shrink-0 focus:outline-hidden focus-visible:focus-ring"
+                            style={{ fontSize: iconTextSize(18) }}
                             aria-label="Dismiss"
                         >
                             ×
@@ -2778,14 +2781,22 @@ function Profile(){
                                             outset ring, because its ring stops at the banner text's box edge
                                             (measured in `e2e/profile-pressed-controls.spec.ts`). This one is
                                             measured by `e2e/profile-pencil-ring.spec.ts`. Restoring the offset is
-                                            a decision, not a cleanup. */}
+                                            a decision, not a cleanup.
+                                            AMENDED Phase 89.6-27 (O-M4-pencil): owner pick O-M4 = Fixed+, 2026-11-22 ('The box
+                                            stays 44px, and the icon inside grows with the text up to 32px'): the box is held at
+                                            44 CSS px at every text size and the glyph follows the text up to 32px through
+                                            iconTextSize; the rem box grew to 88px at 200%. The glyph's line height is 1
+                                            (leading-none, replacing text-base), chosen OVER the 1.5 line height (48px at a 32px
+                                            glyph, taller than the held box). The inset ring and the negative margin are
+                                            unchanged (both scale with the row gap). */}
                                         <button
                                             ref={editUsernamePencilRef}
                                             onClick={() => {
                                                 clearReceipt();
                                                 setEditingUsername(true);
                                             }}
-                                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-content-link hover:text-content-link-hover text-base focus:outline-hidden focus-visible:focus-ring-inset"
+                                            className="-m-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-btn text-content-link hover:text-content-link-hover leading-none focus:outline-hidden focus-visible:focus-ring-inset"
+                                            style={{ fontSize: iconTextSize(16) }}
                                             title="Edit username"
                                         >
                                             <span aria-hidden="true">✏️</span>
@@ -2850,7 +2861,11 @@ function Profile(){
                                     section below correctly said "No email address on
                                     file". Same shape as the section's own guard,
                                     `currentAddress && !currentIsSynthetic`. */}
-                                <p className="text-base text-content-secondary truncate">
+                                {/* DECISION Phase 89.6-27 (email-breaks): an address breaks anywhere (bb-breakable, SPEC Edge R4)
+                                    chosen OVER an ellipsis (it cut the address at every size) and OVER break-word (one long
+                                    word overflowed at 320 / 200%). A short address is unchanged. Changing this is a decision,
+                                    not a cleanup. */}
+                                <p className="text-base text-content-secondary bb-breakable">
                                     {(() => {
                                         const addr = self?.email ?? user.email;
                                         return addr && !isSyntheticAddress(addr) ? addr : NO_ADDRESS_ON_FILE;
@@ -4461,7 +4476,6 @@ function Profile(){
                                 }}
                                 aria-expanded={showBggSearch}
                                 {...(showBggSearch ? { 'aria-controls': bggSearchPanelId } : {})}
-                                className="whitespace-nowrap"
                             >
                                 {showBggSearch ? 'Hide Search' : '+ Add from BGG'}
                             </Button>
@@ -4541,7 +4555,6 @@ function Profile(){
                                 onClick={handleImportCollectionClick}
                                 disabled={!bggUsername.trim() || (!selfUuid && selfQuery.isPending)}
                                 aria-disabled={importingCollection ? 'true' : undefined}
-                                className="whitespace-nowrap"
                                 busy={importingCollection}
                                 busySuffix=", importing"
                             >

@@ -1477,7 +1477,10 @@ describe('userProfile form controls (Req 1 — the 16px floor)', () => {
   it('the Edit-username pencil carries the 44px tap-target idiom, ring inset, one name source (88.6.1-53, V-1a)', async () => {
     renderProfile();
     const pencil = await screen.findByRole('button', { name: 'Edit username' });
-    for (const cls of ['-m-2', 'inline-flex', 'min-h-11', 'min-w-11', 'items-center', 'justify-center', 'focus:outline-hidden']) {
+    // AMENDED Phase 89.6-27 (O-M4-pencil), owner pick O-M4 = Fixed+ (2026-11-22): The box stays 44px,
+    // and the icon inside grows with the text up to 32px. The box classes are the px ones now; the
+    // inset ring is asserted exactly as before.
+    for (const cls of ['-m-2', 'inline-flex', 'min-h-[44px]', 'min-w-[44px]', 'items-center', 'justify-center', 'leading-none', 'focus:outline-hidden']) {
       expect(pencil.className.split(/\s+/)).toContain(cls);
     }
     expectFocusRingInset(pencil, 'Edit username');
@@ -2258,8 +2261,10 @@ describe('userProfile phone block (plan 88.6-17)', () => {
 
       const dismiss = await screen.findByRole('button', { name: 'Dismiss' });
       const classes = dismiss.className.split(/\s+/);
-      expect(classes).toContain('min-h-11');
-      expect(classes).toContain('min-w-11');
+      // AMENDED Phase 89.6-27 (O-M4-pencil): the same Fixed+ hold as the pencil (owner pick O-M4,
+      // 2026-11-22: The box stays 44px, and the icon inside grows with the text up to 32px).
+      expect(classes).toContain('min-h-[44px]');
+      expect(classes).toContain('min-w-[44px]');
       expectFocusRing(classes, 'Dismiss');
       // §4.3: a glyph-only control is ICON sizing, never a type rung — byte-unchanged.
       expect(classes).toContain('text-lg');
@@ -3423,10 +3428,11 @@ describe('phone block focus, Remove in flight, format region (88.6.1-53: Req 5, 
     expect(sentenceClasses.filter((c) => c.includes('amber'))).toEqual([]);
 
     const dismissClasses = screen.getByRole('button', { name: 'Dismiss' }).className.split(/\s+/);
+    // AMENDED Phase 89.6-27 (O-M4-pencil): the box is held in px now (owner pick O-M4, Fixed+).
     for (const cls of [
       'text-content-status-warning',
-      'min-h-11',
-      'min-w-11',
+      'min-h-[44px]',
+      'min-w-[44px]',
       '-m-2',
     ]) {
       expect(dismissClasses).toContain(cls);
@@ -7746,5 +7752,66 @@ describe('Phase 89.6-22 — Profile part 1 at large text', () => {
     expect(source).toContain('<div className="flex-1 min-w-0 space-y-2">');
     expect(source).toContain('h-7 w-40 max-w-full bg-surface-muted');
     expect(source).toContain('h-4 w-56 max-w-full bg-surface-muted');
+  });
+});
+
+describe('Phase 89.6-27 — Profile part 2 at large text', () => {
+  const classesOf = (el: Element | null): string[] => (el?.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+  const VALID = '+1 415 555 2671';
+
+  // SPEC Edge R4: an address breaks anywhere instead of ending in an ellipsis. The rendered half
+  // (a 50-character one-word address shown whole at 320 wide and 200%) is the sweep's R16-rest row.
+  // DECISION Phase 89.6-27 (email-breaks) above the address line.
+  it('89.6-27 R4: the header email line carries bb-breakable and no clip utility', async () => {
+    renderProfile({ email: 'self@example.com' });
+    await screen.findByRole('heading', { level: 1, name: 'Self' });
+    const line = screen.getAllByText('self@example.com').find((el) => el.tagName === 'P' && classesOf(el).includes('text-content-secondary')) ?? null;
+    expect(line, 'the header address line').not.toBeNull();
+    expect(classesOf(line)).toContain('bb-breakable');
+    for (const clip of ['truncate', 'text-ellipsis', 'whitespace-nowrap', 'overflow-hidden', 'line-clamp-1']) expect(classesOf(line)).not.toContain(clip);
+  });
+
+  // Owner pick O-M4 = Fixed+ (2026-11-22): The box stays 44px, and the icon inside grows with the
+  // text up to 32px. Class tokens only here: jsdom drops a min() font size set as a style, so the
+  // glyph size is held by the page source (two iconTextSize calls) and read in a real browser by
+  // the sweep's R16-rest row (the pencil's computed size at 200%).
+  it('89.6-27 O-M4 Fixed+: the pencil and the banner Dismiss hold 44 CSS px and size their glyph by iconTextSize', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sms_enabled: true,
+      phone: null,
+      notification_preferences: DEFAULT_PREFS,
+    });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+      const pencil = await screen.findByRole('button', { name: 'Edit username' });
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+      passGate();
+      fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
+      const dismiss = await screen.findByRole('button', { name: 'Dismiss' });
+      for (const [name, control] of [['the pencil', pencil], ['the Dismiss', dismiss]] as const) {
+        const classes = classesOf(control);
+        for (const token of ['min-h-[44px]', 'min-w-[44px]', 'leading-none']) expect(classes, `${name} carries ${token}`).toContain(token);
+        for (const token of ['min-h-11', 'min-w-11']) expect(classes, `${name} no longer carries the rem box ${token}`).not.toContain(token);
+      }
+      expect(classesOf(pencil), 'the pencil takes its glyph size from iconTextSize, not a type rung').not.toContain('text-base');
+    } finally {
+      vi.useRealTimers();
+    }
+    const source = await pageSource();
+    expect(source.split('fontSize: iconTextSize(').length - 1, 'the pencil and the Dismiss size their glyph through iconTextSize').toBe(2);
+  });
+
+  // Plan 89.6-06 moved Button text into its own label box, so a nowrap label wider than its button
+  // runs out of it to the right at large text (measured by the sweep's R16-rest row: Import
+  // Collection ran 24px past its button at 320 wide and 200%). Without the nowrap the label wraps
+  // by whole words inside its button. Same rule as plan 89.6-22's two Google Calendar buttons.
+  it('89.6-27 GR: + Add from BGG and Import Collection carry no call-site whitespace-nowrap', async () => {
+    renderProfile();
+    const add = await screen.findByRole('button', { name: '+ Add from BGG' });
+    const importCollection = await screen.findByRole('button', { name: 'Import Collection' });
+    expect(classesOf(add)).not.toContain('whitespace-nowrap');
+    expect(classesOf(importCollection)).not.toContain('whitespace-nowrap');
   });
 });
