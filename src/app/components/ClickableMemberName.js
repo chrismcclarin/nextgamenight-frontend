@@ -30,12 +30,25 @@ const SEND_REQUEST_FAILED_MESSAGE = "We couldn't send that request.";
 // Req 5 (Phase 88.6.1-37): a focus-recovery candidate counts only when it is connected AND
 // rendered. Every inline indicator is hidden at the md breakpoint, and the shared hook tries only
 // the one resolver result, so a hidden candidate would drop focus to the page floor above 768px.
+// DECISION Phase 89.6-44 (TC-A, rendered means rendered): a candidate is rendered only when neither
+// it nor any ancestor computes to display none (the ancestor walk), chosen OVER asking only the
+// candidate's own display (TC-A moved md:hidden from the tag to the line box around it, so from
+// 768px up a hidden tag's own display is no longer none and focus would go to a node inside a hidden
+// parent: the loss DECISION Phase 88.6.1-37 (Req 5) prevents), OVER writing md:hidden on the tag as
+// well as the box (the same class twice to satisfy a check) and OVER handing the box to the recovery
+// list (it moves refs the focus wiring depends on). The refs, keys, tab stops, roles and candidate
+// lists are unchanged. Pinned by
+// src/app/components/ClickableMemberName.indicator.test.tsx ("Arm 4b (89.6-44, TC-A)").
+// Changing this is a decision, not a cleanup.
+function isRendered(el) {
+  for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
+    if (window.getComputedStyle(node).display === 'none') return false;
+  }
+  return true;
+}
+
 function firstRendered(candidates) {
-  return (
-    candidates.find(
-      (el) => el && el.isConnected && window.getComputedStyle(el).display !== 'none'
-    ) || null
-  );
+  return candidates.find((el) => el && el.isConnected && isRendered(el)) || null;
 }
 
 // The green Friend tag's look, shared by the popover tag and the phone indicator (R19, 88.9-52), is
@@ -459,7 +472,11 @@ export default function ClickableMemberName({ userId, username, children, showIn
 
   // The green "Friend" pill, in ONE place: the accepted return and the success region both use it.
   // R19 (88.9-52): the phone indicator below is the same emerald Pill.
-  const renderFriendPill = () => <Pill tone="emerald">Friend</Pill>;
+  // AMENDED Phase 89.6-44 (orchestrator ruling D55, under the owner's TC-A): the helper has two holders.
+  // Alone in the popover's block it is a tag on a line of its own, so that call passes inText and the
+  // tag is drawn in the block's line-tall box; in the success region it is held by a flex row, which
+  // centres it itself, and passes nothing (a line box there would make the row 24px instead of 20px).
+  const renderFriendPill = (inText = false) => <Pill tone="emerald" inText={inText}>Friend</Pill>;
 
   const renderTooltipContent = () => {
     // DECISION Phase 88.6-34 (D-01 / D-03, UI-SPEC §4.2 + §4.5): both pills below move
@@ -491,7 +508,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // Accepted → green "Friend" pill. Informational only, no action. When a send from this
     // popover resolved first, the pill renders inside the success region instead (below).
     if (status === 'accepted' && !sent) {
-      return renderFriendPill();
+      return renderFriendPill(true);
     }
 
     // Delta review 2026-08-06 (MED), AMENDED Phase 88.6.1-37 (D-42): an alert inserted with its
@@ -663,6 +680,14 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // Phase 88.5 (D-15) above; the ticked text before that). Desktop shows the same pill in the
     // hover popover. Measured on the See-all row mock at 375: 48.7 x 20px, word on fill 5.78 light /
     // 5.89 dark. The block is inline-flex and align-middle, which centre it on the name's line; ml-1 is the shipped gap.
+    // AMENDED Phase 89.6-44 (owner ruling TC-A, 2026-11-27): align-middle did not centre it on the line
+    // (it centres on the lowercase letters: 1.64px below a flex-centred role tag on the same Manage
+    // Members row). The phone Friend and Pending tags are drawn in the block's line-tall box (inText;
+    // the marker is at src/components/ui/Pill.tsx ("DECISION Phase 89.6-44 (TC-A, tag centring)")),
+    // and the phone-only display and the 4px gap moved to the box (lineClassName): a hidden box hides
+    // the tag, a margin belongs to the box. Keys, refs, the tab stop, the status role and onFocus are
+    // on the tag, unchanged. The popover's Friend (renderFriendPill) takes the line box only where it
+    // is alone in the popover's block (ruling D55); held by the success region's flex row it does not.
     if (status === 'accepted') {
       // DECISION Phase 88.6.1-37 (Req 5, deviation Rule 1): the Friend span and the Pending span
       // below carry DISTINCT keys, chosen OVER leaving them unkeyed. Both are a span in the same
@@ -671,7 +696,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // and the shared hook sees no removal to recover from (measured in jsdom: focus stayed on the
       // reused node; T1i arm 4 is RED without the keys). Dropping either key is a decision, not a cleanup.
       return (
-        <Pill tone="emerald" key="friend-indicator" ref={friendIndicatorRef} onFocus={armStatusRecovery} data-friend-indicator="" className="md:hidden ml-1">
+        <Pill tone="emerald" key="friend-indicator" ref={friendIndicatorRef} onFocus={armStatusRecovery} data-friend-indicator="" inText lineClassName="md:hidden ml-1">
           Friend
         </Pill>
       );
@@ -735,7 +760,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // a silent unmount drops focus to <body> (Phase 87.8 D-13 rationale).
       // DECISION Phase 89.6-30 (FL-03): Pending is the neutral tag OVER the amber of the chip ring (the pick: no amber on these tags) and keeps its words and focus wiring; still a span (R3-M18 holds). Changing this is a decision, not a cleanup.
       return (
-        <Pill tone="neutral" key="pending-indicator" ref={pendingIndicatorRef} tabIndex={-1} role="status" onFocus={armStatusRecovery} className="md:hidden ml-1">
+        <Pill tone="neutral" key="pending-indicator" ref={pendingIndicatorRef} tabIndex={-1} role="status" onFocus={armStatusRecovery} inText lineClassName="md:hidden ml-1">
           ⏳ Pending
         </Pill>
       );

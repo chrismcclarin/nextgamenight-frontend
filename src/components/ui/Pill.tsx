@@ -25,6 +25,26 @@
  *
  * A caller's className comes last, so tailwind-merge lets it replace the box's display: the See-all
  * row's desktop Friend passes hidden md:inline-flex and the box's own display is dropped.
+ * AMENDED Phase 89.6-44 (TC-A): that tag is drawn in the line-tall box now, so its two display
+ * classes go to lineClassName (a hidden box hides the tag); className still comes last on the tag.
+ *
+ * DECISION Phase 89.6-44 (TC-A, tag centring): owner ruling TC-A, 2026-11-27 (asked: 'Shouldn't
+ * there be one method for them all?'; ruled 'TC-A' on the measured page): every tag is centred on
+ * its line: by the flex row where its holder is flex, and by a line-tall box (PILL_LINE, inText)
+ * where it sits in a line of text, chosen OVER align-middle in text (it centres on the lowercase
+ * letters: 1.64px below a flex-centred tag on the same Manage Members row, 4.16px at 32px text),
+ * OVER making the name line a flex row (a wrapped name's row grew 20 to 24px at normal text), OVER
+ * the box on every tag (a line of flex-held tags would grow from 20 to 24px) and OVER a baseline
+ * tag on the calendar. A tag in a line of text without inText is a defect. Changing this is a
+ * decision, not a cleanup.
+ * How the box is built: ref, role, tabIndex, onFocus, data attributes, title and className stay on
+ * the tag (the inner span), so every locator and focus path still lands on the tag; the box takes
+ * only lineClassName (display classes and margins: a hidden box hides the tag, a margin belongs to
+ * the box). Where the browser does not know the lh unit (Safari before 16.4) the two supports
+ * classes emit nothing and the box keeps the old placement: aligned on the middle, no height of its
+ * own. The classes are whole literals (Tailwind v4 emits nothing for a built one). Pinned by
+ * src/components/ui/Pill.test.tsx ("TC-A: with inText one box wraps the tag") and, per mount, by
+ * src/app/pillFamily.test.ts ("TC-A (89.6-44): every tag in a line of text is drawn in the line-tall box").
  */
 import * as React from 'react';
 
@@ -34,6 +54,11 @@ export type PillTone = 'green' | 'neutral' | 'violet' | 'blue' | 'amber' | 'emer
 
 // The B box as drawn on the pick card: 12px words on a 16px line with 2px above and below, 20px tall.
 export const PILL_BOX = 'inline-flex items-center align-middle px-1.5 py-0.5 rounded-sm text-xs leading-4';
+
+// The line-tall box of a tag that sits in a line of text (TC-A, the marker above): one line high,
+// on the top of its line, with the tag centred in it. Base classes first (the old placement), then
+// the two that apply only where the lh unit is supported.
+export const PILL_LINE = 'inline-flex items-center align-middle supports-[height:1lh]:h-[1lh] supports-[height:1lh]:align-top';
 
 const PILL_TONE: Record<PillTone, string> = {
   green: 'bg-surface-pill-green text-content-pill-green',
@@ -49,12 +74,18 @@ export interface PillProps extends React.HTMLAttributes<HTMLSpanElement> {
   tone: PillTone;
   /** Free text (a faction): the tag may wrap by whole words and is held to its container. Fixed words never set it. */
   wrap?: boolean;
+  /** The tag sits in a line of text: draw it in the line-tall box so it is centred on its line. Not supported with wrap (the wrapping faction tag is held by a flex row). A tag held by a flex or grid row never sets it. */
+  inText?: boolean;
+  /** Classes for the line-tall box, read only with inText: what belongs to a box (hidden, md:hidden, a margin). */
+  lineClassName?: string;
 }
 
-const Pill = React.forwardRef<HTMLSpanElement, PillProps>(function Pill({ tone, wrap = false, className, ...rest }, ref) {
+const Pill = React.forwardRef<HTMLSpanElement, PillProps>(function Pill({ tone, wrap = false, inText = false, lineClassName, className, ...rest }, ref) {
   // Most callers are untyped JS: an unknown tone reads the neutral pair (own keys only), never a tag with no fill.
   const pair = Object.prototype.hasOwnProperty.call(PILL_TONE, tone) ? PILL_TONE[tone] : PILL_TONE.neutral;
-  return <span ref={ref} className={cn(PILL_BOX, 'font-normal', wrap ? 'whitespace-normal max-w-full wrap-break-word' : 'whitespace-nowrap', pair, className)} {...rest} />;
+  const tag = <span ref={ref} className={cn(PILL_BOX, 'font-normal', wrap ? 'whitespace-normal max-w-full wrap-break-word' : 'whitespace-nowrap', pair, className)} {...rest} />;
+  if (!inText) return tag;
+  return <span className={cn(PILL_LINE, lineClassName)}>{tag}</span>;
 });
 
 Pill.displayName = 'Pill';

@@ -76,7 +76,7 @@ import { toast } from 'sonner';
    a started night is a decision, not a cleanup.
    AMENDED Phase 89.6-28 (X42): the Share Game QR gate now reads isNightNotOver; this pill keeps
    hasStarted (P-5 No change), so the two clocks differ on purpose. */
-function RsvpStatusPill({ status, nightStarted = false }) {
+function RsvpStatusPill({ status, nightStarted = false, inText = false }) {
     const map = {
         yes: { label: 'Going', tone: 'green' },
         maybe: { label: 'Maybe', tone: 'amber' },
@@ -92,13 +92,14 @@ function RsvpStatusPill({ status, nightStarted = false }) {
        that gate found. The two-word badges — this one and "New Player" — are the only ones that
        can wrap; every other badge on this surface is a single word.
        AMENDED Phase 88.9-63 (X16): sentence case; nowrap kept; 375 re-measure at the capture.
-       AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [The no-break is no longer written here: it lives in the block, for every fixed-word tag, and the map below names a tone, not a class pair.] */
+       AMENDED Phase 89.6-30 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, the reply tag last, and You is written (You) in plain grey words. [The no-break is no longer written here: it lives in the block, for every fixed-word tag, and the map below names a tone, not a class pair.]
+       AMENDED Phase 89.6-44 (owner ruling TC-A, 2026-11-27): the reply tag has two holders. The See-all row is a line of text and passes inText, so the tag is drawn in the block's line-tall box like the row's other tags (the marker is at src/components/ui/Pill.tsx ("DECISION Phase 89.6-44 (TC-A, tag centring)")); the attendee chip is a flex row, which centres its tags itself, and passes nothing. */
     if (!status) {
         if (nightStarted) return null;
-        return <Pill tone="neutral">No reply</Pill>;
+        return <Pill tone="neutral" inText={inText}>No reply</Pill>;
     }
     const m = map[status] || map.no;
-    return <Pill tone={m.tone}>{m.label}</Pill>;
+    return <Pill tone={m.tone} inText={inText}>{m.label}</Pill>;
 }
 
 // Phase 65-02: compact strip chip for the upcoming-event view. Shows the
@@ -3488,13 +3489,19 @@ export default function GameDetailPage() {
                                             // Phase 89.6-30 (N04): the block's own display is replaced by the
                                             // two display classes passed here (tailwind-merge keeps the later
                                             // one), so a phone never shows this twin.
-                                            <Pill tone="emerald" className="hidden md:inline-flex">Friend</Pill>
+                                            // AMENDED Phase 89.6-44 (owner ruling TC-A, 2026-11-27): this line is INLINE
+                                            // flow, so each of its tags (this one, Owner, Admin, Guest and the
+                                            // reply tag) is drawn in the block's line-tall box (inText; the marker
+                                            // is at src/components/ui/Pill.tsx ("DECISION Phase 89.6-44 (TC-A, tag centring)")).
+                                            // The two display classes moved to the box (lineClassName): a hidden
+                                            // box hides the tag. The line's item spacing lands on the boxes.
+                                            <Pill tone="emerald" inText lineClassName="hidden md:inline-flex">Friend</Pill>
                                         )}
                                         {role === 'owner' && (
-                                            <Pill tone="violet">Owner</Pill>
+                                            <Pill tone="violet" inText>Owner</Pill>
                                         )}
                                         {role === 'admin' && (
-                                            <Pill tone="blue">Admin</Pill>
+                                            <Pill tone="blue" inText>Admin</Pill>
                                         )}
                                         {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
                                             when viewer is a full group member. Skips render for game-only
@@ -3503,10 +3510,10 @@ export default function GameDetailPage() {
                                             flow). Tells admins/owners who joined via game-invite QR so they
                                             can decide who to onboard via admin-initiated invite. */}
                                         {p.is_guest && userScope === 'group-member' && (
-                                            <Pill tone="amber" title="Joined via game-invite QR (not a group member)">Guest</Pill>
+                                            <Pill tone="amber" inText title="Joined via game-invite QR (not a group member)">Guest</Pill>
                                         )}
                                         {/* DECISION Phase 89.6-30 (reply-last): the reply tag is the LAST tag (owner pick N04 = B, 2026-11-22) and the die stays after it, chosen OVER moving the die before the tags: the die is a picture with its own name, not a tag, and the pick orders tags. (You) is regular weight inside the name span OVER inheriting the name's 600: the pick says plain grey words. Changing this is a decision, not a cleanup. */}
-                                        {!repliesLoadState.showError && <RsvpStatusPill status={status} nightStarted={hasStarted(singleEvent, Date.now())} />}
+                                        {!repliesLoadState.showError && <RsvpStatusPill inText status={status} nightStarted={hasStarted(singleEvent, Date.now())} />}
                                         {isBringing && (
                                             <span role="img" title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
                                         )}

@@ -49,6 +49,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import ClickableMemberName from './ClickableMemberName';
+import { PILL_LINE } from '@/components/ui/Pill';
 import { expectFocusRing, expectRingGround } from '@/test-utils/focusRingAssert';
 import { FriendshipContext } from './FriendshipStatusProvider';
 import { Modal } from './Modal';
@@ -93,7 +94,9 @@ describe('ClickableMemberName showInlineIndicator (88.5 D-15 / SPEC Req 5)', () 
     renderName('accepted');
     // Regression pin for the ~9 shipped member ROWS, not a smoke test — see the preamble.
     expect(friendIndicator()).toBeInTheDocument();
-    expect(friendIndicator()).toHaveClass('md:hidden');
+    // AMENDED Phase 89.6-44 (TC-A): the tag sits in the line-tall box, and the box is what hides it from md.
+    expect(friendIndicator()!.parentElement).toHaveClass('md:hidden');
+    expect(friendIndicator()).not.toHaveClass('md:hidden');
   });
 
   // AMENDED Phase 89.6-30 (N04): owner pick N04 = B. The phone Friend tag is the Pill block: the one
@@ -105,8 +108,14 @@ describe('ClickableMemberName showInlineIndicator (88.5 D-15 / SPEC Req 5)', () 
     const pill = friendIndicator()!;
     expect(pill.textContent).toBe('Friend');
     expect(pill.className.split(/\s+/)).not.toContain('font-bold');
+    // AMENDED Phase 89.6-44 (owner ruling TC-A, 2026-11-27): the phone tag is drawn in the line-tall
+    // box of the Pill block (inText), so it is centred on the name's line. The box takes what belongs
+    // to a box (the phone-only display and the 4px gap); the tag keeps its own look, ref and wiring.
+    const friendBox = pill.parentElement as HTMLElement;
+    expect(friendBox.tagName).toBe('SPAN');
+    for (const cls of [...PILL_LINE.split(' '), 'md:hidden', 'ml-1']) expect(friendBox, `the Friend box lacks ${cls}`).toHaveClass(cls);
+    for (const cls of ['md:hidden', 'ml-1']) expect(pill, `the Friend tag still carries ${cls}: a margin or a display on the tag is inside the box`).not.toHaveClass(cls);
     for (const cls of [
-      'md:hidden',
       'inline-flex',
       'items-center',
       'align-middle',
@@ -131,7 +140,10 @@ describe('ClickableMemberName showInlineIndicator (88.5 D-15 / SPEC Req 5)', () 
     cleanup();
     renderName('pending_sent');
     const pending = screen.getByText('⏳ Pending');
-    for (const cls of ['md:hidden', 'ml-1', 'inline-flex', 'items-center', 'align-middle', 'text-xs', 'leading-4', 'font-normal', 'bg-surface-pill-neutral', 'text-content-pill-neutral', 'px-1.5', 'py-0.5', 'rounded-sm']) {
+    const pendingBox = pending.parentElement as HTMLElement;
+    for (const cls of [...PILL_LINE.split(' '), 'md:hidden', 'ml-1']) expect(pendingBox, `the Pending box lacks ${cls}`).toHaveClass(cls);
+    for (const cls of ['md:hidden', 'ml-1']) expect(pending, `the Pending tag still carries ${cls}`).not.toHaveClass(cls);
+    for (const cls of ['inline-flex', 'items-center', 'align-middle', 'text-xs', 'leading-4', 'font-normal', 'bg-surface-pill-neutral', 'text-content-pill-neutral', 'px-1.5', 'py-0.5', 'rounded-sm']) {
       expect(pending).toHaveClass(cls);
     }
     expect(pending.className.split(/\s+/)).not.toContain('font-bold');
@@ -569,6 +581,15 @@ describe('Phase 88.6.1-37 — one request per press, no stale failure, focus kep
       expect(document.activeElement).toBe(pendingSpan());
       setStatus('accepted');
       await waitFor(() => expect(document.activeElement).toBe(nameTrigger()));
+      // Arm 4b (89.6-44, TC-A): what arm 4 rests on now, said by name. The hidden thing is the Friend
+      // tag's PARENT (the line-tall box carries the phone-only display); the tag's own display is not
+      // none. A candidate whose parent is display none is not rendered, so it is not a focus target.
+      // The marker is at src/app/components/ClickableMemberName.js ("DECISION Phase 89.6-44 (TC-A, rendered means rendered)").
+      const hiddenFriend = friendIndicator()!;
+      expect(hiddenFriend.isConnected).toBe(true);
+      expect(window.getComputedStyle(hiddenFriend.parentElement as HTMLElement).display).toBe('none');
+      expect(window.getComputedStyle(hiddenFriend).display, 'the tag itself is not display none: only its box is').not.toBe('none');
+      expect(document.activeElement, 'focus did not go to the tag inside the hidden box').not.toBe(hiddenFriend);
     } finally {
       style.remove();
     }

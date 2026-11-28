@@ -1267,11 +1267,24 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
     const friends = within(dialog).getAllByText('Friend');
     expect(friends).toHaveLength(1);
     const friend = friends[0];
-    expect(friend.parentElement).toBe(going.parentElement);
+    // AMENDED Phase 89.6-44 (owner ruling TC-A, 2026-11-27): every tag in this text line is drawn in
+    // the line-tall box of the Pill block (inText), so the two BOXES are the siblings in the line, and
+    // the desktop twin's two display classes are on its box (a hidden box hides the tag).
+    const friendBox = friend.parentElement as HTMLElement;
+    const goingBox = going.parentElement as HTMLElement;
+    expect(friendBox.parentElement).toBe(goingBox.parentElement);
+    expect(friendBox).not.toBe(goingBox);
     expect(friend.compareDocumentPosition(going) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    for (const cls of ['hidden', 'md:inline-flex', 'bg-surface-pill-emerald', 'text-content-pill-emerald']) {
+    for (const cls of ['hidden', 'md:inline-flex', 'items-center', 'supports-[height:1lh]:h-[1lh]', 'supports-[height:1lh]:align-top']) {
+      expect(friendBox, `the Friend box lacks ${cls}`).toHaveClass(cls);
+    }
+    for (const cls of ['inline-flex', 'items-center', 'align-middle', 'supports-[height:1lh]:h-[1lh]', 'supports-[height:1lh]:align-top']) {
+      expect(goingBox, `the reply tag's box lacks ${cls}`).toHaveClass(cls);
+    }
+    for (const cls of ['bg-surface-pill-emerald', 'text-content-pill-emerald']) {
       expect(friend).toHaveClass(cls);
     }
+    for (const cls of ['hidden', 'md:inline-flex']) expect(friend, `the tag still carries ${cls}`).not.toHaveClass(cls);
   });
 
   // R4-A1 (88.9-52) drew a guest's name as plain text and showed the page's own Friend pill at every
@@ -1303,13 +1316,20 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
       expect(friends).toHaveLength(1);
       const friend = friends[0];
       expect(line).toContainElement(friend);
-      for (const cls of ['hidden', 'md:inline-flex', 'bg-surface-pill-emerald', 'text-content-pill-emerald']) {
+      // AMENDED Phase 89.6-44 (TC-A): the two display classes are on the tag's line-tall box.
+      const friendBox = friend.parentElement as HTMLElement;
+      for (const cls of ['hidden', 'md:inline-flex']) {
+        expect(friendBox).toHaveClass(cls);
+      }
+      for (const cls of ['bg-surface-pill-emerald', 'text-content-pill-emerald']) {
         expect(friend).toHaveClass(cls);
       }
       // AMENDED Phase 89.6-30 (N04): the desktop twin is the Pill block with its display replaced, so
       // its class list holds no bare inline-flex (tailwind-merge dropped the block's own display for
       // the hidden passed after it): a phone never shows two Friends.
-      expect(friend.className.split(/\s+/)).not.toContain('inline-flex');
+      // AMENDED Phase 89.6-44 (TC-A): that holds for the BOX now; the tag inside keeps the block's own inline-flex.
+      expect(friendBox.className.split(/\s+/)).not.toContain('inline-flex');
+      expect(friend.className.split(/\s+/)).toContain('inline-flex');
       // R4 B5's 2px phone pull went with the page's phone pill.
       expect(friend.className.split(/\s+/).some((c) => c.includes('-ms-'))).toBe(false);
       // AMENDED Phase 89.6-30 (N04): it was Friend, then the RSVP pill, then Guest. Owner pick N04 = B
@@ -1351,7 +1371,8 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
       const dialog = await openParticipantsModal(user);
       const pills = within(dialog).getAllByText('Friend');
       expect(pills).toHaveLength(1);
-      expect(pills[0].className.split(/\s+/)).toEqual(expect.arrayContaining(['hidden', 'md:inline-flex']));
+      // AMENDED Phase 89.6-44 (TC-A): the display classes are on the tag's line-tall box.
+      expect((pills[0].parentElement as HTMLElement).className.split(/\s+/)).toEqual(expect.arrayContaining(['hidden', 'md:inline-flex']));
       // No row of the list draws a page pill at phone width any more.
       for (const pill of pills) expect(pill.className.split(/\s+/)).not.toContain('max-md:-ms-0.5');
       // AMENDED Phase 89.6-30 (N04): the viewer's row holds (You) in the muted ink, no name control,

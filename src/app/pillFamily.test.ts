@@ -324,8 +324,62 @@ describe('Phase 88.9-63 (X16 / X17a): one pill family, sentence case, names 600'
     // AMENDED Phase 89.6-44 (N04): the calendar Guest tag keeps its 8px gap and its baseline: the
     // block's align-middle is the one computed difference from the tag it replaced, so the caller
     // puts align-baseline back (className comes last in the block, so it wins).
-    const guest = [...stringChunks(withoutComments(fs.readFileSync(path.join(SRC, 'app/components/GuestPill.tsx'), 'utf8')))].map((chunk) => chunk.text);
-    expect(guest.filter((text) => text === 'ml-2 align-baseline'), 'the calendar Guest tag passes its gap and its baseline to the block').toHaveLength(1);
+    // AMENDED Phase 89.6-44 (owner ruling TC-A, 2026-11-27): the calendar Guest tag joined the one rule
+    // (every tag is centred on its line), so it no longer puts its baseline back: it passes inText and
+    // its 8px gap goes to the line-tall box. The pin read 'ml-2 align-baseline', exactly once.
+    const guestSource = withoutComments(fs.readFileSync(path.join(SRC, 'app/components/GuestPill.tsx'), 'utf8'));
+    const guest = [...stringChunks(guestSource)].map((chunk) => chunk.text);
+    expect(guest.filter((text) => /(^|\s)align-(baseline|middle|top|bottom)(\s|$)/.test(text)), 'the calendar Guest tag sets no vertical alignment of its own').toEqual([]);
+    expect(guest.filter((text) => text === 'ml-2'), 'the calendar Guest tag keeps its 8px gap').toHaveLength(1);
+    expect(guestSource.split("lineClassName={cn('ml-2', className)}").length - 1, 'the gap, and a caller class, go to the box').toBe(1);
+  });
+
+  // 89.6-44 (owner ruling TC-A, 2026-11-27, asked 'Shouldn't there be one method for them all?'):
+  // every tag is centred on its line. A flex row centres its tags already; a tag that sits in a line
+  // of text is drawn in the block's line-tall box, which its mount asks for with inText. This pin
+  // counts, per file, the Pill openings that carry inText, so a tag moved into or out of a text line
+  // moves its number in the same commit. The block's half is pinned by
+  // src/components/ui/Pill.test.tsx ("TC-A: with inText one box wraps the tag").
+  // In a text line today: the See-all row's four tags and the reply tag it draws last (two openings,
+  // which pass the row's inText on; the attendee chip draws the same reply tag as a flex item and
+  // passes nothing), the name control's phone Friend and Pending, the Create Event row's inline
+  // Guest, and the calendar Guest tag. Held by a flex row, so not counted: the attendee chip, the
+  // past-session chip, the Manage Members role tags, the invite row's Pending, the typed row's Guest.
+  // The member popover's Friend is counted too (orchestrator ruling D55): alone in the popover's block
+  // it is a tag on a line of its own and takes the box; the same helper inside the success region's
+  // flex row passes false, so its one opening carries the expression, not a bare flag.
+  it('TC-A (89.6-44): every tag in a line of text is drawn in the line-tall box, counted per file', () => {
+    const block = [...stringChunks(withoutComments(fs.readFileSync(path.join(SRC, 'components/ui/Pill.tsx'), 'utf8')))].map((chunk) => chunk.text);
+    expect(
+      block.filter((text) => text === 'inline-flex items-center align-middle supports-[height:1lh]:h-[1lh] supports-[height:1lh]:align-top'),
+      'the block holds the line-tall box, written once, each class a whole literal',
+    ).toHaveLength(1);
+
+    const OPENING = /<Pill\s[^>]*>/g;
+    const carriesInText = (opening: string) => /\sinText(?=[\s=>/])/.test(opening);
+    // Controls: the scan sees a bare flag, a passed-on value and a multi-line opening, and does not read lineClassName as the flag.
+    const control = '<Pill tone="amber" inText lineClassName="ml-1.5">Guest</Pill><Pill tone={m.tone} inText={inText}>x</Pill><Pill\n  tone="blue"\n  inText\n>Admin</Pill><Pill tone="blue" lineClassName="ml-1">Admin</Pill>';
+    expect(control.match(OPENING), 'four openings are seen').toHaveLength(4);
+    expect((control.match(OPENING) ?? []).filter(carriesInText), 'three of them carry inText').toHaveLength(3);
+
+    for (const [rel, pills, inText] of [
+      ['app/gameDetail/page.js', 12, 6],
+      ['app/components/ClickableMemberName.js', 3, 3],
+      ['app/components/ManageMembers.js', 3, 0],
+      ['app/components/ParticipantRow.js', 2, 1],
+      ['app/components/GuestPill.tsx', 1, 1],
+    ] as const) {
+      const openings = withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8')).match(OPENING) ?? [];
+      expect(openings.length, `${rel}: the scan sees every Pill opening the block pin counts`).toBe(pills);
+      expect(openings.filter(carriesInText).length, `${rel}: tags in a line of text, each drawn in the line-tall box (inText)`).toBe(inText);
+    }
+
+    // The reply tag passes the row's choice on: its two openings carry the same expression, and the
+    // See-all row is the one mount that sets it.
+    const gamePage = withoutComments(fs.readFileSync(path.join(SRC, 'app/gameDetail/page.js'), 'utf8'));
+    expect(gamePage.split('inText={inText}').length - 1, 'the reply tag passes inText on from its row, in both arms').toBe(2);
+    expect(gamePage.split('<RsvpStatusPill inText ').length - 1, 'the See-all row asks for the reply tag in the line-tall box').toBe(1);
+    expect(gamePage.split('<RsvpStatusPill ').length - 1, 'the reply tag has two mounts: the See-all row and the attendee chip').toBe(2);
   });
 
   // 88.9-65 (owner fix row 52-X47). The past-session chip was a one-line flex row on the muted

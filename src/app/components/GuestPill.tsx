@@ -119,11 +119,12 @@ export interface GuestPillProps {
   className?: string;
 }
 
-/* DECISION Phase 89.6-44 (N04, GuestPill): the calendar Guest tag renders through the Pill block with align-baseline restored, chosen OVER the block's align-middle (the ruling: join only if pixel-identical at normal text, and vertical-align is the one computed difference) and OVER leaving a second hand-written amber tag. Identical by construction: the same box spacing, the amber pair and ml-2 as before; leading-4 equals text-xs's own 16px line (globals.css overrides neither the text-xs line height nor the spacing); nowrap on one word changes nothing. Changing this is a decision, not a cleanup. */
+/* DECISION Phase 89.6-44 (N04, GuestPill): the calendar Guest tag renders through the Pill block with align-baseline restored, chosen OVER the block's align-middle (the ruling: join only if pixel-identical at normal text, and vertical-align is the one computed difference) and OVER leaving a second hand-written amber tag. Identical by construction: the same box spacing, the amber pair and ml-2 as before; leading-4 equals text-xs's own 16px line (globals.css overrides neither the text-xs line height nor the spacing); nowrap on one word changes nothing. Changing this is a decision, not a cleanup.
+   AMENDED Phase 89.6-44 (owner ruling TC-A, 2026-11-27: every tag is centred on its line, in the whole app; he was told this tag joins the rule and may move against its text): align-baseline is DROPPED. The tag sits in a line of text, so it is drawn in the block's line-tall box (inText; the marker is at src/components/ui/Pill.tsx ("DECISION Phase 89.6-44 (TC-A, tag centring)")), chosen OVER keeping a baseline tag on the calendar (a third placement beside the flex row and the line box). Its 8px gap, and any class a caller passes, go to the box (lineClassName): a margin belongs to the box. The 'pixel-identical' condition above was the earlier ruling for joining the block; TC-A replaces the placement, not the look. */
 /** The 12px sentence-case Guest pill, rendered after the time text of a guest row. */
 export default function GuestPill({ className }: GuestPillProps) {
   return (
-    <Pill tone="amber" className={cn('ml-2 align-baseline', className)} title="You joined this event as a guest (not a group member)">
+    <Pill tone="amber" inText lineClassName={cn('ml-2', className)} title="You joined this event as a guest (not a group member)">
       Guest
     </Pill>
   );

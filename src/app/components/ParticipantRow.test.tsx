@@ -162,7 +162,14 @@ describe('name cap + long-name layout (WI-F6)', () => {
     // after the last word instead of dropping to its own flex line.
     expect(container.className).not.toContain('flex');
     const pill = screen.getByText('Guest');
-    expect(pill.parentElement).toBe(container);
+    // AMENDED Phase 89.6-44 (owner ruling TC-A, 2026-11-27): the tag in this text line is drawn in the
+    // line-tall box of the Pill block (inText). The BOX is the text-flow sibling now, and it carries
+    // the 6px gap; the tag inside it keeps its own look.
+    const box = pill.parentElement as HTMLElement;
+    expect(box.tagName).toBe('SPAN');
+    expect(box.parentElement).toBe(container);
+    for (const cls of ['inline-flex', 'items-center', 'align-middle', 'supports-[height:1lh]:h-[1lh]', 'supports-[height:1lh]:align-top', 'ml-1.5']) expect(box, `the Guest box lacks ${cls}`).toHaveClass(cls);
+    expect(pill, 'the gap is on the box, not inside it').not.toHaveClass('ml-1.5');
     expect(pill.className).toContain('align-middle');
   });
 

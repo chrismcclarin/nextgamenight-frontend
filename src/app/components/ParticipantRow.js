@@ -191,8 +191,9 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                  (plan 32) and `PromptScheduleSection`'s header chips (plan 15).
                  AMENDED Phase 89.6-44 (N04): owner pick N04 = B (2026-11-22, after holding the card: 'I feel that they are off, but I'm not well versed enough to say why or for what reason'): every tag beside a name renders through src/components/ui/Pill.tsx ("export const PILL_BOX") in one 20px box at regular weight, Manage Members on the same colours with no amber, and You is written (You) in plain grey words. Here: 400 is the arm
                  chosen by the owner, and the tag takes the amber pair from the tag family.
-                 DECISION Phase 89.6-44 (N04, participant rows): the Guest tag is the amber Pill at regular weight (owner pick N04 = B, 2026-11-22), chosen OVER the light-only raw orange pair it carried (no dark twin; X17a gives every Guest tag the amber pair) and OVER 700 (overruled by the pick). Changing this is a decision, not a cleanup. */
-              <Pill tone="amber" className="ml-1.5">Guest</Pill>
+                 DECISION Phase 89.6-44 (N04, participant rows): the Guest tag is the amber Pill at regular weight (owner pick N04 = B, 2026-11-22), chosen OVER the light-only raw orange pair it carried (no dark twin; X17a gives every Guest tag the amber pair) and OVER 700 (overruled by the pick). Changing this is a decision, not a cleanup.
+                 AMENDED Phase 89.6-44 (owner ruling TC-A, 2026-11-27): this tag rides in the name's text line, so it is drawn in the block's line-tall box (inText; the marker is at src/components/ui/Pill.tsx ("DECISION Phase 89.6-44 (TC-A, tag centring)")) and its 6px gap moved to the box (lineClassName). The typed row's twin below is held by a flex row and takes neither. */
+              <Pill tone="amber" inText lineClassName="ml-1.5">Guest</Pill>
             )}
           </div>
         ) : (
