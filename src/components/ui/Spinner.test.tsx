@@ -218,7 +218,9 @@ describe('S4w (89.6-36): a busy Button keeps its resting size; the words give wa
     const spinners = spinnersIn(container);
     expect(spinners).toHaveLength(1);
     const spinnerTokens = tokens(spinners[0]);
-    for (const token of HOUSE_TOKENS) expect(spinnerTokens, `the spinner keeps the house token ${token}`).toContain(token);
+    // AMENDED Phase 89.6-27 (D54, owner ruling SP-A): every house token but the line colour, which
+    // the held spinner trades for its button's ink (the D54 test below holds that half).
+    for (const token of HOUSE_TOKENS.filter((each) => each !== 'border-line-strong')) expect(spinnerTokens, `the spinner keeps the house token ${token}`).toContain(token);
     for (const token of BUSY_SPINNER_CLASSES.split(' ')) expect(spinnerTokens, `the spinner carries ${token}`).toContain(token);
 
     // The words are hidden from the eye only: the name and the text are still there.
@@ -272,6 +274,30 @@ describe('S4w (89.6-36): a busy Button keeps its resting size; the words give wa
 
   it('S4w (89.6-36): the two class strings, pinned', () => {
     expect(BUSY_HELD_CLASSES).toBe('relative [&>:not(.btn-busy-spinner)]:opacity-0');
-    expect(BUSY_SPINNER_CLASSES).toBe('btn-busy-spinner absolute inset-0 m-auto');
+    // AMENDED Phase 89.6-27 (D54, owner ruling SP-A, 2026-11-27: they should be able to see the
+    // spinner): the held spinner's ring takes the button's ink and its top stays clear.
+    expect(BUSY_SPINNER_CLASSES).toBe('btn-busy-spinner absolute inset-0 m-auto border-current border-t-transparent');
+  });
+
+  // D54 (owner ruling SP-A): on a busy Button the spinner is the only thing drawn, and in the house
+  // line colour it measured under 3 to 1 on 9 of 12 button and theme pairs (lowest 1.93). In the
+  // button's own ink it measures what the words measure. The rendered half (the computed ring colour
+  // against the button's ground, main and red button, both themes) is a browser read in the plan's
+  // summary; this test holds the merged class list.
+  it("D54 (89.6-27, owner ruling SP-A): the held spinner's ring is the button's ink, its top stays clear, and the house line colour is gone from it", () => {
+    const { container } = render(<Button busy>Save</Button>);
+    act(() => vi.advanceTimersByTime(SPINNER_DELAY_MS));
+    const spinnerTokens = tokens(spinnersIn(container)[0]);
+    expect(spinnerTokens).toContain('border-current');
+    expect(spinnerTokens).toContain('border-t-transparent');
+    expect(spinnerTokens, 'the house line colour would win or lose by stylesheet order').not.toContain('border-line-strong');
+    // The top colour is written after the ring colour, so the class merge keeps it.
+    expect(spinnerTokens.indexOf('border-t-transparent')).toBeGreaterThan(spinnerTokens.indexOf('border-current'));
+    expect(spinnerTokens.filter((token) => token === 'border-t-transparent')).toHaveLength(1);
+    // The house spinner everywhere else keeps its ratified look (owner pick O16a).
+    const house = render(<Spinner />);
+    const houseTokens = tokens(house.container.querySelector('[data-slot="spinner"]') as HTMLElement);
+    for (const token of HOUSE_TOKENS) expect(houseTokens, `the house spinner keeps ${token}`).toContain(token);
+    expect(houseTokens).not.toContain('border-current');
   });
 });

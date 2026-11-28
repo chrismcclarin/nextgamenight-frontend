@@ -340,8 +340,20 @@ const buttonVariants = cva(
 // The busy hold's two class strings (the S4w marker in the component body below says why). Exported
 // so plan 89.6-27 and any raw spinner host adopt these strings and never type a copy.
 // btn-busy-spinner has no CSS rule: it is the hook the held variant's selector leaves out.
+// DECISION Phase 89.6-27 (D54, owner ruling SP-A, 2026-11-27: 'SP-A, We were trying to make words
+// that colorblind people can read, they should be able to see the spinner.'): the held spinner's
+// ring is drawn in its button's own ink (the ring takes the current text colour; its top stays
+// transparent, written after the ring colour so the class merge keeps it), chosen OVER the house
+// line colour the Spinner carries by default: on a busy Button the spinner is the only thing
+// drawn, and in the line colour it measured under 3 to 1 on 9 of 12 button-and-theme pairs,
+// lowest 1.93; in the button's ink 4.77 to 7.28
+// (planning:.planning/phases/89.6-large-text-200-method-test-ci-coverage-audit-inserted-2026-1/execute/d49-spinner-evidence/results.json).
+// It lives in this ONE constant, so every host that adopts it follows; never set a spinner colour
+// at a call site. The house spinner everywhere else keeps its ratified look
+// (src/components/ui/Spinner.tsx ("DECISION Phase 88.9-24 (owner pick O16a")). Changing this is a
+// decision, not a cleanup.
 export const BUSY_HELD_CLASSES = 'relative [&>:not(.btn-busy-spinner)]:opacity-0';
-export const BUSY_SPINNER_CLASSES = 'btn-busy-spinner absolute inset-0 m-auto';
+export const BUSY_SPINNER_CLASSES = 'btn-busy-spinner absolute inset-0 m-auto border-current border-t-transparent';
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
