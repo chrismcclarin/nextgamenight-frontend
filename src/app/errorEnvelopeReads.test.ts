@@ -218,7 +218,9 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // shared DelayedSpinner (X36a: the busy removes on this page show the house spinner).
     // RE-DERIVED by plan 89.6-22 (Task 2, 2026-11-25): 271 -> 272. One import line above it, the
     // shared useScrollEdges and revealTabInStrip (X-01: the availability strip's edge cue).
-    declaredAt: 272,
+    // RE-DERIVED by plan 89.6-27 (Task 2, 2026-11-28): 272 -> 273. One import line above it: the
+    // DelayedSpinner import became two (useDelayedSpinner and Spinner: the raw busy hosts on S4-c).
+    declaredAt: 273,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +

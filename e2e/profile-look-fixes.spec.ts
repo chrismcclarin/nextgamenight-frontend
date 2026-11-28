@@ -273,6 +273,8 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
   // beside the title; armed, the button has grown to the LEFT only (its right edge has not moved)
   // and the title's top left corner has not moved; live it reads Tap again; with the removal held
   // (X36a) the spinner LEADS the word, inside the button, and the word's right edge has not moved.
+  // AMENDED Phase 89.6-27 (S4w-raw): with the removal held the button keeps its resting box and the
+  // spinner is centred on it (owner pick S4-c); the word's right edge still has not moved.
   // The DELETE is held in the browser and answered in the browser in finally (a held request is
   // sent on when the routes are removed).
   test('R4 D4 (88.9-52; X53 superseded): the collection remove is a worded Remove button of at least 44 by 44 that arms to Tap again and grows to the left only', async ({ page }, testInfo) => {
@@ -326,7 +328,10 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
       expect(live.text, 'R4 D4: the live control does not read Tap again').toBe('Tap again');
       expect(Math.abs(live.button.width - armed.button.width), `R4 D4: the button changed width between Wait and Tap again (${armedRead} then ${JSON.stringify(live)})`).toBeLessThanOrEqual(0.5);
 
-      // The second live press commits; the DELETE is held. X36a: the spinner leads the word.
+      // The second live press commits; the DELETE is held.
+      // AMENDED Phase 89.6-27 (S4w-raw), owner pick S4w = S4-c (2026-11-23: I'll stay with S4-c then):
+      // while the spinner shows the button keeps its resting box and the spinner is centred on it, over
+      // the word (which is still there, not drawn). The leading spinner X36a asserted (W38) is retired.
       await page.keyboard.press('Enter');
       await del.arrived;
       await expect(remove.locator('[data-slot="spinner"]'), 'X36a: no spinner showed while the removal was held').toBeVisible({ timeout: 5_000 });
@@ -339,7 +344,10 @@ test.describe('Profile look fixes (plan 88.9-68)', () => {
       expect(held.text, `X36a: the held control does not read Remove (${heldRead})`).toBe('Remove');
       if (!held.spinner || !held.word) throw new Error(`X36a: the held Remove has no spinner or no word (${heldRead})`);
       expect(held.spinner.left, `X36a: the spinner starts left of the button (${heldRead})`).toBeGreaterThanOrEqual(held.button.left - 0.5);
-      expect(held.spinner.right, `X36a: the spinner does not lead the word (${heldRead})`).toBeLessThanOrEqual(held.word.left + 0.5);
+      expect(Math.abs((held.spinner.left + held.spinner.right) / 2 - (held.button.left + held.button.right) / 2), `S4w-raw: the spinner is not centred across the held button (${heldRead})`).toBeLessThanOrEqual(1);
+      expect(Math.abs((held.spinner.top + held.spinner.bottom) / 2 - (held.button.top + held.button.bottom) / 2), `S4w-raw: the spinner is not centred down the held button (${heldRead})`).toBeLessThanOrEqual(1);
+      expect(Math.abs(held.button.width - rest.button.width), `S4w-raw: the held button is not its resting width (${restRead} then ${heldRead})`).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(held.button.left - rest.button.left), `S4w-raw: the held button moved (${restRead} then ${heldRead})`).toBeLessThanOrEqual(0.5);
       expect(held.spinner.top, `X36a: the spinner starts above the button (${heldRead})`).toBeGreaterThanOrEqual(held.button.top - 0.5);
       expect(held.spinner.bottom, `X36a: the spinner ends below the button (${heldRead})`).toBeLessThanOrEqual(held.button.bottom + 0.5);
       // W38: the right-anchored word holds its place while the write runs.

@@ -44,6 +44,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIRM_DELAY_MS } from '@/components/ui/confirmDelay';
 import { SPINNER_DELAY_MS } from '@/components/ui/useDelayedSpinner';
+import { BUSY_HELD_CLASSES, BUSY_SPINNER_CLASSES } from '@/components/ui/Button';
 import { REGION_EMPTY_DWELL_MS } from '@/components/ui/StatusRegion';
 import { INLINE_RECEIPT_MS } from '@/components/ui/useInlineReceipt';
 import { axe } from 'vitest-axe';
@@ -6908,6 +6909,20 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expect(spinnersIn(control)).toHaveLength(1);
   }
 
+  // AMENDED Phase 89.6-27 (S4w-raw), owner pick S4w = S4-c (2026-11-23): I'll stay with S4-c then.
+  // Once the spinner shows, a busy host holds its resting box: its children stay in place but are
+  // not drawn, and the one spinner is centred over them through Button's exported classes. The
+  // lead and trail placements these tests used to assert (W38) are retired.
+  function expectHeldSpinner(control: Element) {
+    const hostTokens = (control.getAttribute('class') ?? '').split(/\s+/);
+    for (const token of BUSY_HELD_CLASSES.split(' ')) expect(hostTokens, `the busy host carries ${token}`).toContain(token);
+    const spinners = spinnersIn(control);
+    expect(spinners).toHaveLength(1);
+    const spinnerTokens = (spinners[0].getAttribute('class') ?? '').split(/\s+/);
+    for (const token of BUSY_SPINNER_CLASSES.split(' ')) expect(spinnerTokens, `the spinner carries ${token}`).toContain(token);
+    for (const token of ['mr-2', 'ml-2']) expect(spinnerTokens, `the spinner no longer carries ${token}`).not.toContain(token);
+  }
+
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -6939,7 +6954,8 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     // The schedule Delete's class string plus ml-auto and shrink-0 (the Friends Remove's form):
     // 44px tall, no border and no fill in any state, error-subtle on hover.
     expect(remove.className.split(/\s+/).filter(Boolean)).toEqual([
-      'ml-auto', 'inline-flex', 'min-h-11', 'shrink-0', 'items-center', 'whitespace-nowrap', 'rounded-btn', 'px-2', 'text-sm',
+      // AMENDED Phase 89.6-27 (FL-13): relative and the 0.625rem lift, so the word meets the title's first line.
+      'ml-auto', 'relative', '-top-2.5', 'inline-flex', 'min-h-11', 'shrink-0', 'items-center', 'whitespace-nowrap', 'rounded-btn', 'px-2', 'text-sm',
       'text-content-status-error', 'hover:bg-status-error-subtle', 'focus:outline-hidden', ...EDGE_RING,
     ]);
     // The page's own phone Remove is the model: every look class it carries, this one carries.
@@ -7011,11 +7027,9 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     const busyClasses = x.className.split(/\s+/);
     expect(busyClasses).toContain('ml-auto');
     expect(busyClasses).not.toContain('font-semibold');
-    const parts = Array.from(x.children);
-    expect(parts).toHaveLength(2);
-    expect(parts[0].getAttribute('data-slot')).toBe('spinner');
-    expect(parts[0].className.split(/\s+/)).toContain('mr-2');
-    expect(parts[1].textContent).toBe('Remove');
+    // AMENDED Phase 89.6-27 (S4w-raw): the held look, not the leading spinner (see expectHeldSpinner).
+    expectHeldSpinner(x);
+    expect(x.textContent).toBe('Remove');
     // The other card's x is untouched.
     const other = screen.getByRole('button', { name: 'Remove Brass' });
     expect(other).not.toHaveAttribute('aria-disabled');
@@ -7057,16 +7071,9 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expect(del).toHaveAttribute('aria-label', 'Delete Monday schedule, deleting');
     expect(del).toHaveTextContent('Delete');
     expectSpinnerAppearsAfterTheDelay(del);
-    // W38 (88.9-52): the spinner LEADS the label with mr-2, so the right-anchored word holds its place.
-    const expectLeadingSpinner = (control: HTMLElement) => {
-      const kids = Array.from(control.children);
-      expect(kids).toHaveLength(2);
-      expect(kids[0].getAttribute('data-slot')).toBe('spinner');
-      expect(kids[0].getAttribute('class')?.split(/\s+/)).toContain('mr-2');
-      expect(kids[0].getAttribute('class')?.split(/\s+/)).not.toContain('ml-2');
-      expect(kids[1].className).toContain('inline-grid');
-    };
-    expectLeadingSpinner(del);
+    // AMENDED Phase 89.6-27 (S4w-raw): the held look, not the leading spinner (see expectHeldSpinner).
+    expectHeldSpinner(del);
+    expect(del).toHaveTextContent('Delete');
     const tuesday = screen.getByRole('button', { name: 'Delete Tuesday schedule' });
     expect(tuesday).not.toHaveAttribute('aria-disabled');
     expect(spinnersIn(tuesday)).toHaveLength(0);
@@ -7096,7 +7103,7 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expect(overrideDelete).toHaveAttribute('aria-disabled', 'true');
     expect(overrideDelete).toHaveAttribute('aria-label', `${overrideName}, deleting`);
     expectSpinnerAppearsAfterTheDelay(overrideDelete);
-    expectLeadingSpinner(overrideDelete);
+    expectHeldSpinner(overrideDelete);
     await act(async () => { second.resolve({}); });
     await vi.waitFor(() => expect(overrideDelete).not.toHaveAttribute('aria-disabled'));
   });
@@ -7151,8 +7158,8 @@ describe('small x box, busy removes, phone Remove on the shared gate (88.9-68: X
     expectSpinnerAppearsAfterTheDelay(remove);
     // W38 (88.9-52): this control is LEFT-anchored, so its spinner trails the word (a leading one
     // would push the word 24px right); the right-anchored Delete and x lead with theirs.
-    expect(Array.from(remove.children).at(-1)?.getAttribute('data-slot')).toBe('spinner');
-    expect(Array.from(remove.children).at(-1)?.getAttribute('class')?.split(/\s+/)).toContain('ml-2');
+    // AMENDED Phase 89.6-27 (S4w-raw): the held look, not the trailing spinner (see expectHeldSpinner).
+    expectHeldSpinner(remove);
 
     // Taps while it runs send nothing and arm nothing.
     fireEvent.click(remove);
@@ -7813,5 +7820,105 @@ describe('Phase 89.6-27 — Profile part 2 at large text', () => {
     const importCollection = await screen.findByRole('button', { name: 'Import Collection' });
     expect(classesOf(add)).not.toContain('whitespace-nowrap');
     expect(classesOf(importCollection)).not.toContain('whitespace-nowrap');
+  });
+
+  // Owner pick S4w = S4-c (2026-11-23): I'll stay with S4-c then. A raw busy host keeps its resting
+  // box and its word gives way to a centred spinner, through Button's exported classes, exactly
+  // while the delayed spinner shows. DECISION Phase 89.6-27 (S4w-raw) at the phone Remove.
+  it('89.6-27 S4w-raw: a busy phone Remove, schedule Delete, override Delete and collection Remove hold their look once the spinner shows', async () => {
+    type Mock = ReturnType<typeof vi.fn>;
+    const { userGamesAPI, availabilityAPI, usersAPI } = await import('@/lib/api');
+    const never = new Promise(() => {});
+    const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+    const flush = () => act(async () => {});
+    const held = (host: Element): boolean => BUSY_HELD_CLASSES.split(' ').every((token) => classesOf(host).includes(token));
+    const spinnersOf = (host: Element) => Array.from(host.querySelectorAll('[data-slot="spinner"]'));
+    const commit = async (host: HTMLElement) => {
+      fireEvent.click(host);
+      advance(CONFIRM_DELAY_MS);
+      fireEvent.click(host);
+      await flush();
+    };
+    const expectHold = (host: HTMLElement, name: string, word: string) => {
+      // Busy, before the spinner shows: the resting look.
+      expect(host).toHaveAttribute('aria-label', name);
+      expect(held(host), `${name}: held before the spinner shows`).toBe(false);
+      expect(spinnersOf(host)).toHaveLength(0);
+      advance(SPINNER_DELAY_MS);
+      for (const token of BUSY_HELD_CLASSES.split(' ')) expect(classesOf(host), `${name}: the host carries ${token}`).toContain(token);
+      const spinners = spinnersOf(host);
+      expect(spinners, `${name}: one spinner`).toHaveLength(1);
+      for (const token of BUSY_SPINNER_CLASSES.split(' ')) expect(classesOf(spinners[0]), `${name}: the spinner carries ${token}`).toContain(token);
+      expect(host).toHaveAttribute('aria-label', name);
+      expect(host.textContent, `${name}: the word is still in the button`).toContain(word);
+    };
+    vi.useFakeTimers();
+    try {
+      // The phone Remove.
+      (usersAPI.removePhone as Mock).mockImplementation(() => never);
+      renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+      const row = (await vi.waitFor(() => screen.getByText('Phone verified'))).parentElement as HTMLElement;
+      const phoneRemove = within(row).getAllByRole('button').at(-1) as HTMLElement;
+      await commit(phoneRemove);
+      expectHold(phoneRemove, 'Remove, removing', 'Remove');
+      cleanup();
+
+      // The schedule Delete and the override Delete (one shared in-flight state, keyed by row).
+      (availabilityAPI.deleteAvailability as Mock).mockImplementation(() => never);
+      h.patterns = [...PATTERNS, { id: 'override-1', type: 'specific_override', is_available: true, pattern_data: { date: '2026-11-03', startTime: '18:00', endTime: '22:00' } }];
+      renderProfile();
+      const scheduleDelete = await vi.waitFor(() => screen.getByRole('button', { name: 'Delete Monday schedule' }));
+      await commit(scheduleDelete);
+      expectHold(scheduleDelete, 'Delete Monday schedule, deleting', 'Delete');
+      // Only the row whose delete runs holds: its neighbour is at rest.
+      const tuesday = screen.getByRole('button', { name: 'Delete Tuesday schedule' });
+      expect(held(tuesday)).toBe(false);
+      expect(spinnersOf(tuesday)).toHaveLength(0);
+      cleanup();
+
+      renderProfile();
+      await vi.waitFor(() => screen.getByRole('button', { name: 'Delete Monday schedule' }));
+      fireEvent.mouseDown(screen.getByRole('tab', { name: 'Specific Dates' }), { button: 0 });
+      const overrideDelete = await vi.waitFor(() => screen.getByRole('button', { name: /^Delete .+ override$/ }));
+      const overrideName = overrideDelete.getAttribute('aria-label');
+      await commit(overrideDelete);
+      expectHold(overrideDelete, `${overrideName}, deleting`, 'Delete');
+      cleanup();
+
+      // The collection Remove.
+      (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+      (userGamesAPI.removeOwnedGame as Mock).mockImplementation(() => never);
+      renderProfile();
+      const gameRemove = await vi.waitFor(() => screen.getByRole('button', { name: 'Remove Catan' }));
+      await commit(gameRemove);
+      expectHold(gameRemove, 'Remove Catan, removing', 'Remove');
+      const other = screen.getByRole('button', { name: 'Remove Brass' });
+      expect(held(other)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+      (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+      (userGamesAPI.removeOwnedGame as Mock).mockReset().mockResolvedValue({});
+      (availabilityAPI.deleteAvailability as Mock).mockReset().mockResolvedValue({});
+      (usersAPI.removePhone as Mock).mockReset().mockResolvedValue({});
+    }
+  });
+
+  // FL-13: the Remove word sat about 10px under the title's line (centred in its 44px box beside a
+  // 24px line). The button is lifted by a paint offset; the row keeps its top alignment, so the
+  // title does not move. The rendered half is the sweep's R16-rest row (reach, 375, normal text).
+  it('89.6-27 FL-13: the collection Remove is lifted to the title line', async () => {
+    type Mock = ReturnType<typeof vi.fn>;
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as Mock).mockResolvedValue(OWNED_GAMES);
+    try {
+      renderProfile();
+      const remove = await screen.findByRole('button', { name: 'Remove Catan' });
+      expect(classesOf(remove)).toContain('relative');
+      expect(classesOf(remove)).toContain('-top-2.5');
+      expect(classesOf(remove.parentElement)).toContain('items-start');
+      expect(classesOf(remove.parentElement)).not.toContain('items-baseline');
+    } finally {
+      (userGamesAPI.getOwnedGames as Mock).mockReset().mockResolvedValue([]);
+    }
   });
 });

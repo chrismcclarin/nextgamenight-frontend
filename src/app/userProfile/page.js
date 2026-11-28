@@ -51,9 +51,10 @@ import { ErrorFallback } from '../../components/ui/ErrorFallback';
 import { CentredPageFrame } from '../../components/ui/CentredPageFrame';
 import { useSignInRedirect } from '../../lib/hooks/useSignInRedirect';
 import { revealTabInStrip, useScrollEdges } from '../../lib/hooks/useScrollEdges';
-import { Button } from '../../components/ui/Button';
+import { Button, BUSY_HELD_CLASSES, BUSY_SPINNER_CLASSES } from '../../components/ui/Button';
 import { ReservedLabel } from '../../components/ui/ReservedLabel';
-import { DelayedSpinner } from '../../components/ui/DelayedSpinner';
+import { useDelayedSpinner } from '../../components/ui/useDelayedSpinner';
+import { Spinner } from '../../components/ui/Spinner';
 import { Icon, iconTextSize } from '../../components/ui/Icon';
 import { usePhoneViewport } from '../../lib/hooks/usePhoneViewport';
 import { Heading } from '../../components/ui/Heading';
@@ -538,10 +539,17 @@ function Profile(){
     // True while a removal is in flight (Req 4, 88.6.1-53): drives Remove's `aria-disabled`, its
     // busy name and its spinner.
     const [removingPhone, setRemovingPhone] = useState(false);
+    // S4w-raw (89.6-27): true exactly while the phone Remove's delayed spinner shows (marker at the button).
+    const removingPhoneShown = useDelayedSpinner(removingPhone);
     // X36a (88.9-68): which collection game / which availability row has its DELETE in flight.
     // One at a time each: the gate's pending latch refuses a second commit until the first settles.
     const [removingGameId, setRemovingGameId] = useState(null);
     const [deletingPatternId, setDeletingPatternId] = useState(null);
+    // S4w-raw (89.6-27): the schedule and override Deletes are drawn in a list, where no hook can run
+    // per row. One delayed-spinner boolean keys on the shared in-flight state, and spinnerPatternId
+    // names the last started delete (set with it, never cleared), so only that row holds its look.
+    const [spinnerPatternId, setSpinnerPatternId] = useState(null);
+    const patternDeleteShown = useDelayedSpinner(deletingPatternId !== null);
 
     // Phone-removal banner state (REVISION):
     // - phoneJustRemoved: session-scoped flag set by performRemovePhone success path so
@@ -2178,6 +2186,7 @@ function Profile(){
         });
         // X36a (88.9-68): set at the start, cleared in finally.
         setDeletingPatternId(patternId);
+        setSpinnerPatternId(patternId);
         try {
             await availabilityAPI.deleteAvailability(patternId);
             await patternsQuery.refetch();
@@ -3225,14 +3234,29 @@ function Profile(){
                                                 AMENDED Phase 89.6-13 (codemod): owner pick O-1 = B, 2026-11-22; the ring is now
                                                 the outset two-tone utility (2px offset plus 2px band, reach 4px),
                                                 so it fills the 4px gap to Change number; the overlap is ruled acceptable
-                                                (89.6-PICKS-READ.md ring overlap: 'There is no issue with B.'). */}
+                                                (89.6-PICKS-READ.md ring overlap: 'There is no issue with B.').
+                                                AMENDED Phase 89.6-27 (S4w-raw): owner pick S4w = S4-c ('I'll stay with S4-c then'): while the spinner shows the word gives way to a centred spinner and the box keeps its resting width; the spinner placement this line describes is retired. See the Phase 89.6-27 S4w-raw decision marker at the phone Remove. */}
+                                            {/* DECISION Phase 89.6-27 (S4w-raw): owner pick S4w = S4-c, 2026-11-23 ('I'll stay with S4-c then'): a raw
+                                                busy host holds its resting box and its word gives way to a centred spinner, through
+                                                Button's exported held and spinner classes driven by one useDelayedSpinner boolean, chosen
+                                                OVER a DelayedSpinner beside the word (it grew the box 24px, 48px at 320 / 200%) and OVER
+                                                converting these hosts to Button (the unlayered .btn would change their resting look).
+                                                For the two mapped rows the boolean keys on the shared in-flight state and the last
+                                                started id, because a hook cannot run per row. The page-level hook costs two extra
+                                                Profile renders per removal (spinner shown, hold ended), chosen OVER a leaf wrapper per
+                                                host: Profile already re-renders on every two-tap countdown tick and on the busy flag
+                                                itself, and the collection cards are memoised (the collection hook sits inside
+                                                CollectionCard). When a removal settles inside the spinner's 500 ms hold the host is
+                                                pressable again while only the spinner shows, as every busy Button is (accepted by the
+                                                owner 2026-11-23: src/components/ui/Button.tsx ("DECISION Phase 89.6-36 (S4c-window")).
+                                                Changing this is a decision, not a cleanup. */}
                                             <button
                                                 {...removePhoneTriggerProps}
                                                 onClick={handleRemovePhone}
                                                 {...(removingPhone ? { 'aria-disabled': 'true', 'aria-label': 'Remove, removing' } : {})}
                                                 className={`-mx-2 ml-3 inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring${
                                                     removePhoneGate.isArmed() ? ' font-semibold' : ''
-                                                }`}
+                                                }${removingPhoneShown ? ` ${BUSY_HELD_CLASSES}` : ''}`}
                                             >
                                                 {/* X69 width (88.9-67): held from the arm, nothing at rest.
                                                     W39 (88.9-52): left-anchored in the reserve, so Wait (3) starts where Remove
@@ -3241,7 +3265,7 @@ function Profile(){
                                                 <ReservedLabel className="justify-items-start" reserve={removePhoneGate.reserveFor()}>
                                                     {removePhoneGate.labelFor(undefined, 'Remove')}
                                                 </ReservedLabel>
-                                                <DelayedSpinner busy={removingPhone} className="ml-2 align-middle" />
+                                                {removingPhoneShown ? <Spinner className={BUSY_SPINNER_CLASSES} /> : null}
                                             </button>
                                         </div>
                                     )}
@@ -4191,6 +4215,7 @@ function Profile(){
                                                 {(() => {
                                                     const patternLabel = `${getDayName(pattern.pattern_data.dayOfWeek)} schedule`;
                                                     const deleting = deletingPatternId === pattern.id;
+                                                    const held = patternDeleteShown && spinnerPatternId === pattern.id;
                                                     return (
                                                         <button
                                                             {...deletePatternGate.triggerProps(
@@ -4200,6 +4225,7 @@ function Profile(){
                                                             )}
                                                             // DECISION Phase 88.9-68 (X36a, once-over R3, veto open): a committing two-tap remove shows its flight like the Friends Remove — aria-disabled, the delayed held spinner, , removing / , deleting in the name — chosen OVER no in-flight sign; the F9b two-tap is unchanged.
                                                             // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline two-tap controls take ONE look at rest, armed and busy): the busy spinner LEADS the word (mr-2), so the right-anchored word holds its place, chosen OVER the trailing spinner (ml-2), which shifted the word about 24px left (16px glyph and 8px gap). The same form as the Friends Remove. Rest, armed (font-semibold only) and busy keep one class string.
+                                                            // AMENDED Phase 89.6-27 (S4w-raw): owner pick S4w = S4-c ('I'll stay with S4-c then'): while the spinner shows the word gives way to a centred spinner and the box keeps its resting width; the spinner placement this line describes is retired. See the Phase 89.6-27 S4w-raw decision marker at the phone Remove.
                                                             // A conditional spread AFTER the hook's props (the Friends form), so the hook's
                                                             // own aria-disabled is never overwritten by an undefined while it counts down.
                                                             {...(deleting ? { 'aria-disabled': 'true', 'aria-label': `Delete ${patternLabel}, deleting` } : {})}
@@ -4208,10 +4234,11 @@ function Profile(){
                                                             // marker on friends/page.js's Remove-friend gate.
                                                             className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring justify-self-end sm:col-start-2 sm:row-start-1 sm:row-span-2 ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
-                                                            }`}
+                                                            }${held ? ` ${BUSY_HELD_CLASSES}` : ''}`}
                                                         >
-                                                            {/* W38 (88.9-52): the spinner LEADS the word (see the AMENDED line on the X36a marker above). */}
-                                                            <DelayedSpinner busy={deleting} className="mr-2" />
+                                                            {/* W38 (88.9-52): the spinner LEADS the word (see the AMENDED line on the X36a marker above).
+                                                                AMENDED Phase 89.6-27 (S4w-raw): owner pick S4w = S4-c ('I'll stay with S4-c then'): while the spinner shows the word gives way to a centred spinner and the box keeps its resting width; the spinner placement this line describes is retired. See the Phase 89.6-27 S4w-raw decision marker at the phone Remove. */}
+                                                            {held ? <Spinner className={BUSY_SPINNER_CLASSES} /> : null}
                                                             {/* X69 width (88.9-67): held from the arm, nothing at rest.
                                                                 W37 (88.9-52): right-anchored in the reserve, so Wait (3) ends where Delete ended
                                                                 (a button centres its text, which set the short label mid-reserve). */}
@@ -4365,6 +4392,7 @@ function Profile(){
                                                 {(() => {
                                                     const patternLabel = `${formatDate(pattern.pattern_data.date)} override`;
                                                     const deleting = deletingPatternId === pattern.id;
+                                                    const held = patternDeleteShown && spinnerPatternId === pattern.id;
                                                     return (
                                                         <button
                                                             {...deletePatternGate.triggerProps(
@@ -4374,16 +4402,18 @@ function Profile(){
                                                             )}
                                                             // X36a (88.9-68): the in-flight pair, as on the schedule Delete — see the
                                                             // X36a marker of plan 88.9-68 there, and its AMENDED 88.9-52 (W38) line: the spinner leads.
+                                                            // AMENDED Phase 89.6-27 (S4w-raw): owner pick S4w = S4-c ('I'll stay with S4-c then'): while the spinner shows the word gives way to a centred spinner and the box keeps its resting width; the spinner placement this line describes is retired. See the Phase 89.6-27 S4w-raw decision marker at the phone Remove.
                                                             {...(deleting ? { 'aria-disabled': 'true', 'aria-label': `Delete ${patternLabel}, deleting` } : {})}
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
                                                             className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring justify-self-end sm:col-start-2 sm:row-start-1 sm:row-span-2 ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
-                                                            }`}
+                                                            }${held ? ` ${BUSY_HELD_CLASSES}` : ''}`}
                                                         >
-                                                            {/* W38 (88.9-52): the spinner LEADS the word (see the AMENDED line on the X36a marker above). */}
-                                                            <DelayedSpinner busy={deleting} className="mr-2" />
+                                                            {/* W38 (88.9-52): the spinner LEADS the word (see the AMENDED line on the X36a marker above).
+                                                                AMENDED Phase 89.6-27 (S4w-raw): owner pick S4w = S4-c ('I'll stay with S4-c then'): while the spinner shows the word gives way to a centred spinner and the box keeps its resting width; the spinner placement this line describes is retired. See the Phase 89.6-27 S4w-raw decision marker at the phone Remove. */}
+                                                            {held ? <Spinner className={BUSY_SPINNER_CLASSES} /> : null}
                                                             {/* X69 width (88.9-67): held from the arm, nothing at rest.
                                                                 W37 (88.9-52): right-anchored in the reserve, so Wait (3) ends where Delete ended
                                                                 (a button centres its text, which set the short label mid-reserve). */}
@@ -5012,6 +5042,8 @@ const CollectionCard = memo(function CollectionCard({
     onArmedKeyDown,
     onArmedBlur,
 }) {
+    // S4w-raw (89.6-27): true exactly while this card's delayed spinner shows (marker at the phone Remove).
+    const removingShown = useDelayedSpinner(removing);
     return (
     // D49-b (owner ruling 2026-09-09, option i): the inlined built-in md hover shadow was
     // snapped to the theme tier in 88.6, D49-b (a plain hover variant, not plan 05's
@@ -5053,7 +5085,13 @@ const CollectionCard = memo(function CollectionCard({
             breaks inside a word only when that word cannot fit its line (the Heading's own rule).
             The busy spinner LEADS the word (W38: a right-anchored control grows to the left). The
             width is held from the arm, nothing at rest (X69, the phone Remove's form), so the
-            button grows once, to the left, when it is armed. */}
+            button grows once, to the left, when it is armed.
+            AMENDED Phase 89.6-27 (S4w-raw): owner pick S4w = S4-c ('I'll stay with S4-c then'): while the spinner shows the word gives way to a centred spinner and the box keeps its resting width; the spinner placement this line describes is retired. See the Phase 89.6-27 S4w-raw decision marker at the phone Remove.
+            AMENDED Phase 89.6-27 (FL-13): the Remove is lifted by a paint offset (relative, 0.625rem up: half
+            of the 44px box minus the title's line) so the word sits level with the title's first line,
+            chosen OVER top alignment alone (the word sat 10.5px low in its 44px box) and OVER baseline
+            alignment (it drops the title column about 10px instead of lifting the word). Layout is
+            unchanged; the box reaches into the card padding. */}
         <div className="flex flex-wrap justify-between items-start gap-x-2 mb-2">
             <div className="flex-[1_1_8rem] min-w-0">
                 <Heading
@@ -5146,14 +5184,18 @@ const CollectionCard = memo(function CollectionCard({
                     // AMENDED Phase 88.9-52 (W38, owner ruling 2026-11-16: the inline two-tap controls take ONE look at rest, armed and busy): (1) armed keeps the RESTING bordered box and adds only the 600 weight, as the schedule Delete adds only its weight, chosen OVER the error-subtle FILL the armed box gained (fork 7, 88-33 Task 5: the pink pill of W38); the border stays in every state because an icon button needs its box (X53). Armed word on the card ground: 8.31 light, 5.94 on the dark raised fill (floor 4.5). (2) the busy spinner LEADS the X, so the right-anchored X holds its place while the box grows left, chosen OVER the trailing spinner (the X moved about 18px left).
                     // AMENDED Phase 88.9-52 (PIX-2, W38 one look, picture pass): claim (2) was not true as built. Rendered at 375 the X moved 7px RIGHT while busy (left edge 302 to 309): the 32px box was CENTRED in the 44px button at rest (6px each side), and once the spinner made the box 50px, wider than the button, it sat flush with the button's right edge (6px), with the 2px of centring slack round the X gone as well (1px). Now, at rest and while busy, the button anchors the box 6px inside its right edge (justify-end, pr-1.5: 44 - 6 - 32 leaves the same 6px on the left at rest) and the box pads 5px a side (px-1.25: 20 + 10 + 2 = 32, no slack), so the X's right edge is 12px inside the button's right edge in both states and the box grows left only (52px box, 58px button, inside the slot's reserve). Chosen OVER a spinner slot reserved at rest (a 52px box for good, X53 rejected the large resting box) and OVER an absolutely placed spinner (it would sit outside the border, and an icon button's busy sign belongs in its box). The ARMED button keeps the centred, unpadded string: its box is the slot's whole reserve, and 6px of padding would widen the slot on arming and push the title (walk row 573). Arithmetic at the default text size only, not rendered: with enlarged text the box's rem minimum is larger than the 20px icon needs, the slack returns and the X can still shift while busy.
                     // AMENDED Phase 88.9-52 (R4 D4, owner 2026-11-18): the box and the x the two lines above describe are gone; the button is the schedule Delete's class string plus ml-auto and shrink-0 (the Friends Remove's form), 600 while armed, and the spinner still leads.
+                    // AMENDED Phase 89.6-27 (S4w-raw): owner pick S4w = S4-c ('I'll stay with S4-c then'): while the spinner shows the word gives way to a centred spinner and the box keeps its resting width; the spinner placement this line describes is retired. See the Phase 89.6-27 S4w-raw decision marker at the phone Remove.
                     {...(removing ? { 'aria-disabled': 'true', 'aria-label': `Remove ${game.name}, removing` } : {})}
-                    className={`ml-auto inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring${
+                    className={`ml-auto relative -top-2.5 inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:focus-ring${
                         armed ? ' font-semibold' : ''
-                    }`}
+                    }${removingShown ? ` ${BUSY_HELD_CLASSES}` : ''}`}
                 >
                     {/* W38 (88.9-52): the spinner leads, and it is mounted beside the label, never inside
-                        an armed-only branch, so arming never unmounts it mid-hold (R-C3b reach). */}
-                    <DelayedSpinner busy={removing} className="mr-2" />
+                        an armed-only branch, so arming never unmounts it mid-hold (R-C3b reach).
+                        AMENDED Phase 89.6-27 (S4w-raw): owner pick S4w = S4-c ('I'll stay with S4-c then'): while the spinner shows the word gives way to a centred spinner and the box keeps its resting width; the spinner placement this line describes is retired. See the Phase 89.6-27 S4w-raw decision marker at the phone Remove.
+                        The delay hook runs at the top of the card, outside every branch, so arming
+                        still never unmounts the spinner mid-hold. */}
+                    {removingShown ? <Spinner className={BUSY_SPINNER_CLASSES} /> : null}
                     <ReservedLabel className="justify-items-end" reserve={labelReserve}>
                         {label}
                     </ReservedLabel>
