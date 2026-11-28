@@ -536,8 +536,6 @@ const progressRegion = () => {
   expect(own).toHaveLength(1);
   return own[0];
 };
-/** Its `tabIndex={-1}` wrapper — the node the false->true focus move targets. */
-const progressFocusTarget = () => progressRegion().parentElement as HTMLElement;
 
 /** Open the modal and drive the DELETE to its in-flight state, holding it there. */
 async function enterDeletingState(user: ReturnType<typeof userEvent.setup>) {
@@ -759,7 +757,10 @@ describe('D52 — the announcements: a polite progress region and the converted 
     expect(progressRegion()).toBe(region);
     // VISIBLE, per the owner ruling of 2026-09-14: this is the only feedback a
     // SIGHTED phone user gets during an irreversible deletion.
-    expect(region.className).not.toMatch(/\bsr-only\b/);
+    // AMENDED Phase 89.6-27 (K2), owner pick K = K2 (2026-11-22): I prefer the K2 option.
+    // Deleting is spoken, not drawn: the region is sr-only while set too, and the busy danger
+    // button's spinner is the sighted sign, so nothing in the box moves.
+    expect(region.className).toMatch(/\bsr-only\b/);
     expect(region.parentElement?.className ?? '').not.toMatch(/\bsr-only\b/);
   });
 
@@ -833,17 +834,90 @@ describe('D52 — the announcements: a polite progress region and the converted 
   });
 });
 
+// Owner pick K = K2 (2026-11-22): I prefer the K2 option. While deleting, the words are spoken
+// from the always-mounted polite region and not drawn, so the title, the field and the two buttons
+// do not move (the rendered half is the sweep's D34 row).
+describe('K2 (89.6-27)', () => {
+  it('K2 (89.6-27): while deleting, the progress region holds Deleting… and is sr-only; the same node, still polite', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    const inFlight = deferred<{ message: string }>();
+    mockDeleteAccount.mockReturnValue(inFlight.promise);
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    const region = progressRegion();
+    expect(region).toHaveTextContent('');
+    expect(region.className).toMatch(/\bsr-only\b/);
+    await user.type(confirmInput(), 'delete my account');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    await waitFor(() => expect(progressRegion()).toHaveTextContent('Deleting…'));
+    expect(progressRegion()).toBe(region);
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region.className.split(/\s+/)).toContain('sr-only');
+    // Nothing visible was added for it: no margin and no ink class ride on the hidden line.
+    expect(region.className.split(/\s+/)).not.toContain('mb-4');
+    expect(region.className.split(/\s+/)).not.toContain('text-content-secondary');
+  });
+});
+
+// The blocked list at large text (found by the sweep's D34-blocked row, 89.6-27): at 320 wide and
+// 200% a long group name and its member count did not fit one line, the count ran 50px out of its
+// row and the dialog scrolled sideways. The row wraps; the count keeps to the right on its own line.
+describe('D34-blocked (89.6-27)', () => {
+  it('D34-blocked (89.6-27): a blocked group row wraps, its name stays inside the row and its count keeps to the right', async () => {
+    mockGetBlockers.mockResolvedValue({
+      groups: [{ id: 'g-1', name: 'The Thursday Night Strategy and Deck-Building Society', memberCount: 6 }],
+    });
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    const link = await screen.findByRole('link', { name: 'The Thursday Night Strategy and Deck-Building Society' });
+    const row = link.closest('li') as HTMLElement;
+    const tokens = (el: Element | null): string[] => (el?.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
+    expect(tokens(row)).toContain('flex-wrap');
+    for (const token of ['max-w-full', 'wrap-break-word']) expect(tokens(link), `the name carries ${token}`).toContain(token);
+    const count = within(row).getByText('6 members');
+    expect(tokens(count)).toContain('ml-auto');
+    // No clip and no squeeze: the name is never cut and never narrowed before the row wraps.
+    for (const token of ['truncate', 'min-w-0', 'whitespace-nowrap']) expect(tokens(link)).not.toContain(token);
+  });
+});
+
 describe('D52 / D24 — focus lands on a NAMED element on both `deleting` edges', () => {
-  it('false->true: focus moves to the tabIndex={-1} wrapper of the polite region, a node this component owns', async () => {
-    // NOT `document.activeElement !== document.body`, which is vacuous in this
-    // harness (src/app/components/keyboardOperability.test.tsx ("activeElement lands on <body> in jsdom no")), and NOT
-    // the Radix Content node, for which `Modal` forwards no ref (src/app/components/Modal.tsx ("<DialogContent"),
-    // the Content element itself).
+  // K2 hides the progress line, so focus rests on the visible, still-focusable Delete my account
+  // button while it works, not on the hidden line's wrapper (review M117): a keyboard ring would
+  // vanish for the whole request and a screen reader would land on an unlabelled wrapper.
+  it('false->true (89.6-27 K2 focus): focus is on the Delete my account button, from the button itself', async () => {
     const user = userEvent.setup();
     await enterDeletingState(user);
-    const target = progressFocusTarget();
-    expect(target).toHaveAttribute('tabindex', '-1');
-    expect(document.activeElement).toBe(target);
+    const busy = screen.getByRole('button', { name: 'Delete my account, deleting' });
+    expect(document.activeElement).toBe(busy);
+    // aria-disabled while busy, never natively disabled: it stays focusable and keeps its ring.
+    expect(busy).not.toBeDisabled();
+    expect(busy).toHaveAttribute('aria-disabled', 'true');
+    // No node in the box is focusable with its ring suppressed: the progress wrapper is a bare div.
+    const wrapper = progressRegion().parentElement as HTMLElement;
+    expect(wrapper).not.toHaveAttribute('tabindex');
+    expect(wrapper.getAttribute('class') ?? '').toBe('');
+  });
+
+  // The touch path: a tap that does not focus the button leaves focus in the confirm field, which
+  // is natively disabled while deleting. fireEvent.click moves no focus, standing in for that tap.
+  it('false->true (89.6-27 K2 focus): focus is on the Delete my account button, from the confirm field (touch path)', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    const inFlight = deferred<{ message: string }>();
+    mockDeleteAccount.mockReturnValue(inFlight.promise);
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+    await user.type(confirmInput(), 'delete my account');
+    expect(document.activeElement).toBe(confirmInput());
+    fireEvent.click(screen.getByRole('button', { name: 'Delete my account' }));
+    const busy = await screen.findByRole('button', { name: 'Delete my account, deleting' });
+    expect(document.activeElement).toBe(busy);
+    expect(busy).not.toBeDisabled();
   });
 
   it('true->false with the modal still open and NOT blocked: focus returns to the confirm input', async () => {
@@ -1057,7 +1131,10 @@ describe('88.6.1-22 — the danger action stays focusable while deleting (D-35 /
     await user.click(screen.getByRole('button', { name: 'Delete my account' }));
     await waitFor(() => expect(progressRegion()).toHaveTextContent('Deleting…'));
     expect(progressRegion()).toBe(polite);
-    expect(polite.className).not.toMatch(/\bsr-only\b/);
+    // AMENDED Phase 89.6-27 (K2), owner pick K = K2 (2026-11-22): I prefer the K2 option.
+    // The polite region stays sr-only while it holds Deleting; the failure region below is
+    // still drawn once it holds text.
+    expect(polite.className).toMatch(/\bsr-only\b/);
 
     await act(async () => {
       inFlight.reject(new ApiError('boom', 'internal', 500, { code: 'internal' }));

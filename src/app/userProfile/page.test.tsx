@@ -7951,4 +7951,31 @@ describe('Phase 89.6-27 — Profile part 2 at large text', () => {
     const source = await pageSource();
     expect(source).toContain("const THEME_CHECK_CLASS = 'absolute left-3 top-1/2 -translate-y-1/2';");
   });
+
+  // The BGG search result row (found by this plan: no sweep row reached it). Add to Collection was
+  // a nowrap label with a shrink lock, so at 320 wide and 200% it ran past its row; the name could
+  // be squeezed before the row wrapped (HR-2). The row wraps from sm, the name asks for 8rem first,
+  // and the label wraps by whole words. DECISION Phase 89.6-27 (bgg-row) above the row.
+  it('89.6-27 bgg-row: Add to Collection carries max-w-full and no nowrap or shrink lock; the name carries max-w-full and no min-w-0; the row wraps from sm', async () => {
+    type Mock = ReturnType<typeof vi.fn>;
+    const { gamesAPI } = await import('@/lib/api');
+    (gamesAPI.searchBGG as Mock).mockResolvedValue([{ bgg_id: '13', name: 'Catan', year_published: 1995 }]);
+    try {
+      renderProfile();
+      fireEvent.click(await screen.findByRole('button', { name: '+ Add from BGG' }));
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search BoardGameGeek' }), { target: { value: 'catan' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+      const add = await screen.findByRole('button', { name: 'Add to Collection' });
+      expect(classesOf(add)).toContain('max-w-full');
+      for (const token of ['whitespace-nowrap', 'shrink-0']) expect(classesOf(add), `the Add button no longer carries ${token}`).not.toContain(token);
+      const row = add.parentElement as HTMLElement;
+      expect(classesOf(row)).toContain('sm:flex-wrap');
+      const name = row.firstElementChild;
+      expect(name?.textContent).toContain('Catan');
+      for (const token of ['flex-1', 'sm:basis-32', 'max-w-full']) expect(classesOf(name), `the name carries ${token}`).toContain(token);
+      expect(classesOf(name)).not.toContain('min-w-0');
+    } finally {
+      (gamesAPI.searchBGG as Mock).mockReset().mockResolvedValue([]);
+    }
+  });
 });

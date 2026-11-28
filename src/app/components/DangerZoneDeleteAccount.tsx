@@ -101,7 +101,8 @@ const NOT_PROVISIONED_MESSAGE =
    AMENDED Phase 88.9-45 (owner pick O16a, 88.9-PICKS-B9.json, 2026-11-07; register 53.24 Deleting half):
    the danger action keeps its label + the house spinner while deleting; the constant is now the
    progress region's string alone, so the W008 one-literal claim holds with one reader, chosen OVER
-   keeping the button swap (rule 1). */
+   keeping the button swap (rule 1).
+   AMENDED Phase 89.6-27 (K2): owner pick K = K2, 2026-11-22 ('I prefer the K2 option.'; held: 'No, K2 is the better option'): Deleting… is spoken but not drawn; the danger button's spinner (88.9-45 O16a, held width plan 89.6-36) is the sighted sign, so nothing in the box moves. The visible arm this marker chose is retired; the region stays always mounted and polite, and it is no longer the focus carrier (see AMENDED Phase 89.6-27 (K2 focus) at the D52 piece (ii) marker). */
 const DELETING_LABEL = 'Deleting…';
 
 /* DECISION Phase 88.6-30 (D1, round-3 verdict): the in-flight DELETE is BOUNDED by a
@@ -244,11 +245,12 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
      the prop, src/app/components/Modal.tsx ("function ModalRoot({") destructured, src/app/components/Modal.tsx ("applyInitialFocus(initialFocusRef, event)")) —
      fires on `onOpenAutoFocus` and cannot serve a mid-life `deleting` edge. A
      `document.querySelector('[role="dialog"]')` lookup is REJECTED for the same reason
-     plus its unassertability in jsdom. */
-  const progressFocusRef = React.useRef<HTMLDivElement>(null);
+     plus its unassertability in jsdom.
+     AMENDED Phase 89.6-27 (K2 focus): the progress wrapper is no longer a target; the Delete action is (deleteActionRef). */
   const confirmInputRef = React.useRef<HTMLInputElement>(null);
   const blockedLeadRef = React.useRef<HTMLParagraphElement>(null);
   const cancelActionRef = React.useRef<HTMLButtonElement>(null);
+  const deleteActionRef = React.useRef<HTMLButtonElement>(null);
   // The DELETE latch (88.6.1-22, D-35): see the DECISION marker at the danger action.
   const deleteInFlightRef = React.useRef(false);
 
@@ -448,13 +450,14 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
      element" — that is the group link, which navigates the user OUT of the dialog mid-flow. CONSEQUENCE, not taste. The null
      fallback is stated POSITIVELY as the Cancel action, which sits in `<Modal.Footer>`
      outside the ternary, is mounted on both arms, and is already required by AC-21 to
-     stay focusable. */
+     stay focusable.
+     AMENDED Phase 89.6-27 (K2 focus): the false->true move now targets the Delete my account button (deleteActionRef), not the progress wrapper. Why: pick K2 (owner 2026-11-22, 'No, K2 is the better option') takes 'the only progress feedback' out of view, so the wrapper is no longer a place focus can visibly rest: a keyboard ring would vanish for the whole request and VoiceOver would land on an unlabelled wrapper round a hidden line (the labelled-container pattern that failed on iPhone VoiceOver, measured 2026-10-20). The button is aria-disabled while busy, not natively disabled, so it stays focusable, keeps its ring and spinner, and refuses a second press; the polite region still announces Deleting…. REJECTED: keeping the move to the wrapper (the broken behaviour above) and dropping the move (it brings back the touch-path focus loss this marker fixed). The owner was told on 2026-11-23. The true->false edge is unchanged. */
   const prevDeletingRef = React.useRef(deleting);
   React.useEffect(() => {
     const wasDeleting = prevDeletingRef.current;
     prevDeletingRef.current = deleting;
     if (!wasDeleting && deleting) {
-      (progressFocusRef.current ?? cancelActionRef.current)?.focus();
+      (deleteActionRef.current ?? cancelActionRef.current)?.focus();
       return;
     }
     if (wasDeleting && !deleting && open) {
@@ -508,18 +511,20 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
               (planning:.planning/phases/88.6-fe-design-system-adoption-convergence-inserted-2026-08-06/88.6-UI-SPEC.md ("Announcement: exactly one live region per failure."): "… Do not add
               a second region"; recorded as §14 row A-31). It is ALSO the focus carrier for
               the `deleting` false->true edge, which is why the wrapper is `tabIndex={-1}`
-              and holds the ref. */}
-          <div ref={progressFocusRef} tabIndex={-1} className="focus:outline-hidden">
+              and holds the ref.
+              AMENDED Phase 89.6-27 (K2): owner pick K = K2, 2026-11-22 ('I prefer the K2 option.'; held: 'No, K2 is the better option'): Deleting… is spoken but not drawn; the danger button's spinner (88.9-45 O16a, held width plan 89.6-36) is the sighted sign, so nothing in the box moves. The visible arm this marker chose is retired; the region stays always mounted and polite, and it is no longer the focus carrier (see AMENDED Phase 89.6-27 (K2 focus) at the D52 piece (ii) marker). */}
+          <div>
             {/* DECISION Phase 88.6.1-22 (D-22): the 16px below a shown in-flight line moved
                 from the wrapper's conditional class onto the region itself — 0px idle (the
                 empty region is sr-only), 16px under a shown line, identical to before.
                 Chosen OVER keeping a conditional wrapper class (the per-site idiom D-22
                 retires) and OVER an unconditional wrapper margin (+16px idle at the top of
-                every open dialog). */}
+                every open dialog).
+                AMENDED Phase 89.6-27 (K2): the region is sr-only while set too, so it costs 0px in every state. */}
             <StatusRegion
               politeness="polite"
               srOnlyWhenEmpty
-              className="mb-4 text-content-secondary"
+              className="sr-only"
             >
               {deleting ? DELETING_LABEL : null}
             </StatusRegion>
@@ -536,18 +541,25 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                 ownership or remove the members of each group below.
               </p>
               <ul className="space-y-2">
+                {/* DECISION Phase 89.6-27 (blocked-row): the group row wraps (the name keeps its own line when
+                    it and the count do not fit one; the count keeps to the right), chosen OVER the single
+                    line it was (at 320 wide and 200% text a long name pushed the count 50px out of the row
+                    and the dialog scrolled sideways by 38px: the sweep's D34-blocked row) and OVER a
+                    narrowed or cut name (HR-2: a name is never squeezed before its row wraps). A word too
+                    long for the row breaks inside itself only then. With room for both nothing changes.
+                    Changing this is a decision, not a cleanup. */}
                 {blockedGroups!.map((group) => (
                   <li
                     key={group.id}
-                    className="flex items-center justify-between gap-3 rounded-btn border border-line p-3"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-btn border border-line p-3"
                   >
                     <a
                       href={`/groupHomePage?id=${encodeURIComponent(group.id)}`}
-                      className="text-content-link hover:underline"
+                      className="max-w-full wrap-break-word text-content-link hover:underline"
                     >
                       {group.name}
                     </a>
-                    <span className="text-xs text-content-secondary">
+                    <span className="ml-auto text-xs text-content-secondary">
                       {group.memberCount}{' '}
                       {group.memberCount === 1 ? 'member' : 'members'}
                     </span>
@@ -780,6 +792,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
               it is not the activated control. */}
           {!isBlocked && (
             <Modal.Action
+              ref={deleteActionRef}
               variant="danger"
               onClick={handleDelete}
               disabled={confirmInvalid}

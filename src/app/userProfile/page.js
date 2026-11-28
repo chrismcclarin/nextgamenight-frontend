@@ -4715,8 +4715,13 @@ function Profile(){
                                         const isAlreadyOwned = ownedGames.some(g => g.bgg_id === result.bgg_id);
                                         const isAddingThis = addingBggId === result.bgg_id;
                                         return (
-                                            <div key={result.bgg_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-surface-card border border-line rounded-btn">
-                                                <span className="text-base text-content-primary wrap-break-word flex-1 min-w-0">
+                                            /* DECISION Phase 89.6-27 (bgg-row): the result row wraps (GR, owner 2026-11-22) and Add to
+                                               Collection wraps by whole words, chosen OVER a nowrap Add (it ran past the row at
+                                               320 / 200%) and OVER min-w-0 on the name (HR-2: it squeezes the name before the row
+                                               wraps). On a phone at normal text the row is unchanged. Changing this is a decision,
+                                               not a cleanup. */
+                                            <div key={result.bgg_id} className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2 p-3 bg-surface-card border border-line rounded-btn">
+                                                <span className="text-base text-content-primary wrap-break-word flex-1 sm:basis-32 max-w-full">
                                                     {result.name} {result.year_published ? `(${result.year_published})` : ''}
                                                 </span>
                                                 {/* DECISION Phase 88.6.1-67 (D-35, Add to Collection):
@@ -4743,14 +4748,15 @@ function Profile(){
                                                     DISCLOSED visible delta: the pressed Add shows the gated
                                                     primary pair, its siblings the 50% wash, for the length of an
                                                     add. Dropping either half of the pair, or restoring
-                                                    refresh-then-close, is a decision, not a cleanup. */}
+                                                    refresh-then-close, is a decision, not a cleanup.
+                                                    labels-wrap (89.6-27): see the Phase 89.6-27 bgg-row decision marker above the row. */}
                                                 <Button
                                                     variant="primary"
                                                     type="button"
                                                     onClick={(event) => addGameToCollection(result.bgg_id, event)}
                                                     disabled={isAlreadyOwned || (addingBggId !== null && !isAddingThis)}
                                                     aria-disabled={isAddingThis ? 'true' : undefined}
-                                                    className="whitespace-nowrap shrink-0"
+                                                    className="max-w-full"
                                                     busy={isAddingThis}
                                                     busySuffix={ADDING_TO_COLLECTION_BUSY_SUFFIX}
                                                 >
