@@ -387,8 +387,150 @@ const timezoneListExtras: NonNullable<SurfaceRow['extras']> = async (page: Page,
   if (problems.length > 0) throw new Error(problems.join(' || '));
 };
 
+// ---------------------------------------------------------------------------------------------
+// D34: Delete your account. The pre-flight read (GET /users/me/deletion-blockers) is answered in the
+// browser: no groups for D34, two owned groups for D34-blocked (the blocked list, with a long name).
+// D34's extras press Delete my account once, in the last cell only (font32, on its own page): the
+// DELETE is caught here on a pathname predicate (any host), never handed on, and answered 500 in
+// the browser. While it is held the box must not move (pick K = K2: Deleting is spoken, not drawn).
+const isBlockersRead = (url: URL): boolean => url.pathname.endsWith('/users/me/deletion-blockers');
+const BLOCKING_GROUPS = [
+  { id: '89627000-0000-4000-8000-000000000011', name: 'The Thursday Night Strategy and Deck-Building Society', memberCount: 6 },
+  { id: '89627000-0000-4000-8000-000000000012', name: 'Catan Club', memberCount: 3 },
+];
+const deleteDialogOf = (page: Page): Locator => page.getByRole('dialog', { name: 'Delete your account' });
+
+async function openDeleteDialog(page: Page): Promise<Locator> {
+  await page.goto('/userProfile');
+  await page.getByRole('heading', { level: 2, name: 'Timezone', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByRole('button', { name: 'Edit username', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByRole('button', { name: 'Delete My Account', exact: true }).click();
+  const dialog = deleteDialogOf(page);
+  await dialog.waitFor({ state: 'visible', timeout: 10_000 });
+  return dialog;
+}
+
+const reachDelete: SurfaceRow['reach'] = async (page) => {
+  const dialog = await openDeleteDialog(page);
+  await expect(dialog.getByRole('textbox')).toBeEnabled({ timeout: 10_000 });
+  await settleAnimations(dialog);
+  return { root: dialog, dialog };
+};
+
+const reachDeleteBlocked: SurfaceRow['reach'] = async (page) => {
+  const dialog = await openDeleteDialog(page);
+  await dialog.getByText('Before you can delete your account', { exact: false }).waitFor({ state: 'visible', timeout: 10_000 });
+  await settleAnimations(dialog);
+  return { root: dialog, dialog };
+};
+
+const K2_CELL = '768x1024-dark-font32';
+const deleteExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  if (cell.id !== K2_CELL) return;
+  const tag = `D34 ${cell.id}`;
+  const problems: string[] = [];
+  const dialog = deleteDialogOf(page);
+  const hold = await holdRequests(page, { method: 'DELETE', match: (url) => url.pathname.endsWith('/users/me') });
+  const parts: Array<[string, Locator]> = [
+    ['the title', dialog.getByRole('heading', { name: 'Delete your account' })],
+    ['the confirm field', dialog.getByRole('textbox')],
+    ['Delete my account', dialog.getByRole('button', { name: /^Delete my account/ })],
+    ['Cancel', dialog.getByRole('button', { name: 'Cancel', exact: true })],
+  ];
+  const boxes = async () => Promise.all(parts.map(async ([, part]) => part.boundingBox()));
+  try {
+    await dialog.getByRole('textbox').fill('delete my account');
+    await settleFrames(page);
+    const rest = await boxes();
+    await dialog.getByRole('button', { name: 'Delete my account', exact: true }).click();
+    await hold.arrived;
+    const region = dialog.locator('[role="status"]:not([data-announcer])');
+    await expect(region, 'the progress region never said Deleting').toHaveText('Deleting…', { timeout: 5_000 });
+    await dialog.locator('[data-slot="spinner"]').first().waitFor({ state: 'visible', timeout: 5_000 });
+    await settleFrames(page);
+    const held = await boxes();
+    parts.forEach(([name], at) => {
+      const before = rest[at];
+      const after = held[at];
+      if (!before || !after) {
+        problems.push(`${tag}: ${name} is not drawn`);
+        return;
+      }
+      const moved = Math.max(Math.abs(after.x - before.x), Math.abs(after.y - before.y), Math.abs(after.width - before.width), Math.abs(after.height - before.height));
+      if (moved > 0.5) problems.push(`${tag}: while deleting, ${name} moved ${r1(after.y - before.y)}px down and ${r1(after.x - before.x)}px across (size ${r1(after.width - before.width)} x ${r1(after.height - before.height)})`);
+    });
+    const regionBox = await region.boundingBox();
+    if (regionBox && (regionBox.width > 1 || regionBox.height > 1)) problems.push(`${tag}: the Deleting line is drawn, ${r1(regionBox.width)} x ${r1(regionBox.height)} (it must be spoken, not drawn)`);
+    const focused = await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent ?? '');
+    if (!/^Delete my account/.test(focused.trim())) problems.push(`${tag}: while deleting, focus is on "${focused.trim().slice(0, 40)}", not on Delete my account`);
+    if (hold.count() !== 1) problems.push(`${tag}: ${hold.count()} deletes were sent, not one`);
+  } finally {
+    await hold.release({ error: 'held by the large-text sweep' }, 500);
+  }
+  await expect(dialog.getByRole('textbox'), 'the confirm field did not come back after the held delete failed').toBeEnabled({ timeout: 10_000 });
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
+// ---------------------------------------------------------------------------------------------
+// R16-bgg: the BGG search results under + Add from BGG. The search read is answered in the browser
+// with three results (one long title). Add to Collection is NEVER pressed: it writes.
+const isBggSearch = (url: URL): boolean => url.pathname.endsWith('/games/bgg/search');
+const BGG_RESULTS = [
+  { bgg_id: '9962701', name: 'Twilight Imperium: Fourth Edition, Prophecy of Kings', year_published: 2017 },
+  { bgg_id: '9962702', name: 'Catan', year_published: 1995 },
+  { bgg_id: '9962703', name: 'Wingspan', year_published: 2019 },
+];
+// The card is found by its heading here: with the search open its toggle reads Hide Search.
+const bggResultsOf = (page: Page): Locator =>
+  page
+    .locator('.card')
+    .filter({ has: page.getByRole('heading', { level: 2, name: /^My Game Collection/ }) })
+    .locator('div.overflow-y-auto')
+    .filter({ has: page.getByRole('button', { name: 'Add to Collection', exact: true }) });
+const bggProblems = new WeakMap<Page, string[]>();
+const reachBggResults: SurfaceRow['reach'] = async (page) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto('/userProfile');
+  await page.getByRole('heading', { level: 2, name: 'Timezone', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByRole('button', { name: 'Remove Catan', exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+  await expectNormalText(page, 'R16-bgg');
+  await page.getByRole('button', { name: '+ Add from BGG', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Search BoardGameGeek' }).fill('twilight');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  const adds = page.getByRole('button', { name: 'Add to Collection', exact: true });
+  await adds.first().waitFor({ state: 'visible', timeout: 10_000 });
+  await expect(adds).toHaveCount(BGG_RESULTS.length);
+  await settleFrames(page);
+  // On a phone at normal text the row is unchanged: the first Add's label is on one line.
+  const label = await adds.first().locator('.bb-label').evaluate((el) => ({ height: el.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(el).lineHeight) }));
+  const problems: string[] = [];
+  if (!(label.height < label.lineHeight * 1.5)) problems.push(`R16-bgg at 375 x 667 with normal text: the first Add to Collection label is ${r1(label.height)}px tall on a ${r1(label.lineHeight)}px line (more than one line)`);
+  const sideways = await sidewaysOf(page);
+  if (sideways > 0) problems.push(`R16-bgg at 375 x 667 with normal text: the page scrolls sideways by ${sideways}px`);
+  bggProblems.set(page, problems);
+  const root = bggResultsOf(page);
+  await settleAnimations(root);
+  return { root };
+};
+const bggExtras: NonNullable<SurfaceRow['extras']> = async (page: Page, cell: SweepCell) => {
+  const problems = [...(bggProblems.get(page) ?? [])];
+  // Add to Collection never runs past its row: each button ends inside its row's box.
+  const past = await bggResultsOf(page).evaluate((list) =>
+    Array.from(list.querySelectorAll('button')).map((button) => {
+      const row = button.parentElement;
+      return row ? button.getBoundingClientRect().right - row.getBoundingClientRect().right : 0;
+    }),
+  );
+  past.forEach((over, at) => {
+    if (over > 0.5) problems.push(`R16-bgg ${cell.id}: Add to Collection in row ${at + 1} runs ${r1(over)}px past its row`);
+  });
+  if (problems.length > 0) throw new Error(problems.join(' || '));
+};
+
 export const rows: SurfaceRow[] = [
   { id: 'R16-rest', census: 'R16', kind: 'route', owner: '89.6-27', status: 'enforced', reach: reachRest, answers: answerOwnedGames, extras: restExtras },
-  { id: 'D34', census: 'D34', kind: 'dialog', owner: '89.6-27', status: 'pending' },
+  { id: 'D34', census: 'D34', kind: 'dialog', owner: '89.6-27', status: 'enforced', reach: reachDelete, answers: (url) => (isBlockersRead(url) ? { groups: [] } : undefined), extras: deleteExtras },
+  { id: 'D34-blocked', census: 'D34', kind: 'dialog', owner: '89.6-27', state: 'blocked', status: 'enforced', reach: reachDeleteBlocked, answers: (url) => (isBlockersRead(url) ? { groups: BLOCKING_GROUPS } : undefined) },
+  { id: 'R16-bgg', census: 'R16', kind: 'route', owner: '89.6-27', state: 'BGG search results', status: 'enforced', reach: reachBggResults, answers: (url) => (isBggSearch(url) ? BGG_RESULTS : answerOwnedGames(url)), extras: bggExtras },
   { id: 'O07', census: 'O07', kind: 'overlay', owner: '89.6-27', status: 'enforced', reach: reachTimezoneList, extras: timezoneListExtras },
 ];
